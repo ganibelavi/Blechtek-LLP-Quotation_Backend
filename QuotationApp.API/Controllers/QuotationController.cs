@@ -1,0 +1,64 @@
+using Microsoft.AspNetCore.Mvc;
+using QuotationApp.API.Models;
+using QuotationApp.API.Services;
+
+namespace QuotationApp.API.Controllers;
+
+[ApiController]
+[Route("api/quotation")]
+public class QuotationController : ControllerBase
+{
+    private readonly IQuotationService _quotationService;
+    private readonly ILogger<QuotationController> _logger;
+
+    public QuotationController(IQuotationService quotationService, ILogger<QuotationController> logger)
+    {
+        _quotationService = quotationService;
+        _logger = logger;
+    }
+
+    /// <summary>Generates a Word + PDF quotation from the submitted form data.</summary>
+    [HttpPost("generate")]
+    [ProducesResponseType(typeof(QuotationResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<QuotationResult>> Generate([FromBody] QuotationRequest request)
+    {
+        if (!ModelState.IsValid) return ValidationProblem(ModelState);
+
+        try
+        {
+            var result = await _quotationService.GenerateQuotationAsync(request);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Quotation generation failed for {Org}", request.OrganizationName);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "Could not generate the quotation. Please try again." });
+        }
+    }
+
+    [HttpGet("{quotationId}/download/word")]
+    public IActionResult DownloadWord(string quotationId)
+    {
+        var path = _quotationService.ResolveFilePath(quotationId, "docx");
+        if (path is null) return NotFound(new { error = "Quotation not found." });
+
+        return PhysicalFile(path,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            $"{quotationId}.docx");
+    }
+
+    [HttpGet("{quotationId}/download/pdf")]
+    public IActionResult DownloadPdf(string quotationId)
+    {
+        var path = _quotationService.ResolveFilePath(quotationId, "pdf");
+        if (path is null) return NotFound(new { error = "Quotation not found." });
+
+        return PhysicalFile(path, "application/pdf", $"{quotationId}.pdf");
+    }
+}

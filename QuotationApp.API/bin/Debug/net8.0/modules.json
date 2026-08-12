@@ -1,0 +1,22 @@
+﻿[
+    {
+        "pillar":  "Overall",
+        "module":  "Email Notifications"
+    },
+    {
+        "pillar":  "Overall",
+        "module":  "Multi-Location (Extra cost, applicable for LPA only)"
+    },
+    {
+        "pillar":  "Production",
+        "module":  "PPAP"
+    },
+    {
+        "pillar":  "Quality",
+        "module":  "Audit Tracker"
+    },
+    {
+        "pillar":  "Quality",
+        "module":  "LPA (Layered Process Audits)"
+    }
+]
