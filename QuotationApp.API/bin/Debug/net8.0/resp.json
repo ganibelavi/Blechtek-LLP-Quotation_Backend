@@ -1,7 +1,0 @@
-﻿{
-    "quotationId":  "Q-20260812-68f8b69a",
-    "organizationName":  "ACME Corp",
-    "generatedAt":  "2026-08-12T10:37:48.8663696Z",
-    "wordDownloadUrl":  "/api/quotation/Q-20260812-68f8b69a/download/word",
-    "pdfDownloadUrl":  "/api/quotation/Q-20260812-68f8b69a/download/pdf"
-}
