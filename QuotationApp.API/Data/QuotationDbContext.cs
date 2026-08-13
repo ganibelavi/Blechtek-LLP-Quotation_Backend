@@ -15,6 +15,8 @@ public class QuotationDbContext : DbContext
     public DbSet<ModuleEntity> Modules { get; set; }
     public DbSet<QuotationEntity> Quotations { get; set; }
     public DbSet<QuotationModuleEntity> QuotationModules { get; set; }
+    public DbSet<UserEntity> Users { get; set; }
+    public DbSet<LoginHistoryEntity> LoginHistory { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -28,6 +30,25 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.ModuleName).IsRequired().HasMaxLength(200);
             entity.HasIndex(e => e.ModuleName).IsUnique();
             entity.ToTable("Modules");
+        });
+
+        // UserEntity configuration
+        modelBuilder.Entity<UserEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Email).IsRequired().HasMaxLength(200);
+            entity.HasIndex(e => e.Email).IsUnique();
+            entity.Property(e => e.PasswordHash).IsRequired().HasMaxLength(500);
+            entity.ToTable("Users");
+        });
+
+        // LoginHistoryEntity configuration
+        modelBuilder.Entity<LoginHistoryEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Email).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.LoggedAt).IsRequired();
+            entity.ToTable("LoginHistory");
         });
 
         // QuotationEntity configuration
@@ -101,4 +122,25 @@ public class QuotationModuleEntity
 {
     public string QuotationId { get; set; } = string.Empty;
     public string ModuleName { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Database entity for application users.
+/// </summary>
+public class UserEntity
+{
+    public int Id { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string PasswordHash { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Tracks login attempts for auditing.
+/// </summary>
+public class LoginHistoryEntity
+{
+    public int Id { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public DateTime LoggedAt { get; set; }
+    public string? RemoteAddress { get; set; }
 }
