@@ -22,13 +22,19 @@ public class WordGeneratorService : IWordGeneratorService
     private readonly string _templatePath;
     private readonly string _outputFolder;
     private readonly string _contentRoot;
+    private readonly IModuleService _moduleService;
 
-    public WordGeneratorService(IOptions<QuotationSettings> settings, IWebHostEnvironment env, ILogger<WordGeneratorService> logger)
+    public WordGeneratorService(
+        IOptions<QuotationSettings> settings,
+        IWebHostEnvironment env,
+        ILogger<WordGeneratorService> logger,
+        IModuleService moduleService)
     {
         _templatePath = Path.Combine(env.ContentRootPath, settings.Value.TemplatePath);
         _outputFolder = Path.Combine(env.ContentRootPath, settings.Value.OutputFolder);
         _contentRoot = env.ContentRootPath;
         _logger = logger;
+        _moduleService = moduleService;
         Directory.CreateDirectory(_outputFolder);
     }
 
@@ -97,8 +103,13 @@ public class WordGeneratorService : IWordGeneratorService
         var outputPath = Path.Combine(_outputFolder, $"{quotationId}.docx");
         File.Copy(_templatePath, outputPath, overwrite: true);
 
+        var selectedNames = new HashSet<string>(request.SelectedModules, StringComparer.OrdinalIgnoreCase);
+        var selectedModules = (await _moduleService.GetModulesAsync())
+            .Where(module => selectedNames.Contains(module.ModuleName))
+            .ToList();
+
         // OpenXML SDK APIs are synchronous; run on a background thread so the controller stays async.
-        await Task.Run(() => FillTemplate(outputPath, request));
+        await Task.Run(() => FillTemplate(outputPath, request, selectedModules));
 
         return outputPath;
     }
@@ -154,7 +165,7 @@ public class WordGeneratorService : IWordGeneratorService
         }
     }
 
-    private void FillTemplate(string path, QuotationRequest request)
+    private void FillTemplate(string path, QuotationRequest request, List<ModuleItem> selectedModules)
     {
         _logger.LogInformation("Opening generated file: {Path}", path);
 
@@ -190,7 +201,7 @@ public class WordGeneratorService : IWordGeneratorService
                 ["{{VALIDATION_DATE}}"] = request.ValidationDate.ToString("dd MMM yyyy"),
             };
 
-            FilterScopeTable(body, request.SelectedModules);
+            FilterScopeTable(body, selectedModules);
             ReplacePlaceholders(body, replacements);
 
             // Attempt to replace the header text with a provided logo image (logo.png or logo.jpg)
@@ -208,13 +219,11 @@ public class WordGeneratorService : IWordGeneratorService
     }
 
     /// <summary>
-    /// Updates the "Scope" table so selected modules show Yes and unselected modules show No.
-    /// It also removes the visible MODROW marker token and drops the "Key" column if present.
+    /// Keeps only selected module rows in the "Scope" table.
+    /// It also removes the MODROW marker token and drops the hidden "Key" column if present.
     /// </summary>
-    private static void FilterScopeTable(Body body, List<string> selectedModules)
+    private static void FilterScopeTable(Body body, List<ModuleItem> selectedModules)
     {
-        var selectedSet = new HashSet<string>(selectedModules, StringComparer.OrdinalIgnoreCase);
-
         foreach (var table in body.Descendants<Table>().ToList())
         {
             var rows = table.Elements<TableRow>().ToList();
@@ -239,25 +248,18 @@ public class WordGeneratorService : IWordGeneratorService
                 // swallow non-fatal errors
             }
 
-            foreach (var row in rows)
+            var templateRow = rows.FirstOrDefault(row =>
+                string.Concat(row.Descendants<Text>().Select(text => text.Text))
+                    .Contains(ModRowPrefix, StringComparison.OrdinalIgnoreCase));
+            if (templateRow is null) continue;
+
+            // Remove all template rows. The selected scope rows are rebuilt from the
+            // live Modules master data, so newly-created modules also appear in quotes.
+            foreach (var row in rows.Where(row =>
+                         string.Concat(row.Descendants<Text>().Select(text => text.Text))
+                             .Contains(ModRowPrefix, StringComparison.OrdinalIgnoreCase)).ToList())
             {
-                var markerText = row.Descendants<Text>().FirstOrDefault(t => t.Text.Contains(ModRowPrefix, StringComparison.OrdinalIgnoreCase));
-                if (markerText is null) continue; // not a scope data row
-
-                var moduleName = markerText.Text.Substring(markerText.Text.IndexOf(ModRowPrefix, StringComparison.OrdinalIgnoreCase) + ModRowPrefix.Length).Trim();
-                var isSelected = selectedSet.Contains(moduleName);
-
-                // Remove the visible MODROW: token from the row
-                foreach (var text in row.Descendants<Text>().Where(t => t.Text.Contains(ModRowPrefix, StringComparison.OrdinalIgnoreCase)).ToList())
-                {
-                    text.Text = text.Text.Replace(ModRowPrefix, string.Empty, StringComparison.OrdinalIgnoreCase).Trim();
-                }
-
-                // Replace the required placeholder only inside cells that contain it.
-                foreach (var cell in row.Elements<TableCell>())
-                {
-                    ReplacePlaceholderInCell(cell, "{{REQUIRED}}", isSelected ? "Yes" : "No");
-                }
+                row.Remove();
             }
 
             if (keyIndex >= 0)
@@ -270,14 +272,47 @@ public class WordGeneratorService : IWordGeneratorService
                         gridCols[keyIndex].Remove();
                 }
                 // fasfae
-                foreach (var r in rows)
+                foreach (var r in table.Elements<TableRow>().ToList())
                 {
                     var cells = r.Elements<TableCell>().ToList();
                     if (keyIndex < cells.Count)
                         cells[keyIndex].Remove();
                 }
             }
+
+            foreach (var module in selectedModules)
+            {
+                var selectedRow = (TableRow)templateRow.CloneNode(true);
+                var cells = selectedRow.Elements<TableCell>().ToList();
+
+                if (cells.Count > 0) SetCellText(cells[0], module.Pillar);
+                if (cells.Count > 1) SetCellText(cells[1], module.ModuleName);
+                if (cells.Count > 2) SetCellText(cells[2], "Yes");
+                if (keyIndex >= 0 && keyIndex < cells.Count) cells[keyIndex].Remove();
+
+                // Remove the internal marker if it is embedded in an unexpected layout.
+                foreach (var text in selectedRow.Descendants<Text>()
+                             .Where(text => text.Text.Contains(ModRowPrefix, StringComparison.OrdinalIgnoreCase)))
+                    text.Text = string.Empty;
+
+                table.Append(selectedRow);
+            }
         }
+    }
+
+    private static void SetCellText(TableCell cell, string value)
+    {
+        var textNodes = cell.Descendants<Text>().ToList();
+        if (textNodes.Count == 0)
+        {
+            cell.Append(new Paragraph(new Run(new Text(value))));
+            return;
+        }
+
+        textNodes[0].Text = value;
+        textNodes[0].Space = SpaceProcessingModeValues.Preserve;
+        for (var index = 1; index < textNodes.Count; index++)
+            textNodes[index].Text = string.Empty;
     }
 
     private static void ReplacePlaceholderInCell(TableCell cell, string placeholder, string replacement)

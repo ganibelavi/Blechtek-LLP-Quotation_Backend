@@ -28,6 +28,7 @@ public class QuotationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Pillar).IsRequired().HasMaxLength(100);
             entity.Property(e => e.ModuleName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Price).HasColumnType("decimal(18,2)");
             entity.HasIndex(e => e.ModuleName).IsUnique();
             entity.ToTable("Modules");
         });
@@ -96,6 +97,7 @@ public class ModuleEntity
     public int Id { get; set; }
     public string Pillar { get; set; } = string.Empty;
     public string ModuleName { get; set; } = string.Empty;
+    public decimal? Price { get; set; }
 }
 
 /// <summary>

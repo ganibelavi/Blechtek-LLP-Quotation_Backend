@@ -6,6 +6,16 @@ namespace QuotationApp.API.Models;
 /// </summary>
 public class ModuleItem
 {
+    public int Id { get; set; }
     public string Pillar { get; set; } = string.Empty;
     public string Module { get; set; } = string.Empty;
+    public string ModuleName { get; set; } = string.Empty;
+    public decimal? Price { get; set; }
+}
+
+public class ModuleUpsertRequest
+{
+    public string Pillar { get; set; } = string.Empty;
+    public string ModuleName { get; set; } = string.Empty;
+    public decimal? Price { get; set; }
 }

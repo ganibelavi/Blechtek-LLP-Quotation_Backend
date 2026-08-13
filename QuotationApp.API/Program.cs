@@ -20,9 +20,8 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Use SQL-backed services (replace JSON-file-based services)
-// builder.Services.AddSingleton<IModuleService, ModuleService>(); // JSON-based
-builder.Services.AddScoped<IModuleService, SqlModuleService>(); // SQL-based
+// Modules are managed through the SQL database and exposed by /api/modules.
+builder.Services.AddScoped<IModuleService, SqlModuleService>();
 builder.Services.AddScoped<IWordGeneratorService, WordGeneratorService>();
 builder.Services.AddScoped<IPdfConverterService, PdfConverterService>();
 builder.Services.AddScoped<ITemplateService, TemplateService>(); // Add TemplateService
@@ -73,7 +72,6 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<QuotationDbContext>();
-    var moduleService = scope.ServiceProvider.GetRequiredService<IModuleService>();
     var env = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
     var settings = scope.ServiceProvider.GetRequiredService<IOptions<QuotationSettings>>();
     var templateService = scope.ServiceProvider.GetRequiredService<ITemplateService>(); // Get TemplateService
@@ -84,12 +82,6 @@ using (var scope = app.Services.CreateScope())
     var templatePath = Path.Combine(env.ContentRootPath, settings.Value.TemplatePath);
     templateService.UpdateFooter(templatePath);
 
-    // Seed modules from JSON file if database is empty
-    if (moduleService is SqlModuleService sqlModuleService)
-    {
-        var modulesFile = Path.Combine(env.ContentRootPath, settings.Value.ModulesFile);
-        await sqlModuleService.SeedFromJsonAsync(modulesFile);
-    }
 }
 
 if (app.Environment.IsDevelopment())

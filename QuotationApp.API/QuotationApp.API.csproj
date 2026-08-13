@@ -23,9 +23,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Ship the base template + module master list with the build output -->
+    <!-- Ship the base template with the build output -->
     <None Include="Templates\**\*" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="Data\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -41,8 +41,11 @@ public class SqlModuleService : IModuleService
                 .ThenBy(m => m.ModuleName)
                 .Select(m => new ModuleItem
                 {
+                    Id = m.Id,
                     Pillar = m.Pillar,
-                    Module = m.ModuleName
+                    Module = m.ModuleName,
+                    ModuleName = m.ModuleName,
+                    Price = m.Price
                 })
                 .ToListAsync();
 
@@ -58,50 +61,91 @@ public class SqlModuleService : IModuleService
     /// <summary>
     /// Adds a new module to the database.
     /// </summary>
-    public async Task AddModuleAsync(string pillar, string moduleName)
+    public async Task<ModuleItem> AddModuleAsync(ModuleUpsertRequest request)
     {
         var entity = new ModuleEntity
         {
-            Pillar = pillar,
-            ModuleName = moduleName
+            Pillar = request.Pillar,
+            ModuleName = request.ModuleName,
+            Price = request.Price
         };
 
         _dbContext.Modules.Add(entity);
         await _dbContext.SaveChangesAsync();
-        
-        // Invalidate cache
         _cache = null;
+        return ToModuleItem(entity);
     }
 
     /// <summary>
     /// Updates an existing module.
     /// </summary>
-    public async Task UpdateModuleAsync(int id, string pillar, string moduleName)
+    public async Task<ModuleItem?> UpdateModuleAsync(int id, ModuleUpsertRequest request)
     {
         var entity = await _dbContext.Modules.FindAsync(id);
-        if (entity == null) throw new KeyNotFoundException($"Module with id {id} not found");
+        if (entity == null) return null;
 
-        entity.Pillar = pillar;
-        entity.ModuleName = moduleName;
+        var moduleNameChanged = !string.Equals(
+            entity.ModuleName,
+            request.ModuleName,
+            StringComparison.Ordinal);
+
+        if (moduleNameChanged)
+        {
+            var isUsedInQuotation = await _dbContext.QuotationModules
+                .AnyAsync(item => item.ModuleName == entity.ModuleName);
+            if (isUsedInQuotation)
+            {
+                throw new InvalidOperationException(
+                    "This module is already used in a quotation, so its name cannot be changed. " +
+                    "Create a new module instead to preserve quotation history.");
+            }
+
+            var duplicateNameExists = await _dbContext.Modules
+                .AnyAsync(item => item.Id != id && item.ModuleName == request.ModuleName);
+            if (duplicateNameExists)
+            {
+                throw new InvalidOperationException("A module with this name already exists.");
+            }
+
+            // ModuleName is an alternate key. EF Core does not permit changing key
+            // values on a tracked entity, so use a parameterized SQL update here.
+            await _dbContext.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE [Modules]
+                SET [Pillar] = {request.Pillar},
+                    [ModuleName] = {request.ModuleName},
+                    [Price] = {request.Price}
+                WHERE [Id] = {id}");
+
+            _cache = null;
+            return new ModuleItem
+            {
+                Id = id,
+                Pillar = request.Pillar,
+                Module = request.ModuleName,
+                ModuleName = request.ModuleName,
+                Price = request.Price
+            };
+        }
+
+        entity.Pillar = request.Pillar;
+        entity.Price = request.Price;
         await _dbContext.SaveChangesAsync();
-        
-        // Invalidate cache
         _cache = null;
+        return ToModuleItem(entity);
     }
 
     /// <summary>
     /// Deletes a module from the database.
     /// </summary>
-    public async Task DeleteModuleAsync(int id)
+    public async Task<bool> DeleteModuleAsync(int id)
     {
         var entity = await _dbContext.Modules.FindAsync(id);
-        if (entity == null) throw new KeyNotFoundException($"Module with id {id} not found");
+        if (entity == null) return false;
 
         _dbContext.Modules.Remove(entity);
         await _dbContext.SaveChangesAsync();
-        
-        // Invalidate cache
         _cache = null;
+        return true;
     }
 
     /// <summary>
@@ -125,7 +169,8 @@ public class SqlModuleService : IModuleService
                 _dbContext.Modules.Add(new ModuleEntity
                 {
                     Pillar = module.Pillar,
-                    ModuleName = module.Module
+                    ModuleName = module.Module,
+                    Price = module.Price
                 });
             }
         }
@@ -133,4 +178,13 @@ public class SqlModuleService : IModuleService
         await _dbContext.SaveChangesAsync();
         _cache = null;
     }
+
+    private static ModuleItem ToModuleItem(ModuleEntity entity) => new()
+    {
+        Id = entity.Id,
+        Pillar = entity.Pillar,
+        Module = entity.ModuleName,
+        ModuleName = entity.ModuleName,
+        Price = entity.Price
+    };
 }
