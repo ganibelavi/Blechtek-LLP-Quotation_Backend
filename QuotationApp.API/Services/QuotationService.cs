@@ -63,6 +63,18 @@ public class QuotationService : IQuotationService
         return File.Exists(path) ? path : null;
     }
 
+    public Task<List<QuotationHistoryEntry>> GetHistoryAsync(int page = 1, int pageSize = 20)
+    {
+        // This service is deprecated (JSON-based). Use SqlQuotationService instead.
+        throw new NotImplementedException("Use SqlQuotationService for history queries.");
+    }
+
+    public Task<QuotationHistoryEntry?> GetQuotationAsync(string quotationId)
+    {
+        // This service is deprecated (JSON-based). Use SqlQuotationService instead.
+        throw new NotImplementedException("Use SqlQuotationService for history queries.");
+    }
+
     private async Task ValidateModulesAsync(List<string> selectedModules)
     {
         var master = await _moduleService.GetModulesAsync();
@@ -97,13 +109,4 @@ public class QuotationService : IQuotationService
             HistoryLock.Release();
         }
     }
-}
-
-/// <summary>Lightweight quotation-history record (optional requirement 4 in the project brief).</summary>
-public class QuotationHistoryEntry
-{
-    public string QuotationId { get; set; } = string.Empty;
-    public string OrganizationName { get; set; } = string.Empty;
-    public List<string> Modules { get; set; } = new();
-    public DateTime GeneratedAt { get; set; }
 }

@@ -80,6 +80,11 @@ public class SqlQuotationService : IQuotationService
             {
                 QuotationId = q.Id,
                 OrganizationName = q.OrganizationName,
+                ValidationDate = q.ValidationDate,
+                QuotationToName = q.QuotationToName,
+                QuotationToAddress = q.QuotationToAddress,
+                QuotationToContactNo = q.QuotationToContactNo,
+                QuotationToEmail = q.QuotationToEmail,
                 Modules = q.QuotationModules.Select(m => m.ModuleName).ToList(),
                 GeneratedAt = q.GeneratedAt
             })
@@ -98,6 +103,11 @@ public class SqlQuotationService : IQuotationService
             {
                 QuotationId = q.Id,
                 OrganizationName = q.OrganizationName,
+                ValidationDate = q.ValidationDate,
+                QuotationToName = q.QuotationToName,
+                QuotationToAddress = q.QuotationToAddress,
+                QuotationToContactNo = q.QuotationToContactNo,
+                QuotationToEmail = q.QuotationToEmail,
                 Modules = q.QuotationModules.Select(m => m.ModuleName).ToList(),
                 GeneratedAt = q.GeneratedAt
             })

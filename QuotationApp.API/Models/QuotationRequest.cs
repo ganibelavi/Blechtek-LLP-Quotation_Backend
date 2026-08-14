@@ -43,3 +43,17 @@ public class QuotationResult
     public string WordDownloadUrl { get; set; } = string.Empty;
     public string PdfDownloadUrl { get; set; } = string.Empty;
 }
+
+/// <summary>Represents a quotation entry in the history list.</summary>
+public class QuotationHistoryEntry
+{
+    public string QuotationId { get; set; } = string.Empty;
+    public string OrganizationName { get; set; } = string.Empty;
+    public DateTime ValidationDate { get; set; }
+    public string QuotationToName { get; set; } = string.Empty;
+    public string QuotationToAddress { get; set; } = string.Empty;
+    public string QuotationToContactNo { get; set; } = string.Empty;
+    public string QuotationToEmail { get; set; } = string.Empty;
+    public List<string> Modules { get; set; } = new();
+    public DateTime GeneratedAt { get; set; }
+}

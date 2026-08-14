@@ -44,7 +44,7 @@ public class AuthController : ControllerBase
         var existing = await _userService.GetByEmailAsync(req.Email);
         if (existing != null) return BadRequest(new { error = "User already exists" });
 
-        var user = await _userService.CreateUserAsync(req.Email, req.Password);
+        var user = await _userService.CreateUserAsync(req.Email, req.Password, "", "", "User");
         return Ok(new { email = user.Email });
     }
 

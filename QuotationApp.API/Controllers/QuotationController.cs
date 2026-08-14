@@ -42,6 +42,24 @@ public class QuotationController : ControllerBase
         }
     }
 
+    /// <summary>Gets quotation history with pagination.</summary>
+    [HttpGet("history")]
+    [ProducesResponseType(typeof(List<QuotationHistoryEntry>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<List<QuotationHistoryEntry>>> GetHistory([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+    {
+        try
+        {
+            var history = await _quotationService.GetHistoryAsync(page, pageSize);
+            return Ok(history);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve quotation history");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "Could not retrieve quotation history." });
+        }
+    }
+
     [HttpGet("{quotationId}/download/word")]
     public IActionResult DownloadWord(string quotationId)
     {
