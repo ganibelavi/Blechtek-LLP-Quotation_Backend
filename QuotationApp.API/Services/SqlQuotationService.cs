@@ -114,6 +114,89 @@ public class SqlQuotationService : IQuotationService
             .FirstOrDefaultAsync();
     }
 
+    public async Task<DashboardData> GetDashboardDataAsync()
+    {
+        var allQuotations = await _dbContext.Quotations
+            .AsNoTracking()
+            .OrderByDescending(q => q.GeneratedAt)
+            .ToListAsync();
+
+        var totalQuotations = allQuotations.Count;
+        var totalOrganizations = allQuotations.Select(q => q.OrganizationName).Distinct().Count();
+        var totalModules = await _dbContext.Modules.CountAsync();
+
+        // Calculate monthly quotes for the last 12 months
+        var twelveMonthsAgo = DateTime.UtcNow.AddMonths(-12);
+        var monthlyQuotes = allQuotations
+            .Where(q => q.GeneratedAt >= twelveMonthsAgo)
+            .GroupBy(q => new { q.GeneratedAt.Year, q.GeneratedAt.Month })
+            .Select(g => new MonthlyQuoteData
+            {
+                Month = new DateTime(g.Key.Year, g.Key.Month, 1).ToString("MMM yyyy"),
+                Count = g.Count()
+            })
+            .OrderBy(m => DateTime.ParseExact(m.Month, "MMM yyyy", System.Globalization.CultureInfo.InvariantCulture))
+            .ToList();
+
+        // Status breakdown - using ValidationDate to determine status
+        var now = DateTime.UtcNow;
+        var statusBreakdown = new List<StatusBreakdownData>
+        {
+            new() { Status = "Valid", Count = allQuotations.Count(q => q.ValidationDate >= now) },
+            new() { Status = "Expired", Count = allQuotations.Count(q => q.ValidationDate < now) }
+        };
+
+        // Module distribution
+        var moduleDistribution = await _dbContext.QuotationModules
+            .AsNoTracking()
+            .GroupBy(qm => qm.ModuleName)
+            .Select(g => new ModuleDistributionData
+            {
+                Module = g.Key,
+                Count = g.Count()
+            })
+            .OrderByDescending(m => m.Count)
+            .Take(10)
+            .ToListAsync();
+
+        // Top organizations
+        var topOrganizations = allQuotations
+            .GroupBy(q => q.OrganizationName)
+            .Select(g => new TopOrganizationData
+            {
+                Organization = g.Key,
+                QuoteCount = g.Count()
+            })
+            .OrderByDescending(o => o.QuoteCount)
+            .Take(5)
+            .ToList();
+
+        // Recent quotations (last 10)
+        var recentQuotations = allQuotations
+            .Take(10)
+            .Select(q => new RecentQuotationData
+            {
+                QuotationId = q.Id,
+                OrganizationName = q.OrganizationName,
+                GeneratedAt = q.GeneratedAt,
+                Modules = q.QuotationModules.Select(m => m.ModuleName).ToList()
+            })
+            .ToList();
+
+        return new DashboardData
+        {
+            TotalQuotations = totalQuotations,
+            TotalOrganizations = totalOrganizations,
+            TotalModules = totalModules,
+            TotalQuotedAmount = 0, // Placeholder - would need pricing data
+            MonthlyQuotes = monthlyQuotes,
+            StatusBreakdown = statusBreakdown,
+            ModuleDistribution = moduleDistribution,
+            TopOrganizations = topOrganizations,
+            RecentQuotations = recentQuotations
+        };
+    }
+
     private async Task ValidateModulesAsync(List<string> selectedModules)
     {
         var master = await _moduleService.GetModulesAsync();

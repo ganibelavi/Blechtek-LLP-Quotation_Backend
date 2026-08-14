@@ -75,6 +75,12 @@ public class QuotationService : IQuotationService
         throw new NotImplementedException("Use SqlQuotationService for history queries.");
     }
 
+    public Task<DashboardData> GetDashboardDataAsync()
+    {
+        // This service is deprecated (JSON-based). Use SqlQuotationService instead.
+        throw new NotImplementedException("Use SqlQuotationService for dashboard data.");
+    }
+
     private async Task ValidateModulesAsync(List<string> selectedModules)
     {
         var master = await _moduleService.GetModulesAsync();

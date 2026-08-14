@@ -60,6 +60,24 @@ public class QuotationController : ControllerBase
         }
     }
 
+    /// <summary>Gets dashboard analytics data.</summary>
+    [HttpGet("dashboard")]
+    [ProducesResponseType(typeof(DashboardData), StatusCodes.Status200OK)]
+    public async Task<ActionResult<DashboardData>> GetDashboard()
+    {
+        try
+        {
+            var data = await _quotationService.GetDashboardDataAsync();
+            return Ok(data);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve dashboard data");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "Could not retrieve dashboard data." });
+        }
+    }
+
     [HttpGet("{quotationId}/download/word")]
     public IActionResult DownloadWord(string quotationId)
     {
