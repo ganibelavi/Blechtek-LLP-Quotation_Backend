@@ -11,6 +11,12 @@ public class QuotationRequest
     [Required, StringLength(200)]
     public string OrganizationName { get; set; } = string.Empty;
 
+    [Required, StringLength(50)]
+    public string QuotationNo { get; set; } = string.Empty;
+
+    [Required]
+    public DateTime Date { get; set; }
+
     /// <summary>Exact module names as they appear in the master list (Data/modules.json).</summary>
     [Required, MinLength(1, ErrorMessage = "Select at least one module.")]
     public List<string> SelectedModules { get; set; } = new();
@@ -49,6 +55,8 @@ public class QuotationHistoryEntry
 {
     public string QuotationId { get; set; } = string.Empty;
     public string OrganizationName { get; set; } = string.Empty;
+    public string QuotationNo { get; set; } = string.Empty;
+    public DateTime Date { get; set; }
     public DateTime ValidationDate { get; set; }
     public string QuotationToName { get; set; } = string.Empty;
     public string QuotationToAddress { get; set; } = string.Empty;

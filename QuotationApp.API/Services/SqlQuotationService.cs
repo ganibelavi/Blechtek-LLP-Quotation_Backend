@@ -80,6 +80,8 @@ public class SqlQuotationService : IQuotationService
             {
                 QuotationId = q.Id,
                 OrganizationName = q.OrganizationName,
+                QuotationNo = q.QuotationNo ?? string.Empty,
+                Date = q.Date ?? DateTime.MinValue,
                 ValidationDate = q.ValidationDate,
                 QuotationToName = q.QuotationToName,
                 QuotationToAddress = q.QuotationToAddress,
@@ -103,6 +105,8 @@ public class SqlQuotationService : IQuotationService
             {
                 QuotationId = q.Id,
                 OrganizationName = q.OrganizationName,
+                QuotationNo = q.QuotationNo ?? string.Empty,
+                Date = q.Date ?? DateTime.MinValue,
                 ValidationDate = q.ValidationDate,
                 QuotationToName = q.QuotationToName,
                 QuotationToAddress = q.QuotationToAddress,
@@ -214,6 +218,8 @@ public class SqlQuotationService : IQuotationService
             Id = result.QuotationId,
             OrganizationName = request.OrganizationName,
             ValidationDate = request.ValidationDate,
+            QuotationNo = request.QuotationNo,
+            Date = request.Date,
             QuotationToName = request.QuotationTo.Name,
             QuotationToAddress = request.QuotationTo.Address,
             QuotationToContactNo = request.QuotationTo.ContactNo,

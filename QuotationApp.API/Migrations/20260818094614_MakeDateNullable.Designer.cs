@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using QuotationApp.API.Data;
 
@@ -11,9 +12,11 @@ using QuotationApp.API.Data;
 namespace QuotationApp.API.Migrations
 {
     [DbContext(typeof(QuotationDbContext))]
-    partial class QuotationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260818094614_MakeDateNullable")]
+    partial class MakeDateNullable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

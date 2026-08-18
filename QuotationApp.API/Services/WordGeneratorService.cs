@@ -199,6 +199,8 @@ public class WordGeneratorService : IWordGeneratorService
                 ["{{ORG_NAME}}"] = request.OrganizationName,
                 ["{{MODULE_LIST}}"] = moduleList,
                 ["{{VALIDATION_DATE}}"] = request.ValidationDate.ToString("dd MMM yyyy"),
+                ["{{QUOTATION_NO}}"] = request.QuotationNo,
+                ["{{DATE}}"] = request.Date.ToString("dd MMM yyyy"),
             };
 
             FilterScopeTable(body, selectedModules);

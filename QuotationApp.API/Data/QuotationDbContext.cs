@@ -65,6 +65,8 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.Id).HasMaxLength(50).ValueGeneratedNever();
             entity.Property(e => e.OrganizationName).IsRequired().HasMaxLength(200);
             entity.Property(e => e.ValidationDate).IsRequired();
+            entity.Property(e => e.QuotationNo).HasMaxLength(50);
+            entity.Property(e => e.Date);
             entity.Property(e => e.QuotationToName).IsRequired().HasMaxLength(150);
             entity.Property(e => e.QuotationToAddress).IsRequired().HasMaxLength(400);
             entity.Property(e => e.QuotationToContactNo).IsRequired().HasMaxLength(30);
@@ -114,6 +116,8 @@ public class QuotationEntity
     public string Id { get; set; } = string.Empty;
     public string OrganizationName { get; set; } = string.Empty;
     public DateTime ValidationDate { get; set; }
+    public string? QuotationNo { get; set; }
+    public DateTime? Date { get; set; }
     public string QuotationToName { get; set; } = string.Empty;
     public string QuotationToAddress { get; set; } = string.Empty;
     public string QuotationToContactNo { get; set; } = string.Empty;

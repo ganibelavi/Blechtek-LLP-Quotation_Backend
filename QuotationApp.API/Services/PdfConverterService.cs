@@ -21,8 +21,8 @@ namespace QuotationApp.API.Services;
 public class PdfConverterService : IPdfConverterService
 {
     // Color constants matching the Word template
-    private static readonly QuestPDFColor DarkBlue = QuestPDFColor.FromHex("#1B2A4E");
-    private static readonly QuestPDFColor Teal = QuestPDFColor.FromHex("#2E7D6B");
+    private static readonly QuestPDFColor DarkBlue = QuestPDFColor.FromHex("#65aadb");
+    private static readonly QuestPDFColor Teal = QuestPDFColor.FromHex("#65aadb");
     private static readonly QuestPDFColor White = QuestPDFColor.FromHex("#FFFFFF");
     private static readonly QuestPDFColor LightGray = QuestPDFColor.FromHex("#F2F4F7");
     private static readonly QuestPDFColor TableBorder = QuestPDFColor.FromHex("#CCCCCC");
