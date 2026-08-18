@@ -45,6 +45,8 @@ public class QuotationService : IQuotationService
         {
             QuotationId = quotationId,
             OrganizationName = request.OrganizationName,
+            QuotationNo = request.QuotationNo,
+            Date = request.Date,
             GeneratedAt = DateTime.UtcNow,
             WordDownloadUrl = $"/api/quotation/{quotationId}/download/word",
             PdfDownloadUrl = $"/api/quotation/{quotationId}/download/pdf"

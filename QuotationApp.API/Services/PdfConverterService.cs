@@ -238,10 +238,11 @@ public class PdfConverterService : IPdfConverterService
                 bool isHeaderRow = false;
                 if (rows.IndexOf(row) == 0)
                 {
-                    // Check if first row has dark shading (header indicator)
+                    // Check if first row has dark shading (header indicator) - supports both old (1B2A4E) and new (65AADB) template colors
                     var firstCell = row.Elements<TableCell>().FirstOrDefault();
                     var shading = firstCell?.TableCellProperties?.GetFirstChild<Shading>();
-                    if (shading?.Fill?.Value == "1B2A4E") // Dark blue header
+                    var fillValue = shading?.Fill?.Value;
+                    if (!string.IsNullOrEmpty(fillValue) && (fillValue.Equals("1B2A4E", StringComparison.OrdinalIgnoreCase) || fillValue.Equals("65AADB", StringComparison.OrdinalIgnoreCase)))
                     {
                         isHeaderRow = true;
                     }

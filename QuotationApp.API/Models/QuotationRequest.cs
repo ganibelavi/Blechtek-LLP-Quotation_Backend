@@ -45,6 +45,8 @@ public class QuotationResult
 {
     public string QuotationId { get; set; } = string.Empty;
     public string OrganizationName { get; set; } = string.Empty;
+    public string QuotationNo { get; set; } = string.Empty;
+    public DateTime Date { get; set; }
     public DateTime GeneratedAt { get; set; }
     public string WordDownloadUrl { get; set; } = string.Empty;
     public string PdfDownloadUrl { get; set; } = string.Empty;
