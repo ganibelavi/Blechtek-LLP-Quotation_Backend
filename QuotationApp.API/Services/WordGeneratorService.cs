@@ -214,6 +214,7 @@ public class WordGeneratorService : IWordGeneratorService
             };
 
             FilterScopeTable(body, selectedModules);
+            RebuildQuotationToSection(body, request);
             RebuildPriceForImplementationTable(body, request, selectedModules, totalPrice, discountPercentage, discountAmount, finalPrice, moduleList);
             ReplacePlaceholders(body, replacements);
 
@@ -311,6 +312,171 @@ public class WordGeneratorService : IWordGeneratorService
                 table.Append(selectedRow);
             }
         }
+    }
+
+private static void RebuildQuotationToSection(Body body, QuotationRequest request)
+    {
+        // Find the "QUOTATION TO" heading paragraph
+        var heading = body.Descendants<Paragraph>()
+            .FirstOrDefault(p => string.Concat(p.Descendants<Text>().Select(t => t.Text))
+                .Contains("QUOTATION TO", StringComparison.OrdinalIgnoreCase));
+
+        if (heading is null) return;
+
+        // Find all paragraphs after the heading until the next heading or table
+        var elementsToRemove = new List<OpenXmlElement>();
+        var elementsAfterHeading = heading.ElementsAfter().ToList();
+        foreach (var elem in elementsAfterHeading)
+        {
+            if (elem is Paragraph p)
+            {
+                var text = string.Concat(p.Descendants<Text>().Select(t => t.Text)).Trim();
+                if (text.StartsWith("QUOTATION TO") || text.StartsWith("Reference:") || text.StartsWith("Subject:") || text.StartsWith("Dear"))
+                {
+                    break; // Stop at next section
+                }
+                // Remove the old paragraphs (Name:, Address:, Contact No.: | Email:)
+                if (text.StartsWith("Name:") || text.StartsWith("Address:") || text.StartsWith("Contact No.:") || text.Contains("QUOTATION NO") || text.Contains("DATE"))
+                {
+                    elementsToRemove.Add(elem);
+                }
+            }
+            else if (elem is Table)
+            {
+                break; // Stop at next table
+            }
+        }
+
+        foreach (var elem in elementsToRemove)
+        {
+            elem.Remove();
+        }
+
+        var quotationNo = request.QuotationNo ?? "{{QUOTATION_NO}}";
+        var date = request.Date != default ? request.Date.ToString("dd MMM yyyy") : "{{DATE}}";
+
+        // Create a table for QUOTATION TO with two columns - NO borders (like frontend grid)
+        var newTable = new Table();
+
+        var tblPr = new TableProperties(
+            new TableWidth { Width = "9000", Type = TableWidthUnitValues.Dxa },
+            new TableBorders(
+                new TopBorder { Val = BorderValues.None },
+                new LeftBorder { Val = BorderValues.None },
+                new BottomBorder { Val = BorderValues.None },
+                new RightBorder { Val = BorderValues.None },
+                new InsideHorizontalBorder { Val = BorderValues.None },
+                new InsideVerticalBorder { Val = BorderValues.None }
+            ),
+            new TableLayout { Type = TableLayoutValues.Fixed }
+        );
+        newTable.Append(tblPr);
+
+        var tblGrid = new TableGrid(
+            new GridColumn { Width = "4500" },  // Left column (50%)
+            new GridColumn { Width = "4500" }   // Right column (50%)
+        );
+        newTable.Append(tblGrid);
+
+        // Row 1: QUOTATION TO heading (spans both columns)
+        var headingRow = new TableRow();
+        var headingCell = new TableCell();
+        var headingCellPr = new TableCellProperties(
+            new GridSpan { Val = 2 },
+            new TableCellMargin
+            {
+                TopMargin = new TopMargin { Width = "80", Type = TableWidthUnitValues.Dxa },
+                LeftMargin = new LeftMargin { Width = "120", Type = TableWidthUnitValues.Dxa },
+                BottomMargin = new BottomMargin { Width = "80", Type = TableWidthUnitValues.Dxa },
+                RightMargin = new RightMargin { Width = "120", Type = TableWidthUnitValues.Dxa }
+            }
+        );
+        headingCell.Append(headingCellPr);
+        var headingPara = new Paragraph();
+        var headingRun = new Run();
+        var headingRunPr = new RunProperties();
+        headingRunPr.Append(new Bold(), new BoldComplexScript());
+        headingRunPr.Append(new Color { Val = "65AADB" });
+        headingRunPr.Append(new FontSize { Val = "24" }, new FontSizeComplexScript { Val = "24" });
+        headingRun.Append(headingRunPr);
+        headingRun.Append(new Text("QUOTATION TO") { Space = SpaceProcessingModeValues.Preserve });
+        headingPara.Append(headingRun);
+        headingCell.Append(headingPara);
+        headingRow.Append(headingCell);
+        newTable.Append(headingRow);
+
+        // Row 2: Left side (Name, Address, Contact, Email) | Right side (Quotation No, Date)
+        var dataRow = new TableRow();
+
+        // Left cell
+        var leftCell = new TableCell();
+        var leftCellPr = new TableCellProperties(
+            new TableCellMargin
+            {
+                TopMargin = new TopMargin { Width = "80", Type = TableWidthUnitValues.Dxa },
+                LeftMargin = new LeftMargin { Width = "120", Type = TableWidthUnitValues.Dxa },
+                BottomMargin = new BottomMargin { Width = "80", Type = TableWidthUnitValues.Dxa },
+                RightMargin = new RightMargin { Width = "120", Type = TableWidthUnitValues.Dxa }
+            }
+        );
+        leftCell.Append(leftCellPr);
+
+        var leftContent = new List<Paragraph>
+        {
+            CreateQuotationToParagraph("Name: ", request.QuotationTo.Name ?? "{{CONTACT_NAME}}", true),
+            CreateQuotationToParagraph("Address: ", request.QuotationTo.Address ?? "{{CONTACT_ADDRESS}}", true),
+            CreateQuotationToParagraph("Contact No.: ", request.QuotationTo.ContactNo ?? "{{CONTACT_PHONE}}", true),
+            CreateQuotationToParagraph("Email: ", request.QuotationTo.Email ?? "{{CONTACT_EMAIL}}", true)
+        };
+        foreach (var p in leftContent) leftCell.Append(p);
+
+        // Right cell
+        var rightCell = new TableCell();
+        var rightCellPr = new TableCellProperties(
+            new TableCellMargin
+            {
+                TopMargin = new TopMargin { Width = "80", Type = TableWidthUnitValues.Dxa },
+                LeftMargin = new LeftMargin { Width = "120", Type = TableWidthUnitValues.Dxa },
+                BottomMargin = new BottomMargin { Width = "80", Type = TableWidthUnitValues.Dxa },
+                RightMargin = new RightMargin { Width = "120", Type = TableWidthUnitValues.Dxa }
+            }
+        );
+        rightCell.Append(rightCellPr);
+
+        var rightContent = new List<Paragraph>
+        {
+            CreateQuotationToParagraph("Quotation No.: ", quotationNo, true),
+            CreateQuotationToParagraph("Date: ", date, true)
+        };
+        foreach (var p in rightContent) rightCell.Append(p);
+
+        dataRow.Append(leftCell);
+        dataRow.Append(rightCell);
+        newTable.Append(dataRow);
+
+        // Insert the new table after the heading
+        var parent = heading.Parent;
+        if (parent is not null)
+        {
+            parent.InsertAfter(newTable, heading);
+        }
+    }
+
+    private static Paragraph CreateQuotationToParagraph(string label, string value, bool isBold)
+    {
+        var para = new Paragraph();
+        var run = new Run();
+        var runPr = new RunProperties();
+        if (isBold)
+        {
+            runPr.Append(new Bold(), new BoldComplexScript());
+        }
+        runPr.Append(new Color { Val = "65AADB" });
+        runPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
+        run.Append(runPr);
+        run.Append(new Text(label + value) { Space = SpaceProcessingModeValues.Preserve });
+        para.Append(run);
+        return para;
     }
 
     private static void RebuildPriceForImplementationTable(

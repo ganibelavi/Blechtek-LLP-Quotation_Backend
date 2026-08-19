@@ -2,6 +2,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Linq;
+using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using Microsoft.Extensions.Options;
@@ -199,16 +200,37 @@ public class PdfConverterService : IPdfConverterService
 
         // Get table borders
         var tblBorders = table.TableProperties?.TableBorders;
-        tableContent.HasBorders = tblBorders != null;
-        tableContent.BorderColor = TableBorder;
 
+        // Check if borders are actually visible (not None)
+        bool hasVisibleBorders = false;
         if (tblBorders != null)
         {
+            var borderTypes = new List<BorderType>
+            {
+                tblBorders.GetFirstChild<TopBorder>(),
+                tblBorders.GetFirstChild<LeftBorder>(),
+                tblBorders.GetFirstChild<BottomBorder>(),
+                tblBorders.GetFirstChild<RightBorder>(),
+                tblBorders.GetFirstChild<InsideHorizontalBorder>(),
+                tblBorders.GetFirstChild<InsideVerticalBorder>()
+            };
+
+            foreach (var border in borderTypes)
+            {
+                if (border != null && border.Val != null && border.Val != BorderValues.None)
+                {
+                    hasVisibleBorders = true;
+                    break;
+                }
+            }
+
             var topBorder = tblBorders.GetFirstChild<TopBorder>();
             var topBorderColorVal = topBorder?.Color?.Value;
             if (!string.IsNullOrWhiteSpace(topBorderColorVal) && TryParseColor(topBorderColorVal, out var qc))
                 tableContent.BorderColor = qc;
         }
+
+        tableContent.HasBorders = hasVisibleBorders;
 
         // Get column widths
         var tblGrid = table.TableProperties?.GetFirstChild<TableGrid>();
@@ -378,6 +400,32 @@ public class PdfConverterService : IPdfConverterService
                         else if (element is TableContent table)
                         {
                             if (table.Rows.Count == 0) continue;
+
+                            // If table has no visible borders, render as paragraphs (for QUOTATION TO section)
+                            if (!table.HasBorders)
+                            {
+                                foreach (var row in table.Rows)
+                                {
+                                    foreach (var cell in row)
+                                    {
+                                        if (string.IsNullOrWhiteSpace(cell.Text)) continue;
+
+                                        var cellStyle = TextStyle.Default
+                                            .FontSize(9)
+                                            .FontFamily("Calibri")
+                                            .FontColor(cell.TextColor ?? TextBlack);
+
+                                        if (cell.IsBold) cellStyle = cellStyle.Bold();
+
+                                        var cellContainer = column.Item().PaddingTop(2).PaddingBottom(2);
+                                        if (cell.BackgroundColor.HasValue)
+                                            cellContainer = cellContainer.Background(cell.BackgroundColor.Value);
+                                        
+                                        cellContainer.Text(cell.Text).Style(cellStyle);
+                                    }
+                                }
+                                continue;
+                            }
 
                             column.Item().PaddingTop(10).Table(tableDef =>
                             {
