@@ -462,10 +462,10 @@ public class WordGeneratorService : IWordGeneratorService
         );
         newTable.Append(tblPr);
 
-        // Table grid - 3 columns: Sr.No (8%), Particulars (72%), Price (20%)
+        // Table grid - 3 columns: Sr.No (5%), Particulars (75%), Price (20%)
         var tblGrid = new TableGrid(
-            new GridColumn { Width = "720" },   // ~8% of 9000
-            new GridColumn { Width = "6480" },  // ~72% of 9000
+            new GridColumn { Width = "450" },   // ~5% of 9000
+            new GridColumn { Width = "6750" },  // ~75% of 9000
             new GridColumn { Width = "1800" }   // ~20% of 9000
         );
         newTable.Append(tblGrid);
@@ -508,7 +508,7 @@ public class WordGeneratorService : IWordGeneratorService
 
             if (isBold)
             {
-                var shading = new Shading { Val = ShadingPatternValues.Clear, Color = "auto", Fill = "1B2A4E" };
+                var shading = new Shading { Val = ShadingPatternValues.Clear, Color = "auto", Fill = "65AADB" };
                 tcPr.Append(shading);
             }
             else if (isAlternate)
