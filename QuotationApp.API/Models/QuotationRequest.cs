@@ -70,4 +70,5 @@ public class QuotationHistoryEntry
     public string QuotationToEmail { get; set; } = string.Empty;
     public List<string> Modules { get; set; } = new();
     public DateTime GeneratedAt { get; set; }
+    public decimal? DiscountPercentage { get; set; }
 }

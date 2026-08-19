@@ -90,7 +90,8 @@ public class SqlQuotationService : IQuotationService
                 QuotationToContactNo = q.QuotationToContactNo,
                 QuotationToEmail = q.QuotationToEmail,
                 Modules = q.QuotationModules.Select(m => m.ModuleName).ToList(),
-                GeneratedAt = q.GeneratedAt
+                GeneratedAt = q.GeneratedAt,
+                DiscountPercentage = q.DiscountPercentage
             })
             .ToListAsync();
     }
@@ -115,7 +116,8 @@ public class SqlQuotationService : IQuotationService
                 QuotationToContactNo = q.QuotationToContactNo,
                 QuotationToEmail = q.QuotationToEmail,
                 Modules = q.QuotationModules.Select(m => m.ModuleName).ToList(),
-                GeneratedAt = q.GeneratedAt
+                GeneratedAt = q.GeneratedAt,
+                DiscountPercentage = q.DiscountPercentage
             })
             .FirstOrDefaultAsync();
     }
