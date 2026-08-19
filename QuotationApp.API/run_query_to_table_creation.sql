@@ -50,6 +50,7 @@ CREATE TABLE [Quotations] (
     [QuotationToAddress] NVARCHAR(400) NOT NULL,
     [QuotationToContactNo] NVARCHAR(30) NOT NULL,
     [QuotationToEmail] NVARCHAR(150) NOT NULL,
+    [DiscountPercentage] DECIMAL(5, 2) NULL,
     [GeneratedAt] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
 

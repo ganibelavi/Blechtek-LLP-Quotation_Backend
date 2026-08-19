@@ -214,6 +214,7 @@ public class WordGeneratorService : IWordGeneratorService
             };
 
             FilterScopeTable(body, selectedModules);
+            RebuildPriceForImplementationTable(body, request, selectedModules, totalPrice, discountPercentage, discountAmount, finalPrice, moduleList);
             ReplacePlaceholders(body, replacements);
 
             // Attempt to replace the header text with a provided logo image (logo.png or logo.jpg)
@@ -312,6 +313,231 @@ public class WordGeneratorService : IWordGeneratorService
         }
     }
 
+    private static void RebuildPriceForImplementationTable(
+        Body body,
+        QuotationRequest request,
+        List<ModuleItem> selectedModules,
+        decimal totalPrice,
+        decimal discountPercentage,
+        decimal discountAmount,
+        decimal finalPrice,
+        string moduleList)
+    {
+        // Find the "Price for Implementation" heading paragraph
+        var priceHeading = body.Descendants<Paragraph>()
+            .FirstOrDefault(p => string.Concat(p.Descendants<Text>().Select(t => t.Text))
+                .Contains("Price for Implementation", StringComparison.OrdinalIgnoreCase));
+
+        if (priceHeading is null) return;
+
+        // Find the table immediately after the heading
+        Table? priceTable = null;
+        var elementsAfterHeading = priceHeading.ElementsAfter().ToList();
+        foreach (var elem in elementsAfterHeading)
+        {
+            if (elem is Table table)
+            {
+                priceTable = table;
+                break;
+            }
+            else if (elem is Paragraph p && !string.IsNullOrWhiteSpace(p.InnerText))
+            {
+                // Stop if we hit another heading/section
+                break;
+            }
+        }
+
+        if (priceTable is null) return;
+
+        // Build new table rows matching the frontend QuotationPdfView structure
+        var newRows = new List<TableRow>();
+
+        // Header row
+        var headerRow = CreatePriceTableRow(new[]
+        {
+            ("Sr. No.", true),
+            ("Particulars", true),
+            ("Price in INR", true)
+        }, true);
+        newRows.Add(headerRow);
+
+        // Row 1: Product License
+        var licenseText = $"{moduleList} - Product License applicable for single installation.\nScope – As mentioned above";
+        // if (discountPercentage > 0 && totalPrice > 0)
+        // {
+        //     licenseText += $"\nModule Price: ₹{totalPrice:N0}\nDiscount ({discountPercentage}%): -₹{discountAmount:N0}\nNet Price: ₹{finalPrice:N0}";
+        // }
+        var price1 = discountPercentage > 0 && totalPrice > 0 ? $"₹{finalPrice:N0}" : (totalPrice > 0 ? $"₹{totalPrice:N0}" : "TBD");
+        newRows.Add(CreatePriceTableRow(new[]
+        {
+            ("1", false),
+            (licenseText, false),
+            (price1, false)
+        }, false));
+
+        // Row 2: Customization
+        newRows.Add(CreatePriceTableRow(new[]
+        {
+            ("2", false),
+            ("Customization\nIn case of any additional development required which will be consider 7000 per man day additional to above proposal.", false),
+            ("TBD", false)
+        }, true));
+
+        // Row 3: Annual License Renewal
+        newRows.Add(CreatePriceTableRow(new[]
+        {
+            ("3", false),
+            ("Annual License Renewal\nThe License renewal would be required to be done every Year. These renewal fees will facilitate to have the Product Upgrades, which would cover improvements, bug fixes, and changes in statutory compliances. Included 7 Man days only and above will be chargeable.", false),
+            ("TBD", false)
+        }, false));
+
+        // Row 4: Support Services
+        newRows.Add(CreatePriceTableRow(new[]
+        {
+            ("4", false),
+            ("Support Services\nThese Services start after 1 Month from start of Go Live.", false),
+            ("TBD", false)
+        }, true));
+
+        // Row 5: Payment Terms
+        newRows.Add(CreatePriceTableRow(new[]
+        {
+            ("5", false),
+            ("Payment Terms\n70% in Advance along with Purchase Order\n20% on Implementation\n10% GO LIVE", false),
+            ("On Chargeable", false)
+        }, false));
+
+        // Row 6: Support Level (header for sub-rows)
+        newRows.Add(CreatePriceTableRow(new[]
+        {
+            ("6", false),
+            ("Support Level", false),
+            ("", false)
+        }, true));
+
+        // Support Level sub-rows
+        var supportLevels = new[]
+        {
+            ("L1: Telephone Support - Queries, To understand a feature, Problem solving etc.", "On Chargeable"),
+            ("L2: Bugs - Bugs identified by you or by BlechTek Software Solutions LLP", "Free, Under License Fee Renewal"),
+            ("L3: Customer Specific Enhancements - New/Change in Document Printing format, New/Changes in Reports, New/Change in Reports", "On Chargeable"),
+            ("L4: Product Upgrade - Product Upgrade as done by BlechTek Software Solutions LLP on their own", "Free, Under License Fee Renewal"),
+            ("L5: Implementation - Master updation, new feature implementation", "On Chargeable")
+        };
+
+        for (int i = 0; i < supportLevels.Length; i++)
+        {
+            newRows.Add(CreatePriceTableRow(new[]
+            {
+                ("", false),
+                (supportLevels[i].Item1, false),
+                (supportLevels[i].Item2, false)
+            }, i % 2 == 1)); // Alternate shading
+        }
+
+        // Row 7: Taxes
+        newRows.Add(CreatePriceTableRow(new[]
+        {
+            ("7", false),
+            ("Taxes\nAs Applicable", false),
+            ("As Applicable", false)
+        }, false));
+
+        // Remove the old table and insert the new one
+        var parent = priceTable.Parent;
+        priceTable.Remove();
+
+        var newTable = new Table();
+        // Table properties
+        var tblPr = new TableProperties(
+            new TableWidth { Width = "9000", Type = TableWidthUnitValues.Dxa },
+            new TableBorders(
+                new TopBorder { Val = BorderValues.Single, Color = "auto", Size = 4 },
+                new LeftBorder { Val = BorderValues.Single, Color = "auto", Size = 4 },
+                new BottomBorder { Val = BorderValues.Single, Color = "auto", Size = 4 },
+                new RightBorder { Val = BorderValues.Single, Color = "auto", Size = 4 },
+                new InsideHorizontalBorder { Val = BorderValues.Single, Color = "auto", Size = 4 },
+                new InsideVerticalBorder { Val = BorderValues.Single, Color = "auto", Size = 4 }
+            )
+        );
+        newTable.Append(tblPr);
+
+        // Table grid - 3 columns: Sr.No (8%), Particulars (72%), Price (20%)
+        var tblGrid = new TableGrid(
+            new GridColumn { Width = "720" },   // ~8% of 9000
+            new GridColumn { Width = "6480" },  // ~72% of 9000
+            new GridColumn { Width = "1800" }   // ~20% of 9000
+        );
+        newTable.Append(tblGrid);
+
+        foreach (var row in newRows)
+        {
+            newTable.Append(row);
+        }
+
+        if (parent is not null)
+        {
+            parent.InsertAfter(newTable, priceHeading);
+        }
+    }
+
+    private static TableRow CreatePriceTableRow((string Text, bool IsBold)[] cells, bool isAlternate)
+    {
+        var row = new TableRow();
+        if (isAlternate)
+        {
+            var rowPr = new TableRowProperties();
+            var shading = new Shading { Val = ShadingPatternValues.Clear, Color = "auto", Fill = "F2F4F7" };
+            rowPr.Append(shading);
+            row.Append(rowPr);
+        }
+
+        foreach (var (text, isBold) in cells)
+        {
+            var cell = new TableCell();
+            var tcPr = new TableCellProperties(
+                new TableCellMargin
+                {
+                    TopMargin = new TopMargin { Width = "80", Type = TableWidthUnitValues.Dxa },
+                    LeftMargin = new LeftMargin { Width = "120", Type = TableWidthUnitValues.Dxa },
+                    BottomMargin = new BottomMargin { Width = "80", Type = TableWidthUnitValues.Dxa },
+                    RightMargin = new RightMargin { Width = "120", Type = TableWidthUnitValues.Dxa }
+                },
+                new TableCellVerticalAlignment { Val = TableVerticalAlignmentValues.Center }
+            );
+
+            if (isBold)
+            {
+                var shading = new Shading { Val = ShadingPatternValues.Clear, Color = "auto", Fill = "1B2A4E" };
+                tcPr.Append(shading);
+            }
+            else if (isAlternate)
+            {
+                var shading = new Shading { Val = ShadingPatternValues.Clear, Color = "auto", Fill = "F2F4F7" };
+                tcPr.Append(shading);
+            }
+
+            cell.Append(tcPr);
+
+            var para = new Paragraph();
+            var run = new Run();
+            var runPr = new RunProperties();
+            if (isBold)
+            {
+                runPr.Append(new Bold(), new BoldComplexScript());
+                runPr.Append(new Color { Val = "FFFFFF" });
+            }
+            runPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
+            run.Append(runPr);
+            run.Append(new Text(text) { Space = SpaceProcessingModeValues.Preserve });
+            para.Append(run);
+            cell.Append(para);
+            row.Append(cell);
+        }
+
+        return row;
+    }
+
     private static void SetCellText(TableCell cell, string value)
     {
         var textNodes = cell.Descendants<Text>().ToList();
@@ -396,6 +622,7 @@ public class WordGeneratorService : IWordGeneratorService
 
             foreach (var headerPart in doc.MainDocumentPart!.HeaderParts)
             {
+                if (headerPart.RootElement is null) continue;
                 var texts = headerPart.RootElement.Descendants<Text>().Where(t => !string.IsNullOrEmpty(t.Text) && t.Text.Contains(headerText)).ToList();
                 if (!texts.Any()) continue;
 
