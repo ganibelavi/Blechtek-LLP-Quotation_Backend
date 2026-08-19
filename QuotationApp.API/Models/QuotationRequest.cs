@@ -23,6 +23,10 @@ public class QuotationRequest
 
     [Required]
     public QuotationToInfo QuotationTo { get; set; } = new();
+
+    /// <summary>Discount percentage to apply on module prices (0-100).</summary>
+    [Range(0, 100, ErrorMessage = "Discount must be between 0 and 100.")]
+    public decimal DiscountPercentage { get; set; } = 0;
 }
 
 public class QuotationToInfo

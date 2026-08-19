@@ -227,6 +227,7 @@ public class SqlQuotationService : IQuotationService
             QuotationToContactNo = request.QuotationTo.ContactNo,
             QuotationToEmail = request.QuotationTo.Email,
             GeneratedAt = result.GeneratedAt,
+            DiscountPercentage = request.DiscountPercentage > 0 ? request.DiscountPercentage : (decimal?)null,
             QuotationModules = request.SelectedModules.Select(m => new QuotationModuleEntity
             {
                 QuotationId = result.QuotationId,

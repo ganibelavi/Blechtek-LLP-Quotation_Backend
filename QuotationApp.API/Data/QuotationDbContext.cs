@@ -72,6 +72,7 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.QuotationToContactNo).IsRequired().HasMaxLength(30);
             entity.Property(e => e.QuotationToEmail).IsRequired().HasMaxLength(150);
             entity.Property(e => e.GeneratedAt).IsRequired();
+            entity.Property(e => e.DiscountPercentage).HasColumnType("decimal(5,2)");
             entity.ToTable("Quotations");
         });
 
@@ -123,6 +124,7 @@ public class QuotationEntity
     public string QuotationToContactNo { get; set; } = string.Empty;
     public string QuotationToEmail { get; set; } = string.Empty;
     public DateTime GeneratedAt { get; set; }
+    public decimal? DiscountPercentage { get; set; }
 
     public List<QuotationModuleEntity> QuotationModules { get; set; } = new();
 }

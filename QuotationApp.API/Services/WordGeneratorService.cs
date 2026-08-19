@@ -190,6 +190,12 @@ public class WordGeneratorService : IWordGeneratorService
                 : string.Join(", ", request.SelectedModules.Take(request.SelectedModules.Count - 1))
                   + " & " + request.SelectedModules[^1];
 
+            // Calculate total module price and apply discount
+            var totalPrice = selectedModules.Sum(m => m.Price ?? 0);
+            var discountPercentage = request.DiscountPercentage;
+            var discountAmount = totalPrice * discountPercentage / 100;
+            var finalPrice = totalPrice - discountAmount;
+
             var replacements = new Dictionary<string, string>
             {
                 ["{{CONTACT_NAME}}"] = request.QuotationTo.Name,
@@ -201,6 +207,10 @@ public class WordGeneratorService : IWordGeneratorService
                 ["{{VALIDATION_DATE}}"] = request.ValidationDate.ToString("dd MMM yyyy"),
                 ["{{QUOTATION_NO}}"] = request.QuotationNo,
                 ["{{DATE}}"] = request.Date.ToString("dd MMM yyyy"),
+                ["{{TOTAL_MODULE_PRICE}}"] = totalPrice.ToString("N2"),
+                ["{{DISCOUNT_PERCENTAGE}}"] = discountPercentage.ToString("N2"),
+                ["{{DISCOUNT_AMOUNT}}"] = discountAmount.ToString("N2"),
+                ["{{FINAL_PRICE}}"] = finalPrice.ToString("N2"),
             };
 
             FilterScopeTable(body, selectedModules);
