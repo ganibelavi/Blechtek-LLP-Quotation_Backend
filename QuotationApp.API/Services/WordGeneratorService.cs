@@ -352,6 +352,13 @@ private static void RebuildQuotationToSection(Body body, QuotationRequest reques
             elem.Remove();
         }
 
+        // Capture insertion point BEFORE removing the heading
+        var parent = heading.Parent;
+        var previousSibling = heading.PreviousSibling();
+
+        // Remove the original "QUOTATION TO" heading paragraph to avoid duplicate in output
+        heading.Remove();
+
         var quotationNo = request.QuotationNo ?? "{{QUOTATION_NO}}";
         var date = request.Date != default ? request.Date.ToString("dd MMM yyyy") : "{{DATE}}";
 
@@ -454,11 +461,18 @@ private static void RebuildQuotationToSection(Body body, QuotationRequest reques
         dataRow.Append(rightCell);
         newTable.Append(dataRow);
 
-        // Insert the new table after the heading
-        var parent = heading.Parent;
+        // Insert the new table at the position where the heading was
         if (parent is not null)
         {
-            parent.InsertAfter(newTable, heading);
+            if (previousSibling is not null)
+            {
+                parent.InsertAfter(newTable, previousSibling);
+            }
+            else
+            {
+                // If no previous sibling, insert at the beginning
+                parent.PrependChild(newTable);
+            }
         }
     }
 

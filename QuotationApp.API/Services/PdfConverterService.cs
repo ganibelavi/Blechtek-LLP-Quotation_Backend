@@ -5,6 +5,7 @@ using System.Linq;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Options;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -18,20 +19,51 @@ namespace QuotationApp.API.Services;
 /// <summary>
 /// Converts the generated .docx to .pdf using QuestPDF.
 /// Faithfully replicates the Word template design including colors, tables, borders, and styling.
+/// Matches the frontend QuotationPdfView design exactly.
 /// </summary>
 public class PdfConverterService : IPdfConverterService
 {
-    // Color constants matching the Word template
-    private static readonly QuestPDFColor DarkBlue = QuestPDFColor.FromHex("#65aadb");
-    private static readonly QuestPDFColor Teal = QuestPDFColor.FromHex("#65aadb");
+    // Color constants matching the frontend design and Word template
+    private static readonly QuestPDFColor PrimaryBlue = QuestPDFColor.FromHex("#65aadb");
     private static readonly QuestPDFColor White = QuestPDFColor.FromHex("#FFFFFF");
     private static readonly QuestPDFColor LightGray = QuestPDFColor.FromHex("#F2F4F7");
     private static readonly QuestPDFColor TableBorder = QuestPDFColor.FromHex("#CCCCCC");
     private static readonly QuestPDFColor TextBlack = QuestPDFColor.FromHex("#000000");
+    private static readonly QuestPDFColor DarkText = QuestPDFColor.FromHex("#333333");
+    private static readonly QuestPDFColor MediumText = QuestPDFColor.FromHex("#555555");
+    private static readonly QuestPDFColor LightText = QuestPDFColor.FromHex("#888888");
+    private static readonly QuestPDFColor NoteBackground = QuestPDFColor.FromHex("#F8FBFA");
 
-    public PdfConverterService(IOptions<QuotationSettings> settings)
+    private readonly string _contentRoot;
+
+    public PdfConverterService(IOptions<QuotationSettings> settings, IWebHostEnvironment env)
     {
         QuestPDF.Settings.License = LicenseType.Community;
+        _contentRoot = env.ContentRootPath;
+    }
+
+    private string GetLogoPath()
+    {
+        // Check multiple locations for the logo, similar to WordGeneratorService
+        var backendLogoPng = Path.Combine(_contentRoot, "logo", "logo.png");
+        var backendLogoJpg = Path.Combine(_contentRoot, "logo", "logo.jpg");
+
+        // Check frontend/logo directory (project workspace sibling)
+        var frontendLogoPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "logo", "logo.png"));
+        var frontendLogoJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "logo", "logo.jpg"));
+
+        // Also check frontend/public/logo (where it's served from)
+        var frontendPublicLogoPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "public", "logo", "logo.png"));
+        var frontendPublicLogoJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "public", "logo", "logo.jpg"));
+
+        if (File.Exists(backendLogoPng)) return backendLogoPng;
+        if (File.Exists(backendLogoJpg)) return backendLogoJpg;
+        if (File.Exists(frontendLogoPng)) return frontendLogoPng;
+        if (File.Exists(frontendLogoJpg)) return frontendLogoJpg;
+        if (File.Exists(frontendPublicLogoPng)) return frontendPublicLogoPng;
+        if (File.Exists(frontendPublicLogoJpg)) return frontendPublicLogoJpg;
+
+        return null;
     }
 
     public async Task<string> ConvertToPdfAsync(string docxPath)
@@ -319,7 +351,7 @@ public class PdfConverterService : IPdfConverterService
                 if (isHeaderRow)
                 {
                     isBold = true;
-                    if (!backgroundColor.HasValue) backgroundColor = DarkBlue;
+                    if (!backgroundColor.HasValue) backgroundColor = PrimaryBlue;
                     if (!textColor.HasValue) textColor = White;
                 }
 
@@ -350,175 +382,318 @@ public class PdfConverterService : IPdfConverterService
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
-                page.Margin(25, Unit.Millimetre); // ~1100 twips = 25mm
-                page.DefaultTextStyle(x => x.FontSize(10).FontFamily("Calibri").FontColor(TextBlack));
+                page.Margin(1, Unit.Centimetre); // 1.5cm margins (~15mm)
+                page.DefaultTextStyle(x => x.FontSize(11).FontFamily("Calibri").FontColor(TextBlack).LineHeight(1.5f));
 
                 page.Header().Height(20).AlignCenter().Text("").FontSize(8);
 
                 page.Content().Column(column =>
                 {
-                    // Process paragraphs and tables in order
+                    column.Spacing(0);
+
+                    // Document header - matches frontend: logo left, QUOTATION right, bottom border
+                    column.Item().Row(headerRow =>
+                    {
+                        headerRow.RelativeItem().Column(leftCol =>
+                        {
+                            // Load and display logo image from multiple possible locations
+                            var logoPath = GetLogoPath();
+                            if (!string.IsNullOrEmpty(logoPath) && File.Exists(logoPath))
+                            {
+                                leftCol.Item().Height(40).Image(logoPath);
+                            }
+                            else
+                            {
+                                // Fallback text if logo not found
+                                leftCol.Item().Text("BlechTek Software Solutions LLP")
+                                    .FontSize(14).FontFamily("Calibri").FontColor(PrimaryBlue).SemiBold();
+                            }
+                        });
+                        headerRow.RelativeItem().AlignRight().Column(rightCol =>
+                        {
+                            rightCol.Item().Text("QUOTATION")
+                                .FontSize(16).FontFamily("Calibri").FontColor(PrimaryBlue).Bold();
+                        });
+                    });
+
+                    column.Item().PaddingTop(8).BorderBottom(2).BorderColor(PrimaryBlue).PaddingBottom(0);
+                    column.Item().PaddingTop(16);
+
+                    // Process all elements in order
                     foreach (var element in content.Elements)
                     {
                         if (element is ParagraphContent para)
                         {
-                            if (string.IsNullOrWhiteSpace(para.Text)) continue;
-
-                            var paragraphContainer = column.Item();
-
-                            if (para.SpacingBefore > 0)
-                                paragraphContainer = paragraphContainer.PaddingTop(para.SpacingBefore, Unit.Point);
-
-                            if (para.SpacingAfter > 0)
-                                paragraphContainer = paragraphContainer.PaddingBottom(para.SpacingAfter, Unit.Point);
-
-                            if (para.HasBottomBorder)
-                                paragraphContainer = paragraphContainer.BorderBottom(1).BorderColor(para.BorderColor ?? Teal);
-
-                            var textStyle = TextStyle.Default
-                                .FontSize(para.FontSize)
-                                .FontFamily(para.FontFamily)
-                                .FontColor(para.TextColor ?? TextBlack);
-
-                            if (para.IsBold) textStyle = textStyle.Bold();
-
-                            var textItem = paragraphContainer.Text(para.Text).Style(textStyle);
-
-                            if (para.IsCentered)
-                                textItem.AlignCenter();
-
-                            if (para.IsAllCaps)
-                            {
-                                // Small caps not directly supported, use uppercase text if needed.
-                            }
-
-                            if (para.IsNumbered)
-                            {
-                                // QuestPDF handles numbering differently; keep text as-is.
-                            }
+                            RenderParagraph(column, para);
                         }
                         else if (element is TableContent table)
                         {
-                            if (table.Rows.Count == 0) continue;
-
-                            // If table has no visible borders, render as paragraphs (for QUOTATION TO section)
-                            if (!table.HasBorders)
-                            {
-                                foreach (var row in table.Rows)
-                                {
-                                    foreach (var cell in row)
-                                    {
-                                        if (string.IsNullOrWhiteSpace(cell.Text)) continue;
-
-                                        var cellStyle = TextStyle.Default
-                                            .FontSize(9)
-                                            .FontFamily("Calibri")
-                                            .FontColor(cell.TextColor ?? TextBlack);
-
-                                        if (cell.IsBold) cellStyle = cellStyle.Bold();
-
-                                        var cellContainer = column.Item().PaddingTop(2).PaddingBottom(2);
-                                        if (cell.BackgroundColor.HasValue)
-                                            cellContainer = cellContainer.Background(cell.BackgroundColor.Value);
-                                        
-                                        cellContainer.Text(cell.Text).Style(cellStyle);
-                                    }
-                                }
-                                continue;
-                            }
-
-                            column.Item().PaddingTop(10).Table(tableDef =>
-                            {
-                                // Define columns based on column widths
-                                if (table.ColumnWidths.Count > 0)
-                                {
-                                    tableDef.ColumnsDefinition(c =>
-                                        {
-                                            var totalWidth = table.ColumnWidths.Sum();
-                                            foreach (var width in table.ColumnWidths)
-                                            {
-                                                float ratio = (float)width / totalWidth;
-                                                c.RelativeColumn(ratio);
-                                            }
-                                        });
-                                }
-                                else
-                                {
-                                    // Fallback: equal columns
-                                    int colCount = table.Rows[0].Count;
-                                    tableDef.ColumnsDefinition(c =>
-                                        {
-                                            for (int i = 0; i < colCount; i++)
-                                                c.RelativeColumn();
-                                        });
-                                }
-
-                                // Header row
-                                if (table.Rows[0].Any(c => c.IsHeader))
-                                {
-                                    tableDef.Header(header =>
-                                        {
-                                            foreach (var cell in table.Rows[0])
-                                            {
-                                                header.Cell().Border(0.5f).BorderColor(table.BorderColor)
-                                                    .Padding(cell.Padding, Unit.Point)
-                                                    .Background(cell.BackgroundColor ?? DarkBlue)
-                                                    .Text(cell.Text)
-                                                    .FontSize(9)
-                                                    .FontFamily("Calibri")
-                                                    .FontColor(cell.TextColor ?? White)
-                                                    .Bold();
-                                            }
-                                        });
-                                }
-
-                                // Data rows
-                                for (int rowIndex = (table.Rows[0].Any(c => c.IsHeader) ? 1 : 0); rowIndex < table.Rows.Count; rowIndex++)
-                                {
-                                    var row = table.Rows[rowIndex];
-                                    bool isAlternate = rowIndex % 2 == 0; // Alternate shading
-
-                                    foreach (var cell in row)
-                                    {
-                                        var cellBackground = cell.BackgroundColor;
-                                        if (!cellBackground.HasValue && isAlternate && table.Rows.Count > 1)
-                                        {
-                                            cellBackground = LightGray; // Alternate row shading
-                                        }
-
-                                        var cellTextColor = cell.TextColor ?? TextBlack;
-
-                                        var cellBuilder = tableDef.Cell()
-                                                .Border(0.5f).BorderColor(table.BorderColor)
-                                                .Padding(cell.Padding, Unit.Point);
-
-                                        if (cellBackground.HasValue)
-                                        {
-                                            cellBuilder = cellBuilder.Background(cellBackground.Value);
-                                        }
-
-                                        cellBuilder.Text(cell.Text)
-                                                .FontSize(9)
-                                                .FontFamily("Calibri")
-                                                .FontColor(cellTextColor);
-                                    }
-                                }
-                            });
+                            RenderTable(column, table);
                         }
                     }
                 });
 
-                page.Footer().Height(50).Column(col =>
+                page.Footer().Height(80).Column(col =>
                 {
-                    col.Item().AlignCenter().Text("BlechTek Software Solutions LLP").FontSize(8).FontColor(Colors.Grey.Darken2);
-                    col.Item().AlignCenter().Text("Address: S.NO. 257/2/2A/4 ABC Business Center, S Floor, Opp. WindMill Village Road, WindMill Village, Bavdhan, Pune 411021, Maharashtra").FontSize(7).FontColor(Colors.Grey.Darken2);
-                    col.Item().AlignCenter().Text("LLP No.: ACD-6620 | GST NO.: 27ABCFB0283B1Z0 | MSME Certificate No.: UDYAM-MH-26-0746115").FontSize(7).FontColor(Colors.Grey.Darken2);
+                    col.Item().PaddingTop(16).BorderTop(1).BorderColor(PrimaryBlue)
+                        .Column(footerCol =>
+                        {
+                            footerCol.Item().AlignCenter().Text("BlechTek Software Solutions LLP")
+                                .FontSize(10).FontFamily("Calibri").FontColor(PrimaryBlue).Bold();
+                            footerCol.Item().AlignCenter().Text("Address: S.NO. 257/2/2A/4 ABC Business Center, S Floor, Opp. WindMill Village Road, WindMill Village, Bavdhan, Pune 411021, Maharashtra")
+                                .FontSize(9).FontFamily("Calibri").FontColor(MediumText);
+                            footerCol.Item().AlignCenter().Text("LLP No.: ACD-6620 | GST NO.: 27ABCFB0283B1Z0 | MSME Certificate No.: UDYAM-MH-26-0746115")
+                                .FontSize(9).FontFamily("Calibri").FontColor(MediumText);
+                        });
                 });
             });
         });
 
         questDocument.GeneratePdf(outputPath);
         await Task.CompletedTask;
+    }
+
+    private void RenderParagraph(ColumnDescriptor column, ParagraphContent para)
+    {
+        if (string.IsNullOrWhiteSpace(para.Text)) return;
+
+        // Check for section headings (uppercase headings like "QUOTATION TO", "SCOPE OF WORK", etc.)
+        var isSectionHeading = IsSectionHeading(para.Text);
+        var isQuotationToHeading = para.Text.Trim().Equals("QUOTATION TO", StringComparison.OrdinalIgnoreCase);
+        var isNote = para.Text.Contains("Deliverables do not include", StringComparison.OrdinalIgnoreCase);
+
+        if (isSectionHeading)
+        {
+            column.Item().PaddingTop(16).PaddingBottom(6).BorderBottom(1).BorderColor(PrimaryBlue).PaddingBottom(3)
+                .Text(para.Text.ToUpper())
+                .FontSize(11).FontFamily("Calibri").FontColor(PrimaryBlue).Bold();
+            return;
+        }
+
+        if (isQuotationToHeading)
+        {
+            column.Item().PaddingBottom(6)
+                .Text("QUOTATION TO")
+                .FontSize(11).FontFamily("Calibri").FontColor(PrimaryBlue).Bold();
+            return;
+        }
+
+        if (isNote)
+        {
+            column.Item().PaddingTop(16).PaddingBottom(16).PaddingLeft(12).BorderLeft(3).BorderColor(PrimaryBlue)
+                .Background(NoteBackground).Padding(10, Unit.Point).PaddingRight(12, Unit.Point)
+                .Text(para.Text)
+                .FontSize(11).FontFamily("Calibri").FontColor(DarkText).Italic().LineHeight(1.55f);
+            return;
+        }
+
+        var paragraphContainer = column.Item();
+
+        if (para.SpacingBefore > 0)
+            paragraphContainer = paragraphContainer.PaddingTop(para.SpacingBefore, Unit.Point);
+
+        if (para.SpacingAfter > 0)
+            paragraphContainer = paragraphContainer.PaddingBottom(para.SpacingAfter, Unit.Point);
+
+        if (para.HasBottomBorder)
+            paragraphContainer = paragraphContainer.BorderBottom(1).BorderColor(para.BorderColor ?? PrimaryBlue);
+
+        var textStyle = TextStyle.Default
+            .FontSize(para.FontSize)
+            .FontFamily(para.FontFamily)
+            .FontColor(para.TextColor ?? TextBlack)
+            .LineHeight(1.55f);
+
+        if (para.IsBold) textStyle = textStyle.Bold();
+
+        var textItem = paragraphContainer.Text(para.Text).Style(textStyle);
+
+        if (para.IsCentered)
+            textItem.AlignCenter();
+
+        if (para.IsAllCaps)
+        {
+            // Small caps not directly supported, use uppercase text if needed.
+        }
+
+        if (para.IsNumbered)
+        {
+            // QuestPDF handles numbering differently; keep text as-is.
+        }
+    }
+
+    private bool IsSectionHeading(string text)
+    {
+        var trimmed = text.Trim();
+        var headings = new[]
+        {
+            "GOALS AND EXPECTATIONS",
+            "SCOPE OF WORK",
+            "SCOPE",
+            "PRICE FOR IMPLEMENTATION",
+            "TERMS AND CONDITIONS"
+        };
+        return headings.Any(h => trimmed.Equals(h, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void RenderTable(ColumnDescriptor column, TableContent table)
+    {
+        if (table.Rows.Count == 0) return;
+
+        // If table has no visible borders, render as grid (for QUOTATION TO section)
+        if (!table.HasBorders)
+        {
+            RenderQuotationToGrid(column, table);
+            return;
+        }
+
+        // Check if this is the pricing table (has 3 columns with specific headers)
+        var isPricingTable = table.Rows.Count > 0 && table.Rows[0].Count == 3 &&
+            table.Rows[0][0].Text.Trim().Equals("Sr. No.", StringComparison.OrdinalIgnoreCase) &&
+            table.Rows[0][1].Text.Trim().Equals("Particulars", StringComparison.OrdinalIgnoreCase) &&
+            table.Rows[0][2].Text.Trim().Equals("Price in INR", StringComparison.OrdinalIgnoreCase);
+
+        column.Item().PaddingTop(16).Table(tableDef =>
+        {
+            // Define columns based on column widths or table type
+            if (isPricingTable)
+            {
+                tableDef.ColumnsDefinition(c =>
+                {
+                    c.RelativeColumn(0.08f); // Sr. No. - 8%
+                    c.RelativeColumn(0.72f); // Particulars - 72%
+                    c.RelativeColumn(0.20f); // Price in INR - 20%
+                });
+            }
+            else if (table.ColumnWidths.Count > 0)
+            {
+                tableDef.ColumnsDefinition(c =>
+                {
+                    var totalWidth = table.ColumnWidths.Sum();
+                    foreach (var width in table.ColumnWidths)
+                    {
+                        float ratio = (float)width / totalWidth;
+                        c.RelativeColumn(ratio);
+                    }
+                });
+            }
+            else
+            {
+                // Fallback: equal columns
+                int colCount = table.Rows[0].Count;
+                tableDef.ColumnsDefinition(c =>
+                {
+                    for (int i = 0; i < colCount; i++)
+                        c.RelativeColumn();
+                });
+            }
+
+            // Header row
+            if (table.Rows[0].Any(c => c.IsHeader))
+            {
+                tableDef.Header(header =>
+                {
+                    foreach (var cell in table.Rows[0])
+                    {
+                        header.Cell().Border(0.5f).BorderColor(TableBorder)
+                            .Padding(cell.Padding, Unit.Point)
+                            .Background(cell.BackgroundColor ?? PrimaryBlue)
+                            .Text(cell.Text)
+                            .FontSize(10).FontFamily("Calibri").FontColor(cell.TextColor ?? White).Bold();
+                    }
+                });
+            }
+
+            // Data rows
+            for (int rowIndex = (table.Rows[0].Any(c => c.IsHeader) ? 1 : 0); rowIndex < table.Rows.Count; rowIndex++)
+            {
+                var row = table.Rows[rowIndex];
+                bool isAlternate = rowIndex % 2 == 0; // Alternate shading (even rows after header)
+
+                foreach (var cell in row)
+                {
+                    var cellBackground = cell.BackgroundColor;
+                    if (!cellBackground.HasValue && isAlternate && table.Rows.Count > 1)
+                    {
+                        cellBackground = LightGray; // Alternate row shading
+                    }
+
+                    var cellTextColor = cell.TextColor ?? TextBlack;
+
+                    var cellBuilder = tableDef.Cell()
+                            .Border(0.5f).BorderColor(TableBorder)
+                            .Padding(cell.Padding, Unit.Point);
+
+                    if (cellBackground.HasValue)
+                    {
+                        cellBuilder = cellBuilder.Background(cellBackground.Value);
+                    }
+
+                    // For pricing table, right-align the price column
+                    var textElement = cellBuilder.Text(cell.Text)
+                            .FontSize(10).FontFamily("Calibri").FontColor(cellTextColor).LineHeight(1.4f);
+
+                    if (isPricingTable && cell == row.Last())
+                    {
+                        textElement.AlignRight().Bold();
+                    }
+                }
+            }
+        });
+    }
+
+    private void RenderQuotationToGrid(ColumnDescriptor column, TableContent table)
+    {
+        // Render QUOTATION TO as a 2-column grid layout matching frontend
+        if (table.Rows.Count < 2) return;
+
+        var headingRow = table.Rows[0];
+        var dataRow = table.Rows[1];
+
+        // Heading row spans both columns
+        if (headingRow.Count > 0)
+        {
+            column.Item().PaddingBottom(6)
+                .Text(headingRow[0].Text)
+                .FontSize(11).FontFamily("Calibri").FontColor(PrimaryBlue).Bold();
+        }
+
+        // Data row has 2 cells: left (Name, Address, Contact, Email) and right (Quotation No, Date)
+        if (dataRow.Count >= 2)
+        {
+            column.Item().Row(row =>
+            {
+                // Left column - 50%
+                row.RelativeItem(1).Column(leftCol =>
+                {
+                    leftCol.Spacing(3);
+                    foreach (var cell in dataRow[0].Text.Split('\n'))
+                    {
+                        var trimmed = cell.Trim();
+                        if (!string.IsNullOrEmpty(trimmed))
+                        {
+                            leftCol.Item().Text(trimmed)
+                                .FontSize(10).FontFamily("Calibri").FontColor(PrimaryBlue).LineHeight(1.4f);
+                        }
+                    }
+                });
+
+                // Right column - 50%
+                row.RelativeItem(1).Column(rightCol =>
+                {
+                    rightCol.Spacing(3);
+                    foreach (var cell in dataRow[1].Text.Split('\n'))
+                    {
+                        var trimmed = cell.Trim();
+                        if (!string.IsNullOrEmpty(trimmed))
+                        {
+                            rightCol.Item().AlignRight().Text(trimmed)
+                                .FontSize(10).FontFamily("Calibri").FontColor(PrimaryBlue).LineHeight(1.4f);
+                        }
+                    }
+                });
+            });
+        }
     }
 
     private static bool TryParseColor(string val, out QuestPDFColor color)
