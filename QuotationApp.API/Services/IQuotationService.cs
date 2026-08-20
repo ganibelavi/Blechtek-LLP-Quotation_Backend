@@ -59,6 +59,7 @@ public class TopOrganizationData
 public class RecentQuotationData
 {
     public string QuotationId { get; set; } = string.Empty;
+    public string QuotationNo { get; set; } = string.Empty;
     public string OrganizationName { get; set; } = string.Empty;
     public DateTime GeneratedAt { get; set; }
     public List<string> Modules { get; set; } = new();

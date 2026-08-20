@@ -126,6 +126,7 @@ public class SqlQuotationService : IQuotationService
     {
         var allQuotations = await _dbContext.Quotations
             .AsNoTracking()
+            .Include(q => q.QuotationModules)
             .OrderByDescending(q => q.GeneratedAt)
             .ToListAsync();
 
@@ -185,6 +186,7 @@ public class SqlQuotationService : IQuotationService
             .Select(q => new RecentQuotationData
             {
                 QuotationId = q.Id,
+                QuotationNo = q.QuotationNo ?? string.Empty,
                 OrganizationName = q.OrganizationName,
                 GeneratedAt = q.GeneratedAt,
                 Modules = q.QuotationModules.Select(m => m.ModuleName).ToList()
