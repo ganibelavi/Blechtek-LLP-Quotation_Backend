@@ -66,6 +66,30 @@ public class PdfConverterService : IPdfConverterService
         return null;
     }
 
+    private string GetWatermarkPath()
+    {
+        // Check multiple locations for the watermark
+        var backendWatermarkPng = Path.Combine(_contentRoot, "logo", "watermark.png");
+        var backendWatermarkJpg = Path.Combine(_contentRoot, "logo", "watermark.jpg");
+
+        // Check frontend/logo directory (project workspace sibling)
+        var frontendWatermarkPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "logo", "watermark.png"));
+        var frontendWatermarkJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "logo", "watermark.jpg"));
+
+        // Also check frontend/public/logo (where it's served from)
+        var frontendPublicWatermarkPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "public", "logo", "watermark.png"));
+        var frontendPublicWatermarkJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "public", "logo", "watermark.jpg"));
+
+        if (File.Exists(backendWatermarkPng)) return backendWatermarkPng;
+        if (File.Exists(backendWatermarkJpg)) return backendWatermarkJpg;
+        if (File.Exists(frontendWatermarkPng)) return frontendWatermarkPng;
+        if (File.Exists(frontendWatermarkJpg)) return frontendWatermarkJpg;
+        if (File.Exists(frontendPublicWatermarkPng)) return frontendPublicWatermarkPng;
+        if (File.Exists(frontendPublicWatermarkJpg)) return frontendPublicWatermarkJpg;
+
+        return null;
+    }
+
     public async Task<string> ConvertToPdfAsync(string docxPath)
     {
         var outputFolder = Path.GetDirectoryName(docxPath)!;
@@ -377,6 +401,9 @@ public class PdfConverterService : IPdfConverterService
 
     private async Task GeneratePdfAsync(DocumentContent content, string outputPath)
     {
+        var watermarkPath = GetWatermarkPath();
+        var hasWatermark = !string.IsNullOrEmpty(watermarkPath) && File.Exists(watermarkPath);
+
         var questDocument = QuestPDF.Fluent.Document.Create(container =>
         {
             container.Page(page =>
@@ -384,6 +411,16 @@ public class PdfConverterService : IPdfConverterService
                 page.Size(PageSizes.A4);
                 page.Margin(1, Unit.Centimetre); // 1.5cm margins (~15mm)
                 page.DefaultTextStyle(x => x.FontSize(11).FontFamily("Calibri").FontColor(TextBlack).LineHeight(1.5f));
+
+                // Add watermark as a background layer - centered with equal margins from all sides
+                if (hasWatermark)
+                {
+                    page.Background()
+                        .Padding(100) // Equal padding from all 4 sides
+                        .AlignCenter()
+                        .AlignMiddle()
+                        .Image(watermarkPath);
+                }
 
                 page.Header().Height(20).AlignCenter().Text("").FontSize(8);
 
@@ -400,7 +437,7 @@ public class PdfConverterService : IPdfConverterService
                             var logoPath = GetLogoPath();
                             if (!string.IsNullOrEmpty(logoPath) && File.Exists(logoPath))
                             {
-                                leftCol.Item().Height(40).Image(logoPath);
+                                leftCol.Item().Height(30).Image(logoPath);
                             }
                             else
                             {

@@ -314,7 +314,7 @@ public class WordGeneratorService : IWordGeneratorService
         }
     }
 
-private static void RebuildQuotationToSection(Body body, QuotationRequest request)
+    private static void RebuildQuotationToSection(Body body, QuotationRequest request)
     {
         // Find the "QUOTATION TO" heading paragraph
         var heading = body.Descendants<Paragraph>()
