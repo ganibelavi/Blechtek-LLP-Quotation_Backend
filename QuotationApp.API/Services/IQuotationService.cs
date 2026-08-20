@@ -63,4 +63,7 @@ public class RecentQuotationData
     public string OrganizationName { get; set; } = string.Empty;
     public DateTime GeneratedAt { get; set; }
     public List<string> Modules { get; set; } = new();
+    public decimal Valuation { get; set; }
+    public decimal TotalQuotedAmount { get; set; }
+    public decimal DiscountPercentage { get; set; }
 }

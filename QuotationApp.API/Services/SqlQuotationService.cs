@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -130,6 +131,10 @@ public class SqlQuotationService : IQuotationService
             .OrderByDescending(q => q.GeneratedAt)
             .ToListAsync();
 
+        var modulePrices = await _dbContext.Modules
+            .AsNoTracking()
+            .ToDictionaryAsync(m => m.ModuleName, m => m.Price ?? 0);
+
         var totalQuotations = allQuotations.Count;
         var totalOrganizations = allQuotations.Select(q => q.OrganizationName).Distinct().Count();
         var totalModules = await _dbContext.Modules.CountAsync();
@@ -180,16 +185,36 @@ public class SqlQuotationService : IQuotationService
             .Take(5)
             .ToList();
 
-        // Recent quotations (last 10)
+        // Calculate total quoted amount across all quotations
+        var totalQuotedAmount = allQuotations.Sum(q =>
+        {
+            var totalPrice = q.QuotationModules.Sum(m => modulePrices.GetValueOrDefault(m.ModuleName, 0));
+            var discountPercentage = q.DiscountPercentage ?? 0;
+            var discountAmount = totalPrice * discountPercentage / 100;
+            return totalPrice - discountAmount;
+        });
+
+        // Recent quotations (last 10) with valuation calculations
         var recentQuotations = allQuotations
             .Take(10)
-            .Select(q => new RecentQuotationData
+            .Select(q =>
             {
-                QuotationId = q.Id,
-                QuotationNo = q.QuotationNo ?? string.Empty,
-                OrganizationName = q.OrganizationName,
-                GeneratedAt = q.GeneratedAt,
-                Modules = q.QuotationModules.Select(m => m.ModuleName).ToList()
+                var totalPrice = q.QuotationModules.Sum(m => modulePrices.GetValueOrDefault(m.ModuleName, 0));
+                var discountPercentage = q.DiscountPercentage ?? 0;
+                var discountAmount = totalPrice * discountPercentage / 100;
+                var finalPrice = totalPrice - discountAmount;
+
+                return new RecentQuotationData
+                {
+                    QuotationId = q.Id,
+                    QuotationNo = q.QuotationNo ?? string.Empty,
+                    OrganizationName = q.OrganizationName,
+                    GeneratedAt = q.GeneratedAt,
+                    Modules = q.QuotationModules.Select(m => m.ModuleName).ToList(),
+                    Valuation = totalPrice,
+                    TotalQuotedAmount = finalPrice,
+                    DiscountPercentage = discountPercentage
+                };
             })
             .ToList();
 
@@ -198,7 +223,7 @@ public class SqlQuotationService : IQuotationService
             TotalQuotations = totalQuotations,
             TotalOrganizations = totalOrganizations,
             TotalModules = totalModules,
-            TotalQuotedAmount = 0, // Placeholder - would need pricing data
+            TotalQuotedAmount = totalQuotedAmount,
             MonthlyQuotes = monthlyQuotes,
             StatusBreakdown = statusBreakdown,
             ModuleDistribution = moduleDistribution,
