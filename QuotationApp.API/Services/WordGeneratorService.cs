@@ -406,7 +406,10 @@ public class WordGeneratorService : IWordGeneratorService
         headingRunPr.Append(new Color { Val = "65AADB" });
         headingRunPr.Append(new FontSize { Val = "24" }, new FontSizeComplexScript { Val = "24" });
         headingRun.Append(headingRunPr);
-        headingRun.Append(new Text("QUOTATION TO") { Space = SpaceProcessingModeValues.Preserve });
+        var quotationToHeading = !string.IsNullOrWhiteSpace(request.OrganizationName)
+                ? $"QUOTATION TO - {request.OrganizationName}"
+                : "QUOTATION TO";
+        headingRun.Append(new Text(quotationToHeading) { Space = SpaceProcessingModeValues.Preserve });
         headingPara.Append(headingRun);
         headingCell.Append(headingPara);
         headingRow.Append(headingCell);

@@ -496,7 +496,7 @@ public class PdfConverterService : IPdfConverterService
 
         // Check for section headings (uppercase headings like "QUOTATION TO", "SCOPE OF WORK", etc.)
         var isSectionHeading = IsSectionHeading(para.Text);
-        var isQuotationToHeading = para.Text.Trim().Equals("QUOTATION TO", StringComparison.OrdinalIgnoreCase);
+        var isQuotationToHeading = para.Text.Trim().StartsWith("QUOTATION TO", StringComparison.OrdinalIgnoreCase);
         var isNote = para.Text.Contains("Deliverables do not include", StringComparison.OrdinalIgnoreCase);
 
         if (isSectionHeading)
@@ -510,7 +510,7 @@ public class PdfConverterService : IPdfConverterService
         if (isQuotationToHeading)
         {
             column.Item().PaddingBottom(6)
-                .Text("QUOTATION TO")
+                .Text(para.Text)
                 .FontSize(11).FontFamily("Calibri").FontColor(PrimaryBlue).Bold();
             return;
         }
