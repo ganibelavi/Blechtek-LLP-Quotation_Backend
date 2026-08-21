@@ -403,6 +403,7 @@ public class PdfConverterService : IPdfConverterService
     {
         var watermarkPath = GetWatermarkPath();
         var hasWatermark = !string.IsNullOrEmpty(watermarkPath) && File.Exists(watermarkPath);
+        var logoPath = GetLogoPath();
 
         var questDocument = QuestPDF.Fluent.Document.Create(container =>
         {
@@ -424,19 +425,15 @@ public class PdfConverterService : IPdfConverterService
                         .Image(watermarkPath);
                 }
 
-                page.Header().Height(20).AlignCenter().Text("").FontSize(8);
-
-                page.Content().Column(column =>
+                // Header - repeated on every page
+                page.Header().Column(headerCol =>
                 {
-                    column.Spacing(0);
-
-                    // Document header - matches frontend: logo left, QUOTATION right, bottom border
-                    column.Item().Row(headerRow =>
+                    headerCol.Spacing(0);
+                    headerCol.Item().Row(headerRow =>
                     {
                         headerRow.RelativeItem().Column(leftCol =>
                         {
                             // Load and display logo image from multiple possible locations
-                            var logoPath = GetLogoPath();
                             if (!string.IsNullOrEmpty(logoPath) && File.Exists(logoPath))
                             {
                                 leftCol.Item().Height(30).Image(logoPath);
@@ -455,8 +452,13 @@ public class PdfConverterService : IPdfConverterService
                         });
                     });
 
-                    column.Item().PaddingTop(8).BorderBottom(2).BorderColor(PrimaryBlue).PaddingBottom(0);
-                    column.Item().PaddingTop(16);
+                    headerCol.Item().PaddingTop(8).BorderBottom(2).BorderColor(PrimaryBlue).PaddingBottom(0);
+                    headerCol.Item().PaddingTop(16);
+                });
+
+                page.Content().Column(column =>
+                {
+                    column.Spacing(0);
 
                     // Process all elements in order
                     var allElements = content.Elements;
