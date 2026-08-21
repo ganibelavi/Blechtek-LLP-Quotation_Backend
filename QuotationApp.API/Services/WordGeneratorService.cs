@@ -216,6 +216,9 @@ public class WordGeneratorService : IWordGeneratorService
             FilterScopeTable(body, selectedModules);
             RebuildQuotationToSection(body, request);
             RebuildPriceForImplementationTable(body, request, selectedModules, totalPrice, discountPercentage, discountAmount, finalPrice, moduleList);
+            RebuildTermsAndConditionsSection(body, request);
+            RebuildProposalParagraph(body, request);
+            RebuildClosingSection(body, request);
             ReplacePlaceholders(body, replacements);
 
             // Attempt to replace the header text with a provided logo image (logo.png or logo.jpg)
@@ -662,6 +665,306 @@ public class WordGeneratorService : IWordGeneratorService
         {
             parent.InsertAfter(newTable, priceHeading);
         }
+    }
+
+    private static void RebuildTermsAndConditionsSection(Body body, QuotationRequest request)
+    {
+        // Find the "Terms and Conditions" heading paragraph
+        var termsHeading = body.Descendants<Paragraph>()
+            .FirstOrDefault(p => string.Concat(p.Descendants<Text>().Select(t => t.Text))
+                .Contains("Terms and Conditions", StringComparison.OrdinalIgnoreCase));
+
+        if (termsHeading is null) return;
+
+        // Find all elements after the heading until the next section (closing)
+        var elementsToRemove = new List<OpenXmlElement>();
+        var elementsAfterHeading = termsHeading.ElementsAfter().ToList();
+        foreach (var elem in elementsAfterHeading)
+        {
+            if (elem is Paragraph p)
+            {
+                var text = string.Concat(p.Descendants<Text>().Select(t => t.Text)).Trim();
+                // Stop at the closing section
+                if (text.StartsWith("We hope this document", StringComparison.OrdinalIgnoreCase) ||
+                    text.StartsWith("Thanking you", StringComparison.OrdinalIgnoreCase) ||
+                    text.StartsWith("For BlechTek", StringComparison.OrdinalIgnoreCase))
+                {
+                    break;
+                }
+                elementsToRemove.Add(elem);
+            }
+            else if (elem is Table)
+            {
+                break;
+            }
+        }
+
+        foreach (var elem in elementsToRemove)
+        {
+            elem.Remove();
+        }
+
+        // Capture insertion point BEFORE removing the heading
+        var parent = termsHeading.Parent;
+        var previousSibling = termsHeading.PreviousSibling();
+
+        // Remove the heading too (we'll rebuild it)
+        termsHeading.Remove();
+
+        var validationDate = request.ValidationDate != default ? request.ValidationDate.ToString("dd MMM yyyy") : "{{VALIDATION_DATE}}";
+
+        // Build the full Terms and Conditions content matching frontend QuotationPdfView
+        var termsItems = new[]
+        {
+                new TermsItem("Confidentiality", "We agree to maintain the secrecy of insight into your organization."),
+                new TermsItem("License", "You should hold Licenses of any Operating System Software required."),
+                new TermsItem("Ownership of Source Code", "Ownership of Source Code would be property of BlechTek Software Solutions LLP. Customer shall not claim any right whatsoever in or to any patent, copyright, trademark or other proprietary right of the original equipment manufacturer/ software developers or its licensors. The software/ hardware/ other goods supplied are in accordance with the Export laws of respective countries. Diversion of these laws/regulations is prohibited."),
+                new TermsItem("Warranty", "BlechTek Software Solutions LLP offers a Standard Warranty against Development defects for the period of 3 Months from the Date of Installation. And BlechTek Software Solutions LLP is not responsible for the loss of Data due to any Platform related or Cyber Security Issues or Virus problems."),
+                new TermsItem("Installation of Software", "Definition:\nThe Software will be considered as installed when it is loaded on the Server.\n\nInstallation pre-requisites (in case of on-premise Server):\nWe will install the Software only after we receive the Site readiness report from you. A Copy of which will be forwarded to you along with our Order Acceptance / Request for Installation."),
+                new TermsItem("Excused Performance", "BlechTek shall not be liable or deemed to be in default for any delay or failure in performance under this Contract or interruption of services due to strike or labor disputes, riots, war, fire, acts of God or governmental regulations. BlechTek should not be held responsible, directly or indirectly for nonperformance of our software due to failure or malfunction of computer or telecommunications hardware, network or related equipment at your installation site."),
+                new TermsItem("Discontinuation of Contract", "You will immediately pay the balance amount to BlechTek in case of the following…", new[]
+                {
+                    "Discontinuation of Contract from your side due to the reasons that are not related to BlechTek",
+                    "If the contract is stalled by you at any stage for a period more than 60 Days"
+                }),
+                new TermsItem("TDS", "In case of deduction of TDS Amount, you have to give us the TDS certificate immediately along with our Payment. If we do not receive the TDS Certificate within 6 months or by the end of the Financial Year, you should pay us the deducted TDS amount immediately."),
+                new TermsItem("Validity of the Offer", $"This Offer is valid up to {validationDate}."),
+                new TermsItem("Suggestions by your Auditors and / or Consultants", "Any suggestions by your Auditors and / or Consultants should be discussed before the finalization of the Order. If any suggestions are made after the finalization of the order, the same will be considered only after the completion of this Order and would be charged extra."),
+                new TermsItem("Legal", "Any disputes arising out of in relation to this order is subject to jurisdiction of courts at Pune, Maharashtra. We hope this document is in line with our discussions. We request you to call us for further course of action.")
+            };
+
+        if (parent is not null)
+        {
+            OpenXmlElement insertAfter = previousSibling;
+
+            // Add heading
+            var headingPara = new Paragraph();
+            var headingRun = new Run();
+            var headingRunPr = new RunProperties();
+            headingRunPr.Append(new Bold(), new BoldComplexScript());
+            headingRunPr.Append(new Color { Val = "65AADB" });
+            headingRunPr.Append(new FontSize { Val = "24" }, new FontSizeComplexScript { Val = "24" });
+            headingRun.Append(headingRunPr);
+            headingRun.Append(new Text("Terms and Conditions") { Space = SpaceProcessingModeValues.Preserve });
+            headingPara.Append(headingRun);
+            var headingParaPr = new ParagraphProperties();
+            headingParaPr.Append(new SpacingBetweenLines { After = "120" });
+            headingPara.Append(headingParaPr);
+
+            if (insertAfter is not null)
+            {
+                parent.InsertAfter(headingPara, insertAfter);
+                insertAfter = headingPara;
+            }
+            else
+            {
+                parent.PrependChild(headingPara);
+                insertAfter = headingPara;
+            }
+
+            // Add each term as numbered list items
+            for (int i = 0; i < termsItems.Length; i++)
+            {
+                var item = termsItems[i];
+                var itemParagraphs = CreateTermsParagraphs(i + 1, item);
+
+                foreach (var para in itemParagraphs)
+                {
+                    if (insertAfter is not null)
+                    {
+                        parent.InsertAfter(para, insertAfter);
+                        insertAfter = para;
+                    }
+                    else
+                    {
+                        parent.PrependChild(para);
+                        insertAfter = para;
+                    }
+                }
+            }
+        }
+    }
+
+    private static void RebuildProposalParagraph(Body body, QuotationRequest request)
+    {
+        // Find the paragraph containing the proposal text
+        var proposalPara = body.Descendants<Paragraph>()
+            .FirstOrDefault(p => string.Concat(p.Descendants<Text>().Select(t => t.Text))
+                .Contains("Based on the challenges and solutions discussed", StringComparison.OrdinalIgnoreCase));
+
+        if (proposalPara is null) return;
+
+        // Replace the text content while preserving the ORG_NAME placeholder run
+        var orgNameRun = proposalPara.Descendants<Run>()
+            .FirstOrDefault(r => r.Descendants<Text>().Any(t => t.Text.Contains("{{ORG_NAME}}")));
+
+        // Clear all runs and rebuild
+        foreach (var run in proposalPara.Descendants<Run>().ToList())
+        {
+            run.Remove();
+        }
+
+        var newText = "We discussed the current challenges and solutions CQUAL can provide, based on our brief discussions, please find attached a Preliminary Business Proposal for the required changeover at ";
+
+        var run1 = new Run();
+        var runPr1 = new RunProperties();
+        runPr1.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
+        run1.Append(runPr1);
+        run1.Append(new Text(newText) { Space = SpaceProcessingModeValues.Preserve });
+        proposalPara.Append(run1);
+
+        if (orgNameRun is not null)
+        {
+            // Keep the org name run with its formatting
+            proposalPara.Append(orgNameRun);
+        }
+        else
+        {
+            // Add org name placeholder if not found
+            var orgRun = new Run();
+            var orgRunPr = new RunProperties();
+            orgRunPr.Append(new Bold(), new BoldComplexScript());
+            orgRunPr.Append(new Color { Val = "65AADB" });
+            orgRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
+            orgRun.Append(orgRunPr);
+            orgRun.Append(new Text(request.OrganizationName ?? "{{ORG_NAME}}") { Space = SpaceProcessingModeValues.Preserve });
+            proposalPara.Append(orgRun);
+        }
+
+        // Add period
+        var periodRun = new Run();
+        var periodRunPr = new RunProperties();
+        periodRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
+        periodRun.Append(periodRunPr);
+        periodRun.Append(new Text(".") { Space = SpaceProcessingModeValues.Preserve });
+        proposalPara.Append(periodRun);
+    }
+
+    private static void RebuildClosingSection(Body body, QuotationRequest request)
+    {
+        // Find the closing paragraph "We hope this document aligns with our discussions..."
+        var closingPara = body.Descendants<Paragraph>()
+            .FirstOrDefault(p => string.Concat(p.Descendants<Text>().Select(t => t.Text))
+                .Contains("We hope this document aligns", StringComparison.OrdinalIgnoreCase));
+
+        if (closingPara is null) return;
+
+        // Replace with frontend text
+        foreach (var run in closingPara.Descendants<Run>().ToList())
+        {
+            run.Remove();
+        }
+
+        var newText = "We hope this document is in line with our discussions. We request you to call us for further course of action.";
+
+        var run1 = new Run();
+        var runPr1 = new RunProperties();
+        runPr1.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
+        run1.Append(runPr1);
+        run1.Append(new Text(newText) { Space = SpaceProcessingModeValues.Preserve });
+        closingPara.Append(run1);
+
+        // Also update "Sincerely," to "Thanking you in anticipation, Sincerely,"
+        var sincerelyPara = body.Descendants<Paragraph>()
+            .FirstOrDefault(p => string.Concat(p.Descendants<Text>().Select(t => t.Text)).Trim() == "Sincerely,");
+
+        if (sincerelyPara is not null)
+        {
+            foreach (var run in sincerelyPara.Descendants<Run>().ToList())
+            {
+                run.Remove();
+            }
+
+            var sincerelyRun = new Run();
+            var sincerelyRunPr = new RunProperties();
+            sincerelyRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
+            sincerelyRun.Append(sincerelyRunPr);
+            sincerelyRun.Append(new Text("Thanking you in anticipation, Sincerely,") { Space = SpaceProcessingModeValues.Preserve });
+            sincerelyPara.Append(sincerelyRun);
+        }
+    }
+
+    private class TermsItem
+    {
+        public string Title { get; }
+        public string Body { get; }
+        public string[] SubItems { get; }
+
+        public TermsItem(string title, string body, string[] subItems = null)
+        {
+            Title = title;
+            Body = body;
+            SubItems = subItems ?? Array.Empty<string>();
+        }
+    }
+
+    private static Paragraph[] CreateTermsParagraphs(int number, TermsItem item)
+    {
+        var paragraphs = new List<Paragraph>();
+
+        // Main item with number and title
+        var mainPara = new Paragraph();
+        var mainRun = new Run();
+        var mainRunPr = new RunProperties();
+        mainRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
+        mainRun.Append(mainRunPr);
+        mainRun.Append(new Text($"{number}. ") { Space = SpaceProcessingModeValues.Preserve });
+        mainPara.Append(mainRun);
+
+        // Title in bold
+        var titleRun = new Run();
+        var titleRunPr = new RunProperties();
+        titleRunPr.Append(new Bold(), new BoldComplexScript());
+        titleRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
+        titleRun.Append(titleRunPr);
+        titleRun.Append(new Text(item.Title) { Space = SpaceProcessingModeValues.Preserve });
+        mainPara.Append(titleRun);
+
+        // Body text (first line)
+        var bodyLines = item.Body.Split('\n');
+        if (bodyLines.Length > 0)
+        {
+            var bodyRun = new Run();
+            var bodyRunPr = new RunProperties();
+            bodyRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
+            bodyRun.Append(bodyRunPr);
+            bodyRun.Append(new Text(" " + bodyLines[0]) { Space = SpaceProcessingModeValues.Preserve });
+            mainPara.Append(bodyRun);
+        }
+
+        paragraphs.Add(mainPara);
+
+        // Additional body lines
+        for (int i = 1; i < bodyLines.Length; i++)
+        {
+            var linePara = new Paragraph();
+            var lineRun = new Run();
+            var lineRunPr = new RunProperties();
+            lineRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
+            lineRun.Append(lineRunPr);
+            lineRun.Append(new Text(bodyLines[i]) { Space = SpaceProcessingModeValues.Preserve });
+            linePara.Append(lineRun);
+            paragraphs.Add(linePara);
+        }
+
+        // Sub-items (for Discontinuation of Contract)
+        if (item.SubItems.Length > 0)
+        {
+            var subNumerals = new[] { "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x" };
+            for (int j = 0; j < item.SubItems.Length; j++)
+            {
+                var subPara = new Paragraph();
+                var subRun = new Run();
+                var subRunPr = new RunProperties();
+                subRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
+                subRun.Append(subRunPr);
+                subRun.Append(new Text($"    {subNumerals[j]}. {item.SubItems[j]}") { Space = SpaceProcessingModeValues.Preserve });
+                subPara.Append(subRun);
+                paragraphs.Add(subPara);
+            }
+        }
+
+        return paragraphs.ToArray();
     }
 
     private static TableRow CreatePriceTableRow((string Text, bool IsBold)[] cells, bool isAlternate)

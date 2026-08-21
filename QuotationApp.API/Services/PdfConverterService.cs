@@ -459,11 +459,13 @@ public class PdfConverterService : IPdfConverterService
                     column.Item().PaddingTop(16);
 
                     // Process all elements in order
-                    foreach (var element in content.Elements)
+                    var allElements = content.Elements;
+                    for (int i = 0; i < allElements.Count; i++)
                     {
+                        var element = allElements[i];
                         if (element is ParagraphContent para)
                         {
-                            RenderParagraph(column, para);
+                            RenderParagraph(column, para, i, allElements);
                         }
                         else if (element is TableContent table)
                         {
@@ -492,7 +494,7 @@ public class PdfConverterService : IPdfConverterService
         await Task.CompletedTask;
     }
 
-    private void RenderParagraph(ColumnDescriptor column, ParagraphContent para)
+    private void RenderParagraph(ColumnDescriptor column, ParagraphContent para, int index, List<IDocumentElement> allElements)
     {
         if (string.IsNullOrWhiteSpace(para.Text)) return;
 
@@ -523,6 +525,15 @@ public class PdfConverterService : IPdfConverterService
                 .Background(NoteBackground).Padding(10, Unit.Point).PaddingRight(12, Unit.Point)
                 .Text(para.Text)
                 .FontSize(11).FontFamily("Calibri").FontColor(DarkText).Italic().LineHeight(1.55f);
+            return;
+        }
+
+        // Check if we're in the Terms and Conditions section
+        var isTermsAndConditions = IsInTermsAndConditionsSection(index, allElements);
+
+        if (isTermsAndConditions)
+        {
+            RenderTermsAndConditionsItem(column, para, index, allElements);
             return;
         }
 
@@ -558,6 +569,124 @@ public class PdfConverterService : IPdfConverterService
         if (para.IsNumbered)
         {
             // QuestPDF handles numbering differently; keep text as-is.
+        }
+    }
+
+    private bool IsInTermsAndConditionsSection(int currentIndex, List<IDocumentElement> allElements)
+    {
+        // Look backwards to find if we're after "TERMS AND CONDITIONS" heading and before the next section
+        bool foundTermsHeading = false;
+
+        for (int i = currentIndex - 1; i >= 0; i--)
+        {
+            if (allElements[i] is ParagraphContent prevPara)
+            {
+                var text = prevPara.Text.Trim().ToUpper();
+                if (text == "TERMS AND CONDITIONS")
+                {
+                    foundTermsHeading = true;
+                    break;
+                }
+                // Stop if we hit another major section heading
+                if (IsSectionHeading(prevPara.Text) && text != "TERMS AND CONDITIONS")
+                {
+                    break;
+                }
+            }
+        }
+
+        if (!foundTermsHeading) return false;
+
+        // Also check we're not past the closing section
+        for (int i = currentIndex + 1; i < allElements.Count; i++)
+        {
+            if (allElements[i] is ParagraphContent nextPara)
+            {
+                var text = nextPara.Text.Trim().ToUpper();
+                if (text == "WE HOPE THIS DOCUMENT IS IN LINE" || text.StartsWith("THANKING YOU"))
+                {
+                    return true; // We're still in terms section
+                }
+            }
+        }
+
+        return foundTermsHeading;
+    }
+
+    private void RenderTermsAndConditionsItem(ColumnDescriptor column, ParagraphContent para, int index, List<IDocumentElement> allElements)
+    {
+        var text = para.Text.Trim();
+
+        // Check if this is a main numbered item (starts with number like "1.", "2.", etc.)
+        var mainItemMatch = System.Text.RegularExpressions.Regex.Match(text, @"^(\d+)\.\s*(.+)");
+        // Check if this is a sub-item (starts with "i.", "ii.", "iii.", etc.)
+        var subItemMatch = System.Text.RegularExpressions.Regex.Match(text, @"^([ivx]+)\.\s*(.+)");
+
+        if (mainItemMatch.Success)
+        {
+            var number = mainItemMatch.Groups[1].Value;
+            var content = mainItemMatch.Groups[2].Value;
+
+            // Check if the content starts with a bold title (e.g., "Confidentiality", "License", etc.)
+            var titleEndIndex = content.IndexOfAny(new[] { ' ', '\t', '\n' });
+            string title = "";
+            string body = content;
+
+            // Known titles in the terms and conditions
+            var knownTitles = new[] { "Confidentiality", "License", "Ownership of Source Code", "Warranty",
+                "Installation of Software", "Excused Performance", "Discontinuation of Contract", "TDS",
+                "Validity of the Offer", "Suggestions by your Auditors and / or Consultants", "Legal" };
+
+            foreach (var knownTitle in knownTitles)
+            {
+                if (content.StartsWith(knownTitle, StringComparison.OrdinalIgnoreCase))
+                {
+                    title = knownTitle;
+                    body = content.Substring(knownTitle.Length).TrimStart();
+                    break;
+                }
+            }
+
+            column.Item().PaddingTop(8).Column(itemCol =>
+            {
+                // Number and title
+                itemCol.Item().Row(row =>
+                {
+                    row.AutoItem().Width(25).AlignRight().Text($"{number}.")
+                        .FontSize(10).FontFamily("Calibri").FontColor(TextBlack).Bold();
+                    row.RelativeItem().PaddingLeft(8).Column(contentCol =>
+                    {
+                        if (!string.IsNullOrEmpty(title))
+                        {
+                            contentCol.Item().Text(title).FontSize(10).FontFamily("Calibri").FontColor(TextBlack).Bold();
+                        }
+                        if (!string.IsNullOrEmpty(body))
+                        {
+                            contentCol.Item().PaddingTop(2).Text(body)
+                                .FontSize(10).FontFamily("Calibri").FontColor(DarkText).LineHeight(1.5f);
+                        }
+                    });
+                });
+            });
+        }
+        else if (subItemMatch.Success)
+        {
+            var subNumber = subItemMatch.Groups[1].Value;
+            var subContent = subItemMatch.Groups[2].Value;
+
+            column.Item().PaddingLeft(30).PaddingTop(4).Row(row =>
+            {
+                row.AutoItem().Width(20).AlignRight().Text($"{subNumber}.")
+                    .FontSize(10).FontFamily("Calibri").FontColor(TextBlack);
+                row.RelativeItem().PaddingLeft(8).Text(subContent)
+                    .FontSize(10).FontFamily("Calibri").FontColor(DarkText).LineHeight(1.5f);
+            });
+        }
+        else
+        {
+            // Regular paragraph within terms section
+            column.Item().PaddingLeft(30).PaddingTop(4).Text(text)
+                .FontSize(10).FontFamily("Calibri").FontColor(DarkText).LineHeight(1.5f);
         }
     }
 
