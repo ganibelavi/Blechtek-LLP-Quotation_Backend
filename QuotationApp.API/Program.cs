@@ -72,16 +72,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<QuotationDbContext>();
-    var env = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
-    var settings = scope.ServiceProvider.GetRequiredService<IOptions<QuotationSettings>>();
-    var templateService = scope.ServiceProvider.GetRequiredService<ITemplateService>(); // Get TemplateService
-
     dbContext.Database.EnsureCreated();
-
-    // Update template footer on startup (safe way using DocX)
-    var templatePath = Path.Combine(env.ContentRootPath, settings.Value.TemplatePath);
-    templateService.UpdateFooter(templatePath);
-
 }
 
 if (app.Environment.IsDevelopment())

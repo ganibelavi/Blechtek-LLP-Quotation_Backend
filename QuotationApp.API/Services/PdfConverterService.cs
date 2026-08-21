@@ -416,9 +416,11 @@ public class PdfConverterService : IPdfConverterService
                 if (hasWatermark)
                 {
                     page.Background()
-                        .Padding(100) // Equal padding from all 4 sides
+                        .Padding(80) // Equal padding from all 4 sides
                         .AlignCenter()
                         .AlignMiddle()
+                        .Width(250)
+                        .Height(250)
                         .Image(watermarkPath);
                 }
 

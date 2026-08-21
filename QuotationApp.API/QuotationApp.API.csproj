@@ -10,7 +10,6 @@
   <ItemGroup>
     <!-- Reads/writes the .docx (Open XML) template -->
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
-    <PackageReference Include="DocX" Version="1.5.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.10" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.10">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -25,6 +24,11 @@
   <ItemGroup>
     <!-- Ship the base template with the build output -->
     <None Include="Templates\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Exclude utility scripts from compilation -->
+    <Compile Remove="FixTemplate.cs" />
   </ItemGroup>
 
 </Project>
