@@ -97,4 +97,29 @@ public class QuotationController : ControllerBase
 
         return PhysicalFile(path, "application/pdf", $"{quotationId}.pdf");
     }
+
+    /// <summary>Updates the discount percentage for an existing quotation and regenerates documents.</summary>
+    [HttpPut("{quotationId}/discount")]
+    [ProducesResponseType(typeof(QuotationResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<QuotationResult>> UpdateDiscount(string quotationId, [FromBody] UpdateDiscountRequest request)
+    {
+        if (!ModelState.IsValid) return ValidationProblem(ModelState);
+        if (request.DiscountPercentage < 0 || request.DiscountPercentage > 100)
+            return BadRequest(new { error = "Discount must be between 0 and 100." });
+
+        try
+        {
+            var result = await _quotationService.UpdateDiscountAsync(quotationId, request.DiscountPercentage);
+            if (result is null) return NotFound(new { error = "Quotation not found." });
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update discount for quotation {QuotationId}", quotationId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "Could not update discount. Please try again." });
+        }
+    }
 }

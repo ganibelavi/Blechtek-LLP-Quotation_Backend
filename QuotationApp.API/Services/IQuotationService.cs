@@ -17,6 +17,9 @@ public interface IQuotationService
 
     /// <summary>Gets dashboard analytics data.</summary>
     Task<DashboardData> GetDashboardDataAsync();
+
+    /// <summary>Updates the discount percentage for an existing quotation and regenerates documents.</summary>
+    Task<QuotationResult?> UpdateDiscountAsync(string quotationId, decimal discountPercentage);
 }
 
 public class DashboardData

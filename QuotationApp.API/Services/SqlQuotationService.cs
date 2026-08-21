@@ -267,4 +267,55 @@ public class SqlQuotationService : IQuotationService
         _dbContext.Quotations.Add(quotation);
         await _dbContext.SaveChangesAsync();
     }
+
+    /// <summary>
+    /// Updates the discount percentage for an existing quotation and regenerates the Word/PDF documents.
+    /// </summary>
+    public async Task<QuotationResult?> UpdateDiscountAsync(string quotationId, decimal discountPercentage)
+    {
+        var quotation = await _dbContext.Quotations
+            .Include(q => q.QuotationModules)
+            .FirstOrDefaultAsync(q => q.Id == quotationId);
+
+        if (quotation == null)
+            return null;
+
+        // Update discount percentage
+        quotation.DiscountPercentage = discountPercentage > 0 ? discountPercentage : (decimal?)null;
+
+        // Build request from stored data
+        var request = new QuotationRequest
+        {
+            ValidationDate = quotation.ValidationDate,
+            OrganizationName = quotation.OrganizationName,
+            QuotationNo = quotation.QuotationNo ?? string.Empty,
+            Date = quotation.Date ?? DateTime.UtcNow,
+            SelectedModules = quotation.QuotationModules.Select(m => m.ModuleName).ToList(),
+            QuotationTo = new QuotationToInfo
+            {
+                Name = quotation.QuotationToName,
+                Address = quotation.QuotationToAddress,
+                ContactNo = quotation.QuotationToContactNo,
+                Email = quotation.QuotationToEmail
+            },
+            DiscountPercentage = discountPercentage
+        };
+
+        // Regenerate documents with new discount
+        var docxPath = await _wordGenerator.GenerateAsync(request, quotationId);
+        await _pdfConverter.ConvertToPdfAsync(docxPath);
+
+        await _dbContext.SaveChangesAsync();
+
+        return new QuotationResult
+        {
+            QuotationId = quotationId,
+            OrganizationName = quotation.OrganizationName,
+            QuotationNo = quotation.QuotationNo ?? string.Empty,
+            Date = quotation.Date ?? DateTime.UtcNow,
+            GeneratedAt = quotation.GeneratedAt,
+            WordDownloadUrl = $"/api/quotation/{quotationId}/download/word",
+            PdfDownloadUrl = $"/api/quotation/{quotationId}/download/pdf"
+        };
+    }
 }

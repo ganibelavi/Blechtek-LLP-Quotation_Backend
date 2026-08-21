@@ -72,3 +72,11 @@ public class QuotationHistoryEntry
     public DateTime GeneratedAt { get; set; }
     public decimal? DiscountPercentage { get; set; }
 }
+
+/// <summary>Request payload for updating discount percentage.</summary>
+public class UpdateDiscountRequest
+{
+    [Required]
+    [Range(0, 100, ErrorMessage = "Discount must be between 0 and 100.")]
+    public decimal DiscountPercentage { get; set; }
+}
