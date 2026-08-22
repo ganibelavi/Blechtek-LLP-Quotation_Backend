@@ -851,13 +851,13 @@ public class WordGeneratorService : IWordGeneratorService
 
         if (closingPara is null) return;
 
-        // Replace with frontend text
+        // Replace with frontend text - first paragraph
         foreach (var run in closingPara.Descendants<Run>().ToList())
         {
             run.Remove();
         }
 
-        var newText = "We hope this document is in line with our discussions. We request you to call us for further course of action.";
+        var newText = "We hope that this Document along with the enclosed Business Proposal is in line with your requirements. In case of any query, please feel free to call us.";
 
         var run1 = new Run();
         var runPr1 = new RunProperties();
@@ -866,7 +866,7 @@ public class WordGeneratorService : IWordGeneratorService
         run1.Append(new Text(newText) { Space = SpaceProcessingModeValues.Preserve });
         closingPara.Append(run1);
 
-        // Also update "Sincerely," to "Thanking you in anticipation, Sincerely,"
+        // Also update "Sincerely," to match frontend
         var sincerelyPara = body.Descendants<Paragraph>()
             .FirstOrDefault(p => string.Concat(p.Descendants<Text>().Select(t => t.Text)).Trim() == "Sincerely,");
 
@@ -881,9 +881,37 @@ public class WordGeneratorService : IWordGeneratorService
             var sincerelyRunPr = new RunProperties();
             sincerelyRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
             sincerelyRun.Append(sincerelyRunPr);
-            sincerelyRun.Append(new Text("Thanking you in anticipation, Sincerely,") { Space = SpaceProcessingModeValues.Preserve });
+            sincerelyRun.Append(new Text("Sincerely,") { Space = SpaceProcessingModeValues.Preserve });
             sincerelyPara.Append(sincerelyRun);
         }
+
+        // Add "For BlechTek Software Solutions LLP." paragraph after "Sincerely,"
+        // var parent = sincerelyPara?.Parent;
+        // if (parent is not null && sincerelyPara is not null)
+        // {
+        //     var forBlechTekPara = new Paragraph();
+        //     var forBlechTekRun = new Run();
+        //     var forBlechTekRunPr = new RunProperties();
+        //     forBlechTekRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
+        //     forBlechTekRun.Append(forBlechTekRunPr);
+        //     forBlechTekRun.Append(new Text("For BlechTek Software Solutions LLP.") { Space = SpaceProcessingModeValues.Preserve });
+        //     forBlechTekPara.Append(forBlechTekRun);
+        //     parent.InsertAfter(forBlechTekPara, sincerelyPara);
+        // }
+
+        // Add "Sushama Inamdar" paragraph after "For BlechTek Software Solutions LLP."
+        // if (parent is not null && sincerelyPara is not null)
+        // {
+        //     var sushamaPara = new Paragraph();
+        //     var sushamaRun = new Run();
+        //     var sushamaRunPr = new RunProperties();
+        //     sushamaRunPr.Append(new Bold(), new BoldComplexScript());
+        //     sushamaRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
+        //     sushamaRun.Append(sushamaRunPr);
+        //     sushamaRun.Append(new Text("Sushama Inamdar") { Space = SpaceProcessingModeValues.Preserve });
+        //     sushamaPara.Append(sushamaRun);
+        //     parent.InsertAfter(sushamaPara, sincerelyPara.NextSibling());
+        // }
     }
 
     private class TermsItem
