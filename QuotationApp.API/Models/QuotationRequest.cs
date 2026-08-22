@@ -11,6 +11,9 @@ public class QuotationRequest
     [Required, StringLength(200)]
     public string OrganizationName { get; set; } = string.Empty;
 
+    [StringLength(150)]
+    public string ReferenceBy { get; set; } = string.Empty;
+
     [Required, StringLength(50)]
     public string QuotationNo { get; set; } = string.Empty;
 
@@ -68,6 +71,7 @@ public class QuotationHistoryEntry
     public string QuotationToAddress { get; set; } = string.Empty;
     public string QuotationToContactNo { get; set; } = string.Empty;
     public string QuotationToEmail { get; set; } = string.Empty;
+    public string ReferenceBy { get; set; } = string.Empty;
     public List<string> Modules { get; set; } = new();
     public DateTime GeneratedAt { get; set; }
     public decimal? DiscountPercentage { get; set; }

@@ -90,6 +90,7 @@ public class SqlQuotationService : IQuotationService
                 QuotationToAddress = q.QuotationToAddress,
                 QuotationToContactNo = q.QuotationToContactNo,
                 QuotationToEmail = q.QuotationToEmail,
+                ReferenceBy = q.ReferenceBy ?? string.Empty,
                 Modules = q.QuotationModules.Select(m => m.ModuleName).ToList(),
                 GeneratedAt = q.GeneratedAt,
                 DiscountPercentage = q.DiscountPercentage
@@ -116,6 +117,7 @@ public class SqlQuotationService : IQuotationService
                 QuotationToAddress = q.QuotationToAddress,
                 QuotationToContactNo = q.QuotationToContactNo,
                 QuotationToEmail = q.QuotationToEmail,
+                ReferenceBy = q.ReferenceBy ?? string.Empty,
                 Modules = q.QuotationModules.Select(m => m.ModuleName).ToList(),
                 GeneratedAt = q.GeneratedAt,
                 DiscountPercentage = q.DiscountPercentage
@@ -251,6 +253,7 @@ public class SqlQuotationService : IQuotationService
             ValidationDate = request.ValidationDate,
             QuotationNo = request.QuotationNo,
             Date = request.Date,
+            ReferenceBy = request.ReferenceBy,
             QuotationToName = request.QuotationTo.Name,
             QuotationToAddress = request.QuotationTo.Address,
             QuotationToContactNo = request.QuotationTo.ContactNo,
@@ -288,6 +291,7 @@ public class SqlQuotationService : IQuotationService
         {
             ValidationDate = quotation.ValidationDate,
             OrganizationName = quotation.OrganizationName,
+            ReferenceBy = quotation.ReferenceBy ?? string.Empty,
             QuotationNo = quotation.QuotationNo ?? string.Empty,
             Date = quotation.Date ?? DateTime.UtcNow,
             SelectedModules = quotation.QuotationModules.Select(m => m.ModuleName).ToList(),

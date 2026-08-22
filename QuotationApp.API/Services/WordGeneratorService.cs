@@ -203,6 +203,7 @@ public class WordGeneratorService : IWordGeneratorService
                 ["{{CONTACT_PHONE}}"] = request.QuotationTo.ContactNo,
                 ["{{CONTACT_EMAIL}}"] = request.QuotationTo.Email,
                 ["{{ORG_NAME}}"] = request.OrganizationName,
+                ["{{REFERENCE_BY}}"] = request.ReferenceBy ?? string.Empty,
                 ["{{MODULE_LIST}}"] = moduleList,
                 ["{{VALIDATION_DATE}}"] = request.ValidationDate.ToString("dd MMM yyyy"),
                 ["{{QUOTATION_NO}}"] = request.QuotationNo,
@@ -439,7 +440,8 @@ public class WordGeneratorService : IWordGeneratorService
             CreateQuotationToParagraph("Name: ", request.QuotationTo.Name ?? "{{CONTACT_NAME}}", true),
             CreateQuotationToParagraph("Address: ", request.QuotationTo.Address ?? "{{CONTACT_ADDRESS}}", true),
             CreateQuotationToParagraph("Contact No.: ", request.QuotationTo.ContactNo ?? "{{CONTACT_PHONE}}", true),
-            CreateQuotationToParagraph("Email: ", request.QuotationTo.Email ?? "{{CONTACT_EMAIL}}", true)
+            CreateQuotationToParagraph("Email: ", request.QuotationTo.Email ?? "{{CONTACT_EMAIL}}", true),
+            // CreateQuotationToParagraph("Reference By: ", request.ReferenceBy ?? "{{REFERENCE_BY}}", true)
         };
         foreach (var p in leftContent) leftCell.Append(p);
 
