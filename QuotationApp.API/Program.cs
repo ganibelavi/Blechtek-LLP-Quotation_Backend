@@ -68,11 +68,32 @@ if (!string.IsNullOrEmpty(jwtKey))
 
 var app = builder.Build();
 
-// Ensure database is created and seeded
+// Ensure database is created and seed data is available; also add any recent schema columns
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<QuotationDbContext>();
     dbContext.Database.EnsureCreated();
+
+    var connection = dbContext.Database.GetDbConnection();
+    if (connection.State != System.Data.ConnectionState.Open)
+    {
+        connection.Open();
+    }
+
+    using var command = connection.CreateCommand();
+    command.CommandText = @"SELECT CASE WHEN EXISTS (
+        SELECT 1
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'Quotations' AND COLUMN_NAME = 'CreatedByUser'
+    ) THEN 1 ELSE 0 END";
+
+    var hasCreatedByUser = Convert.ToInt32(command.ExecuteScalar()) == 1;
+    if (!hasCreatedByUser)
+    {
+        using var alterCommand = connection.CreateCommand();
+        alterCommand.CommandText = "ALTER TABLE dbo.Quotations ADD CreatedByUser nvarchar(200) NULL;";
+        alterCommand.ExecuteNonQuery();
+    }
 }
 
 if (app.Environment.IsDevelopment())
@@ -82,7 +103,13 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("Frontend");
-app.UseHttpsRedirection();
+
+// Only use HTTPS redirection in production
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

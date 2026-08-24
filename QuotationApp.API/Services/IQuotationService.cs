@@ -31,17 +31,26 @@ public class DashboardData
     public int TotalOrganizations { get; set; }
     public int TotalModules { get; set; }
     public decimal TotalQuotedAmount { get; set; }
+    public List<UserQuotationStatsData> UserQuotationStats { get; set; } = new();
     public List<MonthlyQuoteData> MonthlyQuotes { get; set; } = new();
     public List<StatusBreakdownData> StatusBreakdown { get; set; } = new();
     public List<ModuleDistributionData> ModuleDistribution { get; set; } = new();
     public List<TopOrganizationData> TopOrganizations { get; set; } = new();
     public List<RecentQuotationData> RecentQuotations { get; set; } = new();
+    public List<MachineUtilizationData> MachineUtilization { get; set; } = new();
+}
+
+public class UserQuotationStatsData
+{
+    public string User { get; set; } = string.Empty;
+    public int QuoteCount { get; set; }
 }
 
 public class MonthlyQuoteData
 {
     public string Month { get; set; } = string.Empty;
     public int Count { get; set; }
+    public decimal Revenue { get; set; }
 }
 
 public class StatusBreakdownData
@@ -72,4 +81,10 @@ public class RecentQuotationData
     public decimal Valuation { get; set; }
     public decimal TotalQuotedAmount { get; set; }
     public decimal DiscountPercentage { get; set; }
+}
+
+public class MachineUtilizationData
+{
+    public string Machine { get; set; } = string.Empty;
+    public int Utilization { get; set; }
 }

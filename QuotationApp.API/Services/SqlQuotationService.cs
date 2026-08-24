@@ -197,12 +197,39 @@ public class SqlQuotationService : IQuotationService
         var monthlyQuotes = allQuotations
             .Where(q => q.GeneratedAt >= twelveMonthsAgo)
             .GroupBy(q => new { q.GeneratedAt.Year, q.GeneratedAt.Month })
-            .Select(g => new MonthlyQuoteData
+            .Select(g =>
             {
-                Month = new DateTime(g.Key.Year, g.Key.Month, 1).ToString("MMM yyyy"),
-                Count = g.Count()
+                var monthQuotes = g.ToList();
+                var totalPrice = monthQuotes.Sum(q =>
+                    q.QuotationModules.Sum(m => modulePrices.GetValueOrDefault(m.ModuleName, 0)));
+                var totalDiscount = monthQuotes.Sum(q =>
+                {
+                    var price = q.QuotationModules.Sum(m => modulePrices.GetValueOrDefault(m.ModuleName, 0));
+                    var discountPct = q.DiscountPercentage ?? 0;
+                    return price * discountPct / 100;
+                });
+                var revenue = totalPrice - totalDiscount;
+                return new MonthlyQuoteData
+                {
+                    Month = new DateTime(g.Key.Year, g.Key.Month, 1).ToString("MMM yyyy"),
+                    Count = g.Count(),
+                    Revenue = revenue
+                };
             })
             .OrderBy(m => DateTime.ParseExact(m.Month, "MMM yyyy", System.Globalization.CultureInfo.InvariantCulture))
+            .ToList();
+
+        var userQuotationStats = allQuotations
+            .GroupBy(q => string.IsNullOrWhiteSpace(q.CreatedByUser)
+                ? (string.IsNullOrWhiteSpace(q.ReferenceBy) ? "Unknown" : q.ReferenceBy.Trim())
+                : q.CreatedByUser.Trim())
+            .Select(g => new UserQuotationStatsData
+            {
+                User = g.Key,
+                QuoteCount = g.Count()
+            })
+            .OrderByDescending(u => u.QuoteCount)
+            .Take(8)
             .ToList();
 
         // Status breakdown - using ValidationDate to determine status
@@ -236,6 +263,18 @@ public class SqlQuotationService : IQuotationService
             })
             .OrderByDescending(o => o.QuoteCount)
             .Take(5)
+            .ToList();
+
+        // Machine utilization fallback: derive from the most-used modules so the chart
+        // remains populated even when no dedicated machine dataset exists.
+        var maxModuleCount = moduleDistribution.Any() ? moduleDistribution.Max(m => m.Count) : 0;
+        var machineUtilization = moduleDistribution
+            .Select(m => new MachineUtilizationData
+            {
+                Machine = m.Module,
+                Utilization = maxModuleCount > 0 ? (int)Math.Round((m.Count * 100m) / maxModuleCount) : 0
+            })
+            .Take(8)
             .ToList();
 
         // Calculate total quoted amount across all quotations
@@ -277,11 +316,13 @@ public class SqlQuotationService : IQuotationService
             TotalOrganizations = totalOrganizations,
             TotalModules = totalModules,
             TotalQuotedAmount = totalQuotedAmount,
+            UserQuotationStats = userQuotationStats,
             MonthlyQuotes = monthlyQuotes,
             StatusBreakdown = statusBreakdown,
             ModuleDistribution = moduleDistribution,
             TopOrganizations = topOrganizations,
-            RecentQuotations = recentQuotations
+            RecentQuotations = recentQuotations,
+            MachineUtilization = machineUtilization
         };
     }
 
@@ -305,6 +346,7 @@ public class SqlQuotationService : IQuotationService
             QuotationNo = quotationNo,
             Date = request.Date,
             ReferenceBy = request.ReferenceBy,
+            CreatedByUser = string.IsNullOrWhiteSpace(request.CreatedByUser) ? request.ReferenceBy : request.CreatedByUser.Trim(),
             QuotationToName = request.QuotationTo.Name,
             QuotationToAddress = request.QuotationTo.Address,
             QuotationToContactNo = request.QuotationTo.ContactNo,
