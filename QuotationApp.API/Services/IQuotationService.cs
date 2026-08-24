@@ -20,6 +20,9 @@ public interface IQuotationService
 
     /// <summary>Updates the discount percentage for an existing quotation and regenerates documents.</summary>
     Task<QuotationResult?> UpdateDiscountAsync(string quotationId, decimal discountPercentage);
+
+    /// <summary>Gets the next auto-generated quotation number without creating a quotation.</summary>
+    Task<string> GetNextQuotationNoAsync();
 }
 
 public class DashboardData

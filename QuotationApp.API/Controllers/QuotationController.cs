@@ -122,4 +122,22 @@ public class QuotationController : ControllerBase
                 new { error = "Could not update discount. Please try again." });
         }
     }
+
+    /// <summary>Gets the next auto-generated quotation number without creating a quotation.</summary>
+    [HttpGet("next-quotation-no")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    public async Task<ActionResult<object>> GetNextQuotationNo()
+    {
+        try
+        {
+            var nextQuotationNo = await _quotationService.GetNextQuotationNoAsync();
+            return Ok(new { quotationNo = nextQuotationNo });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get next quotation number");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "Could not get next quotation number." });
+        }
+    }
 }

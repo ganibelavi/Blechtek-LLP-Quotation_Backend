@@ -106,6 +106,11 @@ public class SqlQuotationService : IQuotationService
         return $"{prefix}/{financialYear}/{sequencePrefix}-{sequenceStr}";
     }
 
+    public async Task<string> GetNextQuotationNoAsync()
+    {
+        return await GenerateNextQuotationNoAsync();
+    }
+
     public string? ResolveFilePath(string quotationId, string extension)
     {
         // Guard against path traversal via the route-supplied id.

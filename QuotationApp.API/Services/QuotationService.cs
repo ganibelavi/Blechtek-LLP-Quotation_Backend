@@ -123,4 +123,11 @@ public class QuotationService : IQuotationService
             HistoryLock.Release();
         }
     }
+
+    public Task<string> GetNextQuotationNoAsync()
+    {
+        // This is the legacy JSON-based service - not used in production
+        // Return a placeholder since the SQL service is the one actually used
+        return Task.FromResult("BTSS/FY2025-26/PR-0001");
+    }
 }
