@@ -182,7 +182,7 @@ public class PdfConverterService : IPdfConverterService
         bool isCentered = false;
         bool isAllCaps = false;
         bool isNumbered = false;
-        int fontSize = 11;
+        int fontSize = 10;
         string fontFamily = "Calibri";
         QuestPDFColor? textColor = null;
         QuestPDFColor? backgroundColor = null;
