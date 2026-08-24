@@ -405,7 +405,8 @@ public class WordGeneratorService : IWordGeneratorService
         headingCell.Append(headingCellPr);
         var headingPara = new Paragraph();
         var headingRun = new Run();
-        var headingRunPr = new RunProperties();
+        var headingRunPr = new RunProperties(
+                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
         headingRunPr.Append(new Bold(), new BoldComplexScript());
         headingRunPr.Append(new Color { Val = "65AADB" });
         headingRunPr.Append(new FontSize { Val = "24" }, new FontSizeComplexScript { Val = "24" });
@@ -488,7 +489,8 @@ public class WordGeneratorService : IWordGeneratorService
     {
         var para = new Paragraph();
         var run = new Run();
-        var runPr = new RunProperties();
+        var runPr = new RunProperties(
+                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
         if (isBold)
         {
             runPr.Append(new Bold(), new BoldComplexScript());
@@ -742,7 +744,8 @@ public class WordGeneratorService : IWordGeneratorService
             // Add heading
             var headingPara = new Paragraph();
             var headingRun = new Run();
-            var headingRunPr = new RunProperties();
+var headingRunPr = new RunProperties(
+                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
             headingRunPr.Append(new Bold(), new BoldComplexScript());
             headingRunPr.Append(new Color { Val = "65AADB" });
             headingRunPr.Append(new FontSize { Val = "24" }, new FontSizeComplexScript { Val = "24" });
@@ -809,7 +812,8 @@ public class WordGeneratorService : IWordGeneratorService
         var newText = "We discussed the current challenges and solutions CQUAL can provide, based on our brief discussions, please find attached a Preliminary Business Proposal for the required changeover at ";
 
         var run1 = new Run();
-        var runPr1 = new RunProperties();
+        var runPr1 = new RunProperties(
+                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
         runPr1.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
         run1.Append(runPr1);
         run1.Append(new Text(newText) { Space = SpaceProcessingModeValues.Preserve });
@@ -824,7 +828,8 @@ public class WordGeneratorService : IWordGeneratorService
         {
             // Add org name placeholder if not found
             var orgRun = new Run();
-            var orgRunPr = new RunProperties();
+            var orgRunPr = new RunProperties(
+                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
             orgRunPr.Append(new Bold(), new BoldComplexScript());
             orgRunPr.Append(new Color { Val = "65AADB" });
             orgRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
@@ -835,7 +840,8 @@ public class WordGeneratorService : IWordGeneratorService
 
         // Add period
         var periodRun = new Run();
-        var periodRunPr = new RunProperties();
+        var periodRunPr = new RunProperties(
+                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
         periodRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
         periodRun.Append(periodRunPr);
         periodRun.Append(new Text(".") { Space = SpaceProcessingModeValues.Preserve });
@@ -860,7 +866,8 @@ public class WordGeneratorService : IWordGeneratorService
         var newText = "We hope that this Document along with the enclosed Business Proposal is in line with your requirements. In case of any query, please feel free to call us.";
 
         var run1 = new Run();
-        var runPr1 = new RunProperties();
+        var runPr1 = new RunProperties(
+                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
         runPr1.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
         run1.Append(runPr1);
         run1.Append(new Text(newText) { Space = SpaceProcessingModeValues.Preserve });
@@ -878,7 +885,8 @@ public class WordGeneratorService : IWordGeneratorService
             }
 
             var sincerelyRun = new Run();
-            var sincerelyRunPr = new RunProperties();
+            var sincerelyRunPr = new RunProperties(
+                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
             sincerelyRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
             sincerelyRun.Append(sincerelyRunPr);
             sincerelyRun.Append(new Text("Sincerely,") { Space = SpaceProcessingModeValues.Preserve });
@@ -935,7 +943,8 @@ public class WordGeneratorService : IWordGeneratorService
         // Main item with number and title
         var mainPara = new Paragraph();
         var mainRun = new Run();
-        var mainRunPr = new RunProperties();
+        var mainRunPr = new RunProperties(
+                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
         mainRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
         mainRun.Append(mainRunPr);
         mainRun.Append(new Text($"{number}. ") { Space = SpaceProcessingModeValues.Preserve });
@@ -943,7 +952,8 @@ public class WordGeneratorService : IWordGeneratorService
 
         // Title in bold
         var titleRun = new Run();
-        var titleRunPr = new RunProperties();
+        var titleRunPr = new RunProperties(
+                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
         titleRunPr.Append(new Bold(), new BoldComplexScript());
         titleRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
         titleRun.Append(titleRunPr);
@@ -955,7 +965,8 @@ public class WordGeneratorService : IWordGeneratorService
         if (bodyLines.Length > 0)
         {
             var bodyRun = new Run();
-            var bodyRunPr = new RunProperties();
+            var bodyRunPr = new RunProperties(
+                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
             bodyRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
             bodyRun.Append(bodyRunPr);
             bodyRun.Append(new Text(" " + bodyLines[0]) { Space = SpaceProcessingModeValues.Preserve });
@@ -969,7 +980,8 @@ public class WordGeneratorService : IWordGeneratorService
         {
             var linePara = new Paragraph();
             var lineRun = new Run();
-            var lineRunPr = new RunProperties();
+            var lineRunPr = new RunProperties(
+                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
             lineRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
             lineRun.Append(lineRunPr);
             lineRun.Append(new Text(bodyLines[i]) { Space = SpaceProcessingModeValues.Preserve });
@@ -985,7 +997,8 @@ public class WordGeneratorService : IWordGeneratorService
             {
                 var subPara = new Paragraph();
                 var subRun = new Run();
-                var subRunPr = new RunProperties();
+                var subRunPr = new RunProperties(
+                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
                 subRunPr.Append(new FontSize { Val = "20" }, new FontSizeComplexScript { Val = "20" });
                 subRun.Append(subRunPr);
                 subRun.Append(new Text($"    {subNumerals[j]}. {item.SubItems[j]}") { Space = SpaceProcessingModeValues.Preserve });
@@ -1037,7 +1050,8 @@ public class WordGeneratorService : IWordGeneratorService
 
             var para = new Paragraph();
             var run = new Run();
-            var runPr = new RunProperties();
+            var runPr = new RunProperties(
+                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
             if (isBold)
             {
                 runPr.Append(new Bold(), new BoldComplexScript());

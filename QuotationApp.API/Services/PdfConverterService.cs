@@ -34,6 +34,46 @@ public class PdfConverterService : IPdfConverterService
     private static readonly QuestPDFColor LightText = QuestPDFColor.FromHex("#888888");
     private static readonly QuestPDFColor NoteBackground = QuestPDFColor.FromHex("#F8FBFA");
 
+    // Text labels that must render with ONLY the label portion bold (e.g. "Name:" bold, "XYZ Corp" normal)
+    private static readonly string[] BoldLabelPrefixes = new[]
+    {
+        "Name:",
+        "Address:",
+        "Contact No.:",
+        "Email:",
+        "Quotation No.:",
+        "Date:",
+        "Reference:",
+        "Subject:",
+        "Dear Sir / Madam,",
+        "Definition:",
+        "Installation pre-requisites (in case of on-premise Server):",
+        "For BlechTek Software Solutions LLP",
+        "Sushama Inamdar"
+    };
+
+    /// <summary>
+    /// Checks whether the given text starts with one of the known bold label prefixes.
+    /// If it does, returns the label portion (to be bolded) and the remaining text (normal weight).
+    /// </summary>
+    private static bool TryGetBoldLabelPrefix(string text, out string label, out string rest)
+    {
+        label = null;
+        rest = null;
+        if (string.IsNullOrEmpty(text)) return false;
+
+        foreach (var prefix in BoldLabelPrefixes)
+        {
+            if (text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                label = text.Substring(0, prefix.Length);
+                rest = text.Substring(prefix.Length);
+                return true;
+            }
+        }
+        return false;
+    }
+
     private readonly string _contentRoot;
 
     public PdfConverterService(IOptions<QuotationSettings> settings, IWebHostEnvironment env)
@@ -163,12 +203,6 @@ public class PdfConverterService : IPdfConverterService
             if (runProps?.Caps != null)
             {
                 isAllCaps = true;
-            }
-            var runColor = runProps?.Color?.Val?.Value;
-            if (!string.IsNullOrWhiteSpace(runColor))
-            {
-                if (TryParseColor(runColor, out var qc))
-                    textColor = qc;
             }
             var fontSizeVal = runProps?.FontSize?.Val?.Value;
             if (!string.IsNullOrWhiteSpace(fontSizeVal))
@@ -308,7 +342,21 @@ public class PdfConverterService : IPdfConverterService
 
             foreach (var cell in cells)
             {
-                var cellText = cell.InnerText.Trim();
+                // IMPORTANT: cell.InnerText concatenates every paragraph in the cell into a single
+                // string with NO line breaks between them. That broke label bolding — e.g. a cell
+                // containing "Name: X" then "Address: Y" then "Contact No.: Z" as separate <w:p>
+                // paragraphs collapsed into one run-on string, so only the very first label ("Name:")
+                // was ever detected; "Address:", "Contact No.:", "Email:", "Date:", "Definition:", and
+                // "Installation pre-requisites..." were all swallowed into the unbolded "rest" text.
+                // Extracting each paragraph separately and rejoining with '\n' preserves the line
+                // breaks so downstream Split('\n') + per-line bold-label detection works correctly.
+                var cellParagraphTexts = cell.Elements<Paragraph>()
+                    .Select(p => p.InnerText.Trim())
+                    .Where(t => !string.IsNullOrEmpty(t))
+                    .ToList();
+                var cellText = cellParagraphTexts.Count > 0
+                    ? string.Join("\n", cellParagraphTexts)
+                    : cell.InnerText.Trim();
                 var cellProps = cell.TableCellProperties;
 
                 bool isBold = false;
@@ -361,9 +409,6 @@ public class PdfConverterService : IPdfConverterService
                         {
                             isBold = true;
                         }
-                        var cellRunColor = runProps?.Color?.Val?.Value;
-                        if (!string.IsNullOrWhiteSpace(cellRunColor) && TryParseColor(cellRunColor, out var runQc))
-                            textColor = runQc;
                         if (runProps?.FontSize?.Val != null)
                         {
                             // Font size handled at cell level
@@ -375,8 +420,8 @@ public class PdfConverterService : IPdfConverterService
                 if (isHeaderRow)
                 {
                     isBold = true;
-                    if (!backgroundColor.HasValue) backgroundColor = PrimaryBlue;
-                    if (!textColor.HasValue) textColor = White;
+                    if (!backgroundColor.HasValue) backgroundColor = White;
+                    if (!textColor.HasValue) textColor = TextBlack;
                 }
 
                 rowContent.Add(new CellContent
@@ -411,7 +456,7 @@ public class PdfConverterService : IPdfConverterService
             {
                 page.Size(PageSizes.A4);
                 page.Margin(1, Unit.Centimetre); // 1.5cm margins (~15mm)
-                page.DefaultTextStyle(x => x.FontSize(11).FontFamily("Calibri").FontColor(TextBlack).LineHeight(1.5f));
+                page.DefaultTextStyle(x => x.FontSize(10).FontFamily("Calibri").FontColor(TextBlack).LineHeight(1.5f));
 
                 // Add watermark as a background layer - centered with equal margins from all sides
                 if (hasWatermark)
@@ -442,17 +487,17 @@ public class PdfConverterService : IPdfConverterService
                             {
                                 // Fallback text if logo not found
                                 leftCol.Item().Text("BlechTek Software Solutions LLP")
-                                    .FontSize(14).FontFamily("Calibri").FontColor(PrimaryBlue).SemiBold();
+                                    .FontSize(14).FontFamily("Calibri").FontColor(TextBlack).SemiBold();
                             }
                         });
                         headerRow.RelativeItem().AlignRight().Column(rightCol =>
                         {
                             rightCol.Item().Text("QUOTATION")
-                                .FontSize(16).FontFamily("Calibri").FontColor(PrimaryBlue).Bold();
+                                .FontSize(16).FontFamily("Calibri").FontColor(TextBlack).Bold();
                         });
                     });
 
-                    headerCol.Item().PaddingTop(8).BorderBottom(2).BorderColor(PrimaryBlue).PaddingBottom(0);
+                    headerCol.Item().PaddingTop(8).BorderBottom(2).BorderColor(TextBlack).PaddingBottom(0);
                     headerCol.Item().PaddingTop(16);
                 });
 
@@ -478,15 +523,15 @@ public class PdfConverterService : IPdfConverterService
 
                 page.Footer().Height(80).Column(col =>
                 {
-                    col.Item().PaddingTop(16).BorderTop(1).BorderColor(PrimaryBlue)
+                    col.Item().PaddingTop(16).BorderTop(1).BorderColor(TextBlack)
                         .Column(footerCol =>
                         {
                             footerCol.Item().AlignCenter().Text("BlechTek Software Solutions LLP")
-                                .FontSize(10).FontFamily("Calibri").FontColor(PrimaryBlue).Bold();
+                                .FontSize(10).FontFamily("Calibri").FontColor(TextBlack).Bold();
                             footerCol.Item().AlignCenter().Text("Address: S.NO. 257/2/2A/4 ABC Business Center, S Floor, Opp. WindMill Village Road, WindMill Village, Bavdhan, Pune 411021, Maharashtra")
-                                .FontSize(9).FontFamily("Calibri").FontColor(MediumText);
+                                .FontSize(9).FontFamily("Calibri").FontColor(TextBlack);
                             footerCol.Item().AlignCenter().Text("LLP No.: ACD-6620 | GST NO.: 27ABCFB0283B1Z0 | MSME Certificate No.: UDYAM-MH-26-0746115")
-                                .FontSize(9).FontFamily("Calibri").FontColor(MediumText);
+                                .FontSize(9).FontFamily("Calibri").FontColor(TextBlack);
                         });
                 });
             });
@@ -504,12 +549,30 @@ public class PdfConverterService : IPdfConverterService
         var isSectionHeading = IsSectionHeading(para.Text);
         var isQuotationToHeading = para.Text.Trim().StartsWith("QUOTATION TO", StringComparison.OrdinalIgnoreCase);
         var isNote = para.Text.Contains("Deliverables do not include", StringComparison.OrdinalIgnoreCase);
+        var isPricingHeading = IsPricingSectionHeading(para.Text);
+        var isScopeHeading = IsScopeSectionHeading(para.Text);
+
+        if (isPricingHeading)
+        {
+            column.Item().PaddingTop(24).PaddingBottom(8).BorderBottom(1).BorderColor(TextBlack).PaddingBottom(4)
+                .Text(para.Text.ToUpper())
+                .FontSize(11).FontFamily("Calibri").FontColor(TextBlack).Bold();
+            return;
+        }
+
+        if (isScopeHeading)
+        {
+            column.Item().PaddingTop(24).PaddingBottom(8).BorderBottom(1).BorderColor(TextBlack).PaddingBottom(4)
+                .Text(para.Text.ToUpper())
+                .FontSize(11).FontFamily("Calibri").FontColor(TextBlack).Bold();
+            return;
+        }
 
         if (isSectionHeading)
         {
-            column.Item().PaddingTop(16).PaddingBottom(6).BorderBottom(1).BorderColor(PrimaryBlue).PaddingBottom(3)
+            column.Item().PaddingTop(24).PaddingBottom(8).BorderBottom(1).BorderColor(TextBlack).PaddingBottom(4)
                 .Text(para.Text.ToUpper())
-                .FontSize(11).FontFamily("Calibri").FontColor(PrimaryBlue).Bold();
+                .FontSize(11).FontFamily("Calibri").FontColor(TextBlack).Bold();
             return;
         }
 
@@ -517,16 +580,16 @@ public class PdfConverterService : IPdfConverterService
         {
             column.Item().PaddingBottom(6)
                 .Text(para.Text)
-                .FontSize(11).FontFamily("Calibri").FontColor(PrimaryBlue).Bold();
+                .FontSize(11).FontFamily("Calibri").FontColor(TextBlack).Bold();
             return;
         }
 
         if (isNote)
         {
-            column.Item().PaddingTop(16).PaddingBottom(16).PaddingLeft(12).BorderLeft(3).BorderColor(PrimaryBlue)
+            column.Item().PaddingTop(16).PaddingBottom(16).PaddingLeft(12).BorderLeft(3).BorderColor(TextBlack)
                 .Background(NoteBackground).Padding(10, Unit.Point).PaddingRight(12, Unit.Point)
                 .Text(para.Text)
-                .FontSize(11).FontFamily("Calibri").FontColor(DarkText).Italic().LineHeight(1.55f);
+                .FontSize(10).FontFamily("Calibri").FontColor(DarkText).Italic().LineHeight(1.55f);
             return;
         }
 
@@ -539,6 +602,68 @@ public class PdfConverterService : IPdfConverterService
             return;
         }
 
+        // Override bold for specific body texts that should be normal (not bold)
+        var text = para.Text.Trim();
+        var isBodyText = text.StartsWith("Reference:", StringComparison.OrdinalIgnoreCase) ||
+                         text.StartsWith("Subject:", StringComparison.OrdinalIgnoreCase) ||
+                         text.StartsWith("We discussed the current challenges", StringComparison.OrdinalIgnoreCase) ||
+                         text.StartsWith("Preliminary Business Proposal", StringComparison.OrdinalIgnoreCase) ||
+                         text.StartsWith("Our experts will be involved", StringComparison.OrdinalIgnoreCase) ||
+                         text.StartsWith("Digitization of Audit Tracker", StringComparison.OrdinalIgnoreCase) ||
+                         text.StartsWith("Training and implementation using CQUAL", StringComparison.OrdinalIgnoreCase);
+
+        // Texts that should always be bold (field labels, section headers)
+        var isBoldText = text.Equals("Name:", StringComparison.OrdinalIgnoreCase) ||
+                         text.Equals("Address:", StringComparison.OrdinalIgnoreCase) ||
+                         text.Equals("Contact No.:", StringComparison.OrdinalIgnoreCase) ||
+                         text.Equals("Email:", StringComparison.OrdinalIgnoreCase) ||
+                         text.Equals("Quotation No.:", StringComparison.OrdinalIgnoreCase) ||
+                         text.Equals("Date:", StringComparison.OrdinalIgnoreCase) ||
+                         text.Equals("Reference:", StringComparison.OrdinalIgnoreCase) ||
+                         text.Equals("Subject:", StringComparison.OrdinalIgnoreCase) ||
+                         text.Equals("Dear Sir / Madam,", StringComparison.OrdinalIgnoreCase) ||
+                         text.Equals("Definition:", StringComparison.OrdinalIgnoreCase) ||
+                         text.Equals("Installation pre-requisites (in case of on-premise Server):", StringComparison.OrdinalIgnoreCase);
+
+        // NEW: If this paragraph starts with one of the known label prefixes (Name:, Address:,
+        // Contact No.:, Email:, Quotation No.:, Date:, Reference:, Subject:, Dear Sir / Madam,,
+        // Definition:, Installation pre-requisites...), render it as two spans so ONLY the
+        // label portion is bold and any trailing value stays normal weight. This also correctly
+        // covers the case where the paragraph is just the label by itself (rest will be empty).
+        if (TryGetBoldLabelPrefix(text, out var boldLabel, out var labelRest))
+        {
+            var labelContainer = column.Item();
+
+            if (para.SpacingBefore > 0)
+                labelContainer = labelContainer.PaddingTop(para.SpacingBefore, Unit.Point);
+
+            if (para.SpacingAfter > 0)
+                labelContainer = labelContainer.PaddingBottom(para.SpacingAfter, Unit.Point);
+
+            if (para.HasBottomBorder)
+                labelContainer = labelContainer.BorderBottom(1).BorderColor(para.BorderColor ?? TableBorder);
+
+            labelContainer.Text(t =>
+            {
+                if (para.IsCentered)
+                    t.AlignCenter();
+
+                t.DefaultTextStyle(TextStyle.Default
+                    .FontSize(para.FontSize)
+                    .FontFamily(para.FontFamily)
+                    .FontColor(para.TextColor ?? TextBlack)
+                    .LineHeight(1.55f));
+
+                t.Span(boldLabel).Bold();
+                if (!string.IsNullOrEmpty(labelRest))
+                {
+                    t.Span(labelRest);
+                }
+            });
+
+            return;
+        }
+
         var paragraphContainer = column.Item();
 
         if (para.SpacingBefore > 0)
@@ -548,7 +673,7 @@ public class PdfConverterService : IPdfConverterService
             paragraphContainer = paragraphContainer.PaddingBottom(para.SpacingAfter, Unit.Point);
 
         if (para.HasBottomBorder)
-            paragraphContainer = paragraphContainer.BorderBottom(1).BorderColor(para.BorderColor ?? PrimaryBlue);
+            paragraphContainer = paragraphContainer.BorderBottom(1).BorderColor(para.BorderColor ?? TableBorder);
 
         var textStyle = TextStyle.Default
             .FontSize(para.FontSize)
@@ -556,7 +681,8 @@ public class PdfConverterService : IPdfConverterService
             .FontColor(para.TextColor ?? TextBlack)
             .LineHeight(1.55f);
 
-        if (para.IsBold) textStyle = textStyle.Bold();
+        // Only apply bold if not one of the body texts that should be normal, or if it's a bold text
+        if ((para.IsBold && !isBodyText) || isBoldText) textStyle = textStyle.Bold();
 
         var textItem = paragraphContainer.Text(para.Text).Style(textStyle);
 
@@ -579,6 +705,17 @@ public class PdfConverterService : IPdfConverterService
         // Look backwards to find if we're after "TERMS AND CONDITIONS" heading and before the next section
         bool foundTermsHeading = false;
 
+        // BUG FIX: the old forward-only check could never detect that we'd already passed the
+        // closing statement ("Thanking You" / "We hope this document is in line...") because it
+        // only looked FORWARD for that closing phrase. Any paragraph physically located AFTER the
+        // closing (e.g. the "For BlechTek Software Solutions LLP" / "Sushama Inamdar" signature
+        // block) would find no closing phrase ahead of it, fall through, and incorrectly be
+        // reported as "still in Terms and Conditions" -- which routed it to
+        // RenderTermsAndConditionsItem (plain, unbolded text) instead of our label-bolding logic.
+        // We now also scan backwards for the closing phrase; if it appears before currentIndex,
+        // we know we're already past the Terms and Conditions section.
+        bool foundClosingBeforeCurrent = false;
+
         for (int i = currentIndex - 1; i >= 0; i--)
         {
             if (allElements[i] is ParagraphContent prevPara)
@@ -589,6 +726,10 @@ public class PdfConverterService : IPdfConverterService
                     foundTermsHeading = true;
                     break;
                 }
+                if (text == "WE HOPE THIS DOCUMENT IS IN LINE" || text.StartsWith("THANKING YOU"))
+                {
+                    foundClosingBeforeCurrent = true;
+                }
                 // Stop if we hit another major section heading
                 if (IsSectionHeading(prevPara.Text) && text != "TERMS AND CONDITIONS")
                 {
@@ -597,7 +738,7 @@ public class PdfConverterService : IPdfConverterService
             }
         }
 
-        if (!foundTermsHeading) return false;
+        if (!foundTermsHeading || foundClosingBeforeCurrent) return false;
 
         // Also check we're not past the closing section
         for (int i = currentIndex + 1; i < allElements.Count; i++)
@@ -664,8 +805,27 @@ public class PdfConverterService : IPdfConverterService
                         }
                         if (!string.IsNullOrEmpty(body))
                         {
-                            contentCol.Item().PaddingTop(2).Text(body)
-                                .FontSize(10).FontFamily("Calibri").FontColor(DarkText).LineHeight(1.5f);
+                            // NEW: if no known title matched above, the body may itself start with one
+                            // of our known bold labels (e.g. "Definition:", "Installation pre-requisites
+                            // (in case of on-premise Server):"). In that case render only the label
+                            // portion bold, inline with the rest of the body, instead of plain text.
+                            if (string.IsNullOrEmpty(title) && TryGetBoldLabelPrefix(body, out var bodyBoldLabel, out var bodyLabelRest))
+                            {
+                                contentCol.Item().PaddingTop(2).Text(t =>
+                                {
+                                    t.DefaultTextStyle(TextStyle.Default.FontSize(10).FontFamily("Calibri").FontColor(DarkText).LineHeight(1.5f));
+                                    t.Span(bodyBoldLabel).Bold();
+                                    if (!string.IsNullOrEmpty(bodyLabelRest))
+                                    {
+                                        t.Span(bodyLabelRest);
+                                    }
+                                });
+                            }
+                            else
+                            {
+                                contentCol.Item().PaddingTop(2).Text(body)
+                                    .FontSize(10).FontFamily("Calibri").FontColor(DarkText).LineHeight(1.5f);
+                            }
                         }
                     });
                 });
@@ -686,9 +846,28 @@ public class PdfConverterService : IPdfConverterService
         }
         else
         {
-            // Regular paragraph within terms section
-            column.Item().PaddingLeft(30).PaddingTop(4).Text(text)
-                .FontSize(10).FontFamily("Calibri").FontColor(DarkText).LineHeight(1.5f);
+            // Regular paragraph within terms section.
+            // Safety net: if this line starts with one of our known bold labels (e.g. "Definition:",
+            // "Installation pre-requisites (in case of on-premise Server):", "For BlechTek Software
+            // Solutions LLP", "Sushama Inamdar"), still render only the label portion bold here too,
+            // in case such content is nested inside the Terms and Conditions numbering structure.
+            if (TryGetBoldLabelPrefix(text, out var termsBoldLabel, out var termsLabelRest))
+            {
+                column.Item().PaddingLeft(30).PaddingTop(4).Text(t =>
+                {
+                    t.DefaultTextStyle(TextStyle.Default.FontSize(10).FontFamily("Calibri").FontColor(DarkText).LineHeight(1.5f));
+                    t.Span(termsBoldLabel).Bold();
+                    if (!string.IsNullOrEmpty(termsLabelRest))
+                    {
+                        t.Span(termsLabelRest);
+                    }
+                });
+            }
+            else
+            {
+                column.Item().PaddingLeft(30).PaddingTop(4).Text(text)
+                    .FontSize(10).FontFamily("Calibri").FontColor(DarkText).LineHeight(1.5f);
+            }
         }
     }
 
@@ -704,6 +883,19 @@ public class PdfConverterService : IPdfConverterService
             "TERMS AND CONDITIONS"
         };
         return headings.Any(h => trimmed.Equals(h, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool IsPricingSectionHeading(string text)
+    {
+        var trimmed = text.Trim();
+        return trimmed.Equals("PRICE FOR IMPLEMENTATION", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsScopeSectionHeading(string text)
+    {
+        var trimmed = text.Trim();
+        return trimmed.Equals("SCOPE", StringComparison.OrdinalIgnoreCase) ||
+               trimmed.Equals("SCOPE OF WORK", StringComparison.OrdinalIgnoreCase);
     }
 
     private void RenderTable(ColumnDescriptor column, TableContent table)
@@ -723,93 +915,128 @@ public class PdfConverterService : IPdfConverterService
             table.Rows[0][1].Text.Trim().Equals("Particulars", StringComparison.OrdinalIgnoreCase) &&
             table.Rows[0][2].Text.Trim().Equals("Price in INR", StringComparison.OrdinalIgnoreCase);
 
-        column.Item().PaddingTop(16).Table(tableDef =>
-        {
-            // Define columns based on column widths or table type
-            if (isPricingTable)
-            {
-                tableDef.ColumnsDefinition(c =>
-                {
-                    c.RelativeColumn(0.08f); // Sr. No. - 8%
-                    c.RelativeColumn(0.72f); // Particulars - 72%
-                    c.RelativeColumn(0.20f); // Price in INR - 20%
-                });
-            }
-            else if (table.ColumnWidths.Count > 0)
-            {
-                tableDef.ColumnsDefinition(c =>
-                {
-                    var totalWidth = table.ColumnWidths.Sum();
-                    foreach (var width in table.ColumnWidths)
+        // Check if this is a scope table (has specific headers for scope)
+        var isScopeTable = table.Rows.Count > 0 && table.Rows[0].Count >= 2 &&
+            (table.Rows[0][0].Text.Trim().Equals("Sr. No.", StringComparison.OrdinalIgnoreCase) ||
+             table.Rows[0][0].Text.Trim().Equals("S.No.", StringComparison.OrdinalIgnoreCase) ||
+             table.Rows[0][0].Text.Trim().Equals("S.No", StringComparison.OrdinalIgnoreCase)) &&
+            (table.Rows[0][1].Text.Trim().Equals("Particulars", StringComparison.OrdinalIgnoreCase) ||
+             table.Rows[0][1].Text.Trim().Equals("Description", StringComparison.OrdinalIgnoreCase) ||
+             table.Rows[0][1].Text.Trim().Equals("Scope", StringComparison.OrdinalIgnoreCase));
+
+        column.Item().Table(tableDef =>
                     {
-                        float ratio = (float)width / totalWidth;
-                        c.RelativeColumn(ratio);
-                    }
-                });
-            }
-            else
-            {
-                // Fallback: equal columns
-                int colCount = table.Rows[0].Count;
-                tableDef.ColumnsDefinition(c =>
-                {
-                    for (int i = 0; i < colCount; i++)
-                        c.RelativeColumn();
-                });
-            }
+                        // Define columns based on column widths or table type
+                        if (isPricingTable)
+                        {
+                            tableDef.ColumnsDefinition(c =>
+                            {
+                                c.RelativeColumn(0.08f); // Sr. No. - 8%
+                                c.RelativeColumn(0.72f); // Particulars - 72%
+                                c.RelativeColumn(0.20f); // Price in INR - 20%
+                            });
+                        }
+                        else if (isScopeTable && table.ColumnWidths.Count > 0)
+                        {
+                            tableDef.ColumnsDefinition(c =>
+                            {
+                                var totalWidth = table.ColumnWidths.Sum();
+                                foreach (var width in table.ColumnWidths)
+                                {
+                                    float ratio = (float)width / totalWidth;
+                                    c.RelativeColumn(ratio);
+                                }
+                            });
+                        }
+                        else if (table.ColumnWidths.Count > 0)
+                        {
+                            tableDef.ColumnsDefinition(c =>
+                            {
+                                var totalWidth = table.ColumnWidths.Sum();
+                                foreach (var width in table.ColumnWidths)
+                                {
+                                    float ratio = (float)width / totalWidth;
+                                    c.RelativeColumn(ratio);
+                                }
+                            });
+                        }
+                        else
+                        {
+                            // Fallback: equal columns
+                            int colCount = table.Rows[0].Count;
+                            tableDef.ColumnsDefinition(c =>
+                            {
+                                for (int i = 0; i < colCount; i++)
+                                    c.RelativeColumn();
+                            });
+                        }
 
-            // Header row
-            if (table.Rows[0].Any(c => c.IsHeader))
-            {
-                tableDef.Header(header =>
-                {
-                    foreach (var cell in table.Rows[0])
-                    {
-                        header.Cell().Border(0.5f).BorderColor(TableBorder)
-                            .Padding(cell.Padding, Unit.Point)
-                            .Background(cell.BackgroundColor ?? PrimaryBlue)
-                            .Text(cell.Text)
-                            .FontSize(10).FontFamily("Calibri").FontColor(cell.TextColor ?? White).Bold();
-                    }
-                });
-            }
+                        // Header row
+                        if (table.Rows[0].Any(c => c.IsHeader))
+                        {
+                            tableDef.Header(header =>
+                            {
+                                foreach (var cell in table.Rows[0])
+                                {
+                                    header.Cell().Border(1).BorderColor(TextBlack)
+                                        .PaddingVertical(2, Unit.Point).PaddingHorizontal(4, Unit.Point)
+                                        .Background(White)
+                                        .Text(cell.Text)
+                                        .FontSize(11).FontFamily("Calibri").FontColor(TextBlack).Bold();
+                                }
+                            });
+                        }
 
-            // Data rows
-            for (int rowIndex = (table.Rows[0].Any(c => c.IsHeader) ? 1 : 0); rowIndex < table.Rows.Count; rowIndex++)
-            {
-                var row = table.Rows[rowIndex];
-                bool isAlternate = rowIndex % 2 == 0; // Alternate shading (even rows after header)
+                        // Data rows - CSS style: padding 4px 8px, border 1px solid #CCCCCC, alternating #F2F4F7
+                        for (int rowIndex = (table.Rows[0].Any(c => c.IsHeader) ? 1 : 0); rowIndex < table.Rows.Count; rowIndex++)
+                        {
+                            var row = table.Rows[rowIndex];
+                            bool isAlternate = rowIndex % 2 == 0; // Alternate shading (even rows after header)
 
-                foreach (var cell in row)
-                {
-                    var cellBackground = cell.BackgroundColor;
-                    if (!cellBackground.HasValue && isAlternate && table.Rows.Count > 1)
-                    {
-                        cellBackground = LightGray; // Alternate row shading
-                    }
+                            foreach (var cell in row)
+                            {
+                                var cellBackground = cell.BackgroundColor;
+                                if (!cellBackground.HasValue && isAlternate && table.Rows.Count > 1)
+                                {
+                                    cellBackground = LightGray; // Alternate row shading #F2F4F7
+                                }
 
-                    var cellTextColor = cell.TextColor ?? TextBlack;
+                                var cellTextColor = cell.TextColor ?? TextBlack;
 
-                    var cellBuilder = tableDef.Cell()
-                            .Border(0.5f).BorderColor(TableBorder)
-                            .Padding(cell.Padding, Unit.Point);
+                                var cellBuilder = tableDef.Cell()
+                                        .Border(1).BorderColor(TableBorder) // #CCCCCC
+                                        .PaddingVertical(2, Unit.Point).PaddingHorizontal(4, Unit.Point); // Reduced padding: 2px vertical, 4px horizontal
 
-                    if (cellBackground.HasValue)
-                    {
-                        cellBuilder = cellBuilder.Background(cellBackground.Value);
-                    }
+                                if (cellBackground.HasValue)
+                                {
+                                    cellBuilder = cellBuilder.Background(cellBackground.Value);
+                                }
 
-                    // For pricing table, right-align the price column
-                    var textElement = cellBuilder.Text(cell.Text)
-                            .FontSize(10).FontFamily("Calibri").FontColor(cellTextColor).LineHeight(1.4f);
+                                // For pricing table, right-align the price column (last column)
+                                var textElement = cellBuilder.Text(cell.Text)
+                                        .FontSize(10).FontFamily("Calibri").FontColor(cellTextColor).LineHeight(1.4f);
 
-                    if (isPricingTable && cell == row.Last())
-                    {
-                        textElement.AlignRight().Bold();
-                    }
-                }
-            }
-        });
+                                if (isPricingTable && cell == row.Last())
+                                {
+                                    textElement.AlignRight().Bold();
+                                }
+                                // For scope table, also right-align last column if it's a price/amount column
+                                else if (isScopeTable && cell == row.Last() && IsPriceColumn(cell.Text))
+                                {
+                                    textElement.AlignRight().Bold();
+                                }
+                            }
+                        }
+                    });
+    }
+
+    private bool IsPriceColumn(string text)
+    {
+        var trimmed = text.Trim();
+        // Check if the cell content looks like a price (contains currency symbol or is numeric with decimals)
+        return trimmed.StartsWith("₹") || trimmed.StartsWith("Rs") ||
+               System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^\d+(\.\d{1,2})?$") ||
+               trimmed.Contains(",") && System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^[\d,\.]+$");
     }
 
     private void RenderQuotationToGrid(ColumnDescriptor column, TableContent table)
@@ -825,7 +1052,7 @@ public class PdfConverterService : IPdfConverterService
         {
             column.Item().PaddingBottom(6)
                 .Text(headingRow[0].Text)
-                .FontSize(11).FontFamily("Calibri").FontColor(PrimaryBlue).Bold();
+                .FontSize(11).FontFamily("Calibri").FontColor(TextBlack).Bold();
         }
 
         // Data row has 2 cells: left (Name, Address, Contact, Email) and right (Quotation No, Date)
@@ -842,8 +1069,31 @@ public class PdfConverterService : IPdfConverterService
                         var trimmed = cell.Trim();
                         if (!string.IsNullOrEmpty(trimmed))
                         {
-                            leftCol.Item().Text(trimmed)
-                                .FontSize(10).FontFamily("Calibri").FontColor(PrimaryBlue).LineHeight(1.4f);
+                            // NEW: render only the label portion (e.g. "Name:", "Address:", "Contact No.:",
+                            // "Email:", "Dear Sir / Madam,", "Definition:", "Installation pre-requisites...")
+                            // in bold, keeping any trailing value at normal weight.
+                            if (TryGetBoldLabelPrefix(trimmed, out var leftBoldLabel, out var leftLabelRest))
+                            {
+                                leftCol.Item().Text(t =>
+                                {
+                                    t.DefaultTextStyle(TextStyle.Default.FontSize(10).FontFamily("Calibri").FontColor(TextBlack).LineHeight(1.4f));
+                                    t.Span(leftBoldLabel).Bold();
+                                    if (!string.IsNullOrEmpty(leftLabelRest))
+                                    {
+                                        t.Span(leftLabelRest);
+                                    }
+                                });
+                                continue;
+                            }
+
+                            var isLabel = trimmed.EndsWith(":", StringComparison.Ordinal) ||
+                                         trimmed.Equals("Dear Sir / Madam,", StringComparison.OrdinalIgnoreCase) ||
+                                         trimmed.Equals("Definition:", StringComparison.OrdinalIgnoreCase) ||
+                                         trimmed.Equals("Installation pre-requisites (in case of on-premise Server):", StringComparison.OrdinalIgnoreCase);
+                            var textStyle = TextStyle.Default
+                                .FontSize(10).FontFamily("Calibri").FontColor(TextBlack).LineHeight(1.4f);
+                            if (isLabel) textStyle = textStyle.Bold();
+                            leftCol.Item().Text(trimmed).Style(textStyle);
                         }
                     }
                 });
@@ -857,8 +1107,27 @@ public class PdfConverterService : IPdfConverterService
                         var trimmed = cell.Trim();
                         if (!string.IsNullOrEmpty(trimmed))
                         {
-                            rightCol.Item().AlignRight().Text(trimmed)
-                                .FontSize(10).FontFamily("Calibri").FontColor(PrimaryBlue).LineHeight(1.4f);
+                            // NEW: same label-only bold treatment for right column (e.g. "Quotation No.:", "Date:")
+                            if (TryGetBoldLabelPrefix(trimmed, out var rightBoldLabel, out var rightLabelRest))
+                            {
+                                rightCol.Item().Text(t =>
+                                {
+                                    t.AlignRight();
+                                    t.DefaultTextStyle(TextStyle.Default.FontSize(10).FontFamily("Calibri").FontColor(TextBlack).LineHeight(1.4f));
+                                    t.Span(rightBoldLabel).Bold();
+                                    if (!string.IsNullOrEmpty(rightLabelRest))
+                                    {
+                                        t.Span(rightLabelRest);
+                                    }
+                                });
+                                continue;
+                            }
+
+                            var isLabel = trimmed.EndsWith(":", StringComparison.Ordinal);
+                            var textStyle = TextStyle.Default
+                                .FontSize(10).FontFamily("Calibri").FontColor(TextBlack).LineHeight(1.4f);
+                            if (isLabel) textStyle = textStyle.Bold();
+                            rightCol.Item().AlignRight().Text(trimmed).Style(textStyle);
                         }
                     }
                 });
