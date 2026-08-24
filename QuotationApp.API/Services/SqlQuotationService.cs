@@ -19,6 +19,7 @@ public class SqlQuotationService : IQuotationService
     private readonly IModuleService _moduleService;
     private readonly QuotationDbContext _dbContext;
     private readonly string _outputFolder;
+    private readonly QuotationSettings _settings;
 
     public SqlQuotationService(
         IWordGeneratorService wordGenerator,
@@ -32,7 +33,8 @@ public class SqlQuotationService : IQuotationService
         _pdfConverter = pdfConverter;
         _moduleService = moduleService;
         _dbContext = dbContext;
-        _outputFolder = Path.Combine(env.ContentRootPath, settings.Value.OutputFolder);
+        _settings = settings.Value;
+        _outputFolder = Path.Combine(env.ContentRootPath, _settings.OutputFolder);
         Directory.CreateDirectory(_outputFolder);
     }
 
@@ -42,6 +44,14 @@ public class SqlQuotationService : IQuotationService
 
         var quotationId = $"Q-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8]}";
 
+        // Auto-generate QuotationNo if not provided
+        var quotationNo = string.IsNullOrWhiteSpace(request.QuotationNo)
+            ? await GenerateNextQuotationNoAsync()
+            : request.QuotationNo;
+
+        // Update request with the generated quotationNo so it appears in the document
+        request.QuotationNo = quotationNo;
+
         var docxPath = await _wordGenerator.GenerateAsync(request, quotationId);
         await _pdfConverter.ConvertToPdfAsync(docxPath);
 
@@ -49,15 +59,51 @@ public class SqlQuotationService : IQuotationService
         {
             QuotationId = quotationId,
             OrganizationName = request.OrganizationName,
-            QuotationNo = request.QuotationNo,
+            QuotationNo = quotationNo,
             Date = request.Date,
             GeneratedAt = DateTime.UtcNow,
             WordDownloadUrl = $"/api/quotation/{quotationId}/download/word",
             PdfDownloadUrl = $"/api/quotation/{quotationId}/download/pdf"
         };
 
-        await SaveToDatabaseAsync(result, request);
+        await SaveToDatabaseAsync(result, request, quotationNo);
         return result;
+    }
+
+    private async Task<string> GenerateNextQuotationNoAsync()
+    {
+        var prefix = _settings.QuotationNoPrefix;
+        var financialYear = _settings.FinancialYear;
+        var sequencePrefix = _settings.SequencePrefix;
+        var sequenceDigits = _settings.SequenceDigits;
+
+        // Find the maximum sequence number for the current financial year and prefix
+        var pattern = $"{prefix}/{financialYear}/{sequencePrefix}-%";
+        var maxSequence = await _dbContext.Quotations
+            .Where(q => q.QuotationNo != null && q.QuotationNo.StartsWith($"{prefix}/{financialYear}/{sequencePrefix}-"))
+            .Select(q => q.QuotationNo!)
+            .ToListAsync();
+
+        int nextSequence = 1;
+        if (maxSequence.Count > 0)
+        {
+            var sequences = maxSequence
+                .Select(q =>
+                {
+                    var parts = q.Split('-');
+                    if (parts.Length >= 2 && int.TryParse(parts[^1], out var seq))
+                        return seq;
+                    return 0;
+                })
+                .Where(s => s > 0)
+                .ToList();
+
+            if (sequences.Count > 0)
+                nextSequence = sequences.Max() + 1;
+        }
+
+        var sequenceStr = nextSequence.ToString($"D{sequenceDigits}");
+        return $"{prefix}/{financialYear}/{sequencePrefix}-{sequenceStr}";
     }
 
     public string? ResolveFilePath(string quotationId, string extension)
@@ -244,14 +290,14 @@ public class SqlQuotationService : IQuotationService
             throw new ArgumentException($"Unknown module(s): {string.Join(", ", unknown)}");
     }
 
-    private async Task SaveToDatabaseAsync(QuotationResult result, QuotationRequest request)
+    private async Task SaveToDatabaseAsync(QuotationResult result, QuotationRequest request, string quotationNo)
     {
         var quotation = new QuotationEntity
         {
             Id = result.QuotationId,
             OrganizationName = request.OrganizationName,
             ValidationDate = request.ValidationDate,
-            QuotationNo = request.QuotationNo,
+            QuotationNo = quotationNo,
             Date = request.Date,
             ReferenceBy = request.ReferenceBy,
             QuotationToName = request.QuotationTo.Name,

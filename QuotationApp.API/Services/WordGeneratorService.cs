@@ -744,8 +744,8 @@ public class WordGeneratorService : IWordGeneratorService
             // Add heading
             var headingPara = new Paragraph();
             var headingRun = new Run();
-var headingRunPr = new RunProperties(
-                new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
+            var headingRunPr = new RunProperties(
+                            new RunFonts { Ascii = "Segoe UI", HighAnsi = "Segoe UI", EastAsia = "Segoe UI", ComplexScript = "Segoe UI" });
             headingRunPr.Append(new Bold(), new BoldComplexScript());
             headingRunPr.Append(new Color { Val = "65AADB" });
             headingRunPr.Append(new FontSize { Val = "24" }, new FontSizeComplexScript { Val = "24" });

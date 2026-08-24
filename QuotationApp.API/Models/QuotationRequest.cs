@@ -14,7 +14,7 @@ public class QuotationRequest
     [StringLength(150)]
     public string ReferenceBy { get; set; } = string.Empty;
 
-    [Required, StringLength(50)]
+    [StringLength(50)]
     public string QuotationNo { get; set; } = string.Empty;
 
     [Required]
