@@ -24,8 +24,21 @@ public class ModulesController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Pillar) || string.IsNullOrWhiteSpace(request.ModuleName))
             return BadRequest("Pillar and ModuleName are required.");
 
-        var module = await _moduleService.AddModuleAsync(request);
-        return CreatedAtAction(nameof(GetAll), new { id = module.Id }, module);
+        try
+        {
+            var module = await _moduleService.AddModuleAsync(request);
+            return CreatedAtAction(nameof(GetAll), new { id = module.Id }, module);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            // Likely a unique constraint violation on ModuleName - return a friendly conflict response
+            return Conflict(new { error = "A module with this name already exists." });
+        }
+        catch (Exception)
+        {
+            // Unexpected error - return a generic server error message
+            return StatusCode(StatusCodes.Status500InternalServerError, new { error = "Could not create the module in the database." });
+        }
     }
 
     [HttpPut("{id:int}")]
