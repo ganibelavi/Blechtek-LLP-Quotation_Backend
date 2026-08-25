@@ -10,11 +10,13 @@ public class QuotationController : ControllerBase
 {
     private readonly IQuotationService _quotationService;
     private readonly ILogger<QuotationController> _logger;
+    private readonly IEmailService _emailService;
 
-    public QuotationController(IQuotationService quotationService, ILogger<QuotationController> logger)
+    public QuotationController(IQuotationService quotationService, ILogger<QuotationController> logger, IEmailService emailService)
     {
         _quotationService = quotationService;
         _logger = logger;
+        _emailService = emailService;
     }
 
     /// <summary>Generates a Word + PDF quotation from the submitted form data.</summary>
@@ -96,6 +98,47 @@ public class QuotationController : ControllerBase
         if (path is null) return NotFound(new { error = "Quotation not found." });
 
         return PhysicalFile(path, "application/pdf", $"{quotationId}.pdf");
+    }
+
+    /// <summary>Send the quotation PDF by email to the specified recipient.</summary>
+    public class SendEmailRequest
+    {
+        public string RecipientEmail { get; set; }
+        public string Subject { get; set; }
+        public string Message { get; set; }
+        public bool AttachPdf { get; set; } = true;
+    }
+
+    [HttpPost("{quotationId}/send-email")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SendEmail(string quotationId, [FromBody] SendEmailRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request?.RecipientEmail))
+            return BadRequest(new { error = "RecipientEmail is required." });
+
+        try
+        {
+            // Try to resolve the PDF attachment if requested
+            string attachment = null;
+            if (request.AttachPdf)
+            {
+                attachment = _quotationService.ResolveFilePath(quotationId, "pdf");
+                if (attachment is null) return NotFound(new { error = "Quotation PDF not found." });
+            }
+
+            var subject = string.IsNullOrWhiteSpace(request.Subject) ? $"Quotation {quotationId} from BlechTek" : request.Subject;
+            var message = request.Message ?? "Please find attached the quotation.";
+
+            await _emailService.SendQuotationEmailAsync(quotationId, request.RecipientEmail, subject, message, attachment);
+            return Ok(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send quotation {QuotationId} email", quotationId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { error = "Failed to send email." });
+        }
     }
 
     /// <summary>Updates the discount percentage for an existing quotation and regenerates documents.</summary>

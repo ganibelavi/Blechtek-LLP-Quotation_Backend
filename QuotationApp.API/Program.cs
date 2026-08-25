@@ -30,6 +30,10 @@ builder.Services.AddScoped<IQuotationService, SqlQuotationService>(); // SQL-bas
 // Add user service for authentication
 builder.Services.AddScoped<IUserService, UserService>();
 
+// Configure SMTP email options and register email service
+builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
+builder.Services.AddScoped<IEmailService, SmtpEmailService>();
+
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
     ?? new[] { "http://localhost:3000" };
 
