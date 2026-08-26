@@ -415,4 +415,67 @@ public class SqlQuotationService : IQuotationService
             PdfDownloadUrl = $"/api/quotation/{quotationId}/download/pdf"
         };
     }
+
+    /// <summary>
+    /// Updates quotation details (validation date, modules) and regenerates documents.
+    /// </summary>
+    public async Task<QuotationResult?> UpdateQuotationAsync(string quotationId, DateTime validationDate, List<string> selectedModules)
+    {
+        var quotation = await _dbContext.Quotations
+            .Include(q => q.QuotationModules)
+            .FirstOrDefaultAsync(q => q.Id == quotationId);
+
+        if (quotation == null)
+            return null;
+
+        // Validate modules
+        await ValidateModulesAsync(selectedModules);
+
+        // Update validation date
+        quotation.ValidationDate = validationDate;
+
+        // Update modules - remove existing and add new
+        _dbContext.QuotationModules.RemoveRange(quotation.QuotationModules);
+        quotation.QuotationModules = selectedModules.Select(m => new QuotationModuleEntity
+        {
+            QuotationId = quotationId,
+            ModuleName = m
+        }).ToList();
+
+        // Build request from stored data with updated validation date and modules
+        var request = new QuotationRequest
+        {
+            ValidationDate = validationDate,
+            OrganizationName = quotation.OrganizationName,
+            ReferenceBy = quotation.ReferenceBy ?? string.Empty,
+            QuotationNo = quotation.QuotationNo ?? string.Empty,
+            Date = quotation.Date ?? DateTime.UtcNow,
+            SelectedModules = selectedModules,
+            QuotationTo = new QuotationToInfo
+            {
+                Name = quotation.QuotationToName,
+                Address = quotation.QuotationToAddress,
+                ContactNo = quotation.QuotationToContactNo,
+                Email = quotation.QuotationToEmail
+            },
+            DiscountPercentage = quotation.DiscountPercentage ?? 0
+        };
+
+        // Regenerate documents with updated data
+        var docxPath = await _wordGenerator.GenerateAsync(request, quotationId);
+        await _pdfConverter.ConvertToPdfAsync(docxPath);
+
+        await _dbContext.SaveChangesAsync();
+
+        return new QuotationResult
+        {
+            QuotationId = quotationId,
+            OrganizationName = quotation.OrganizationName,
+            QuotationNo = quotation.QuotationNo ?? string.Empty,
+            Date = quotation.Date ?? DateTime.UtcNow,
+            GeneratedAt = quotation.GeneratedAt,
+            WordDownloadUrl = $"/api/quotation/{quotationId}/download/word",
+            PdfDownloadUrl = $"/api/quotation/{quotationId}/download/pdf"
+        };
+    }
 }

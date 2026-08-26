@@ -166,6 +166,33 @@ public class QuotationController : ControllerBase
         }
     }
 
+    /// <summary>Updates quotation details (validation date, modules) and regenerates documents.</summary>
+    [HttpPut("{quotationId}")]
+    [ProducesResponseType(typeof(QuotationResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<QuotationResult>> UpdateQuotation(string quotationId, [FromBody] UpdateQuotationRequest request)
+    {
+        if (!ModelState.IsValid) return ValidationProblem(ModelState);
+
+        try
+        {
+            var result = await _quotationService.UpdateQuotationAsync(quotationId, request.ValidationDate, request.SelectedModules);
+            if (result is null) return NotFound(new { error = "Quotation not found." });
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update quotation {QuotationId}", quotationId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "Could not update quotation. Please try again." });
+        }
+    }
+
     /// <summary>Gets the next auto-generated quotation number without creating a quotation.</summary>
     [HttpGet("next-quotation-no")]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]

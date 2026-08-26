@@ -87,3 +87,14 @@ public class UpdateDiscountRequest
     [Range(0, 100, ErrorMessage = "Discount must be between 0 and 100.")]
     public decimal DiscountPercentage { get; set; }
 }
+
+/// <summary>Request payload for updating quotation details (validation date, modules).</summary>
+public class UpdateQuotationRequest
+{
+    [Required]
+    public DateTime ValidationDate { get; set; }
+
+    /// <summary>Exact module names as they appear in the master list.</summary>
+    [Required, MinLength(1, ErrorMessage = "Select at least one module.")]
+    public List<string> SelectedModules { get; set; } = new();
+}

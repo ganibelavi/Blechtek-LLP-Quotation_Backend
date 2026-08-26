@@ -89,6 +89,12 @@ public class QuotationService : IQuotationService
         throw new NotImplementedException("Use SqlQuotationService for discount updates.");
     }
 
+    public Task<QuotationResult?> UpdateQuotationAsync(string quotationId, DateTime validationDate, List<string> selectedModules)
+    {
+        // This service is deprecated (JSON-based). Use SqlQuotationService instead.
+        throw new NotImplementedException("Use SqlQuotationService for quotation updates.");
+    }
+
     private async Task ValidateModulesAsync(List<string> selectedModules)
     {
         var master = await _moduleService.GetModulesAsync();
