@@ -22,7 +22,7 @@ builder.Services.AddSwaggerGen();
 
 // Modules are managed through the SQL database and exposed by /api/modules.
 builder.Services.AddScoped<IModuleService, SqlModuleService>();
-builder.Services.AddScoped<IWordGeneratorService, WordGeneratorService>();
+// builder.Services.AddScoped<IWordGeneratorService, WordGeneratorService>();
 builder.Services.AddScoped<IPdfConverterService, PdfConverterService>();
 builder.Services.AddScoped<ITemplateService, TemplateService>(); // Add TemplateService
 // builder.Services.AddScoped<IQuotationService, QuotationService>(); // JSON-based

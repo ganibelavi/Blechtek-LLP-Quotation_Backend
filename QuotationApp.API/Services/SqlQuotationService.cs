@@ -1,6 +1,8 @@
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using QuotationApp.API.Data;
@@ -14,27 +16,26 @@ namespace QuotationApp.API.Services;
 /// </summary>
 public class SqlQuotationService : IQuotationService
 {
-    private readonly IWordGeneratorService _wordGenerator;
     private readonly IPdfConverterService _pdfConverter;
     private readonly IModuleService _moduleService;
     private readonly QuotationDbContext _dbContext;
     private readonly string _outputFolder;
     private readonly QuotationSettings _settings;
+    private readonly string _templatePath;
 
     public SqlQuotationService(
-        IWordGeneratorService wordGenerator,
         IPdfConverterService pdfConverter,
         IModuleService moduleService,
         QuotationDbContext dbContext,
         IOptions<QuotationSettings> settings,
         IWebHostEnvironment env)
     {
-        _wordGenerator = wordGenerator;
         _pdfConverter = pdfConverter;
         _moduleService = moduleService;
         _dbContext = dbContext;
         _settings = settings.Value;
         _outputFolder = Path.Combine(env.ContentRootPath, _settings.OutputFolder);
+        _templatePath = Path.Combine(env.ContentRootPath, "Templates", "QuotationTemplate.docx");
         Directory.CreateDirectory(_outputFolder);
     }
 
@@ -52,7 +53,7 @@ public class SqlQuotationService : IQuotationService
         // Update request with the generated quotationNo so it appears in the document
         request.QuotationNo = quotationNo;
 
-        var docxPath = await _wordGenerator.GenerateAsync(request, quotationId);
+        var docxPath = await GenerateWordDocumentAsync(request, quotationId);
         await _pdfConverter.ConvertToPdfAsync(docxPath);
 
         var result = new QuotationResult
@@ -399,7 +400,7 @@ public class SqlQuotationService : IQuotationService
         };
 
         // Regenerate documents with new discount
-        var docxPath = await _wordGenerator.GenerateAsync(request, quotationId);
+        var docxPath = await GenerateWordDocumentAsync(request, quotationId);
         await _pdfConverter.ConvertToPdfAsync(docxPath);
 
         await _dbContext.SaveChangesAsync();
@@ -462,7 +463,7 @@ public class SqlQuotationService : IQuotationService
         };
 
         // Regenerate documents with updated data
-        var docxPath = await _wordGenerator.GenerateAsync(request, quotationId);
+        var docxPath = await GenerateWordDocumentAsync(request, quotationId);
         await _pdfConverter.ConvertToPdfAsync(docxPath);
 
         await _dbContext.SaveChangesAsync();
@@ -477,5 +478,100 @@ public class SqlQuotationService : IQuotationService
             WordDownloadUrl = $"/api/quotation/{quotationId}/download/word",
             PdfDownloadUrl = $"/api/quotation/{quotationId}/download/pdf"
         };
+    }
+
+    private async Task<string> GenerateWordDocumentAsync(QuotationRequest request, string quotationId)
+    {
+        var outputPath = Path.Combine(_outputFolder, $"{quotationId}.docx");
+
+        // Copy template to output location
+        if (!File.Exists(_templatePath))
+        {
+            throw new FileNotFoundException($"Template not found: {_templatePath}");
+        }
+
+        File.Copy(_templatePath, outputPath, true);
+
+        // Open the document and replace placeholders
+        using (var doc = WordprocessingDocument.Open(outputPath, true))
+        {
+            var body = doc.MainDocumentPart?.Document.Body;
+            if (body != null)
+            {
+                var moduleService = _moduleService;
+                var modules = await moduleService.GetModulesAsync();
+                var modulePrices = modules.ToDictionary(m => m.Module, m => m.Price ?? 0m);
+
+                var totalPrice = request.SelectedModules.Sum(m => modulePrices.GetValueOrDefault(m, 0m));
+                var discountPercentage = request.DiscountPercentage > 0 ? request.DiscountPercentage : 0m;
+                var discountAmount = totalPrice * discountPercentage / 100m;
+                var finalPrice = totalPrice - discountAmount;
+
+                var replacements = new Dictionary<string, string>
+                {
+                    ["{{QuotationNo}}"] = request.QuotationNo ?? "",
+                    ["{{Date}}"] = request.Date.ToString("dd/MM/yyyy"),
+                    ["{{OrganizationName}}"] = request.OrganizationName ?? "",
+                    ["{{ReferenceBy}}"] = request.ReferenceBy ?? "",
+                    ["{{ValidationDate}}"] = request.ValidationDate.ToString("dd/MM/yyyy"),
+                    ["{{QuotationTo.Name}}"] = request.QuotationTo?.Name ?? "",
+                    ["{{QuotationTo.Address}}"] = request.QuotationTo?.Address ?? "",
+                    ["{{QuotationTo.ContactNo}}"] = request.QuotationTo?.ContactNo ?? "",
+                    ["{{QuotationTo.Email}}"] = request.QuotationTo?.Email ?? "",
+                    ["{{SelectedModules}}"] = string.Join(", ", request.SelectedModules),
+                    ["{{TotalPrice}}"] = totalPrice.ToString("N2"),
+                    ["{{DiscountPercentage}}"] = discountPercentage.ToString("N2"),
+                    ["{{DiscountAmount}}"] = discountAmount.ToString("N2"),
+                    ["{{FinalPrice}}"] = finalPrice.ToString("N2")
+                };
+
+                foreach (var paragraph in body.Descendants<Paragraph>())
+                {
+                    foreach (var run in paragraph.Descendants<Run>())
+                    {
+                        var text = run.Descendants<Text>().FirstOrDefault();
+                        if (text != null)
+                        {
+                            var originalText = text.Text;
+                            foreach (var kvp in replacements)
+                            {
+                                if (originalText.Contains(kvp.Key))
+                                {
+                                    text.Text = originalText.Replace(kvp.Key, kvp.Value);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Also replace in tables
+                foreach (var table in body.Descendants<Table>())
+                {
+                    foreach (var cell in table.Descendants<TableCell>())
+                    {
+                        foreach (var paragraph in cell.Descendants<Paragraph>())
+                        {
+                            foreach (var run in paragraph.Descendants<Run>())
+                            {
+                                var text = run.Descendants<Text>().FirstOrDefault();
+                                if (text != null)
+                                {
+                                    var originalText = text.Text;
+                                    foreach (var kvp in replacements)
+                                    {
+                                        if (originalText.Contains(kvp.Key))
+                                        {
+                                            text.Text = originalText.Replace(kvp.Key, kvp.Value);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return outputPath;
     }
 }
