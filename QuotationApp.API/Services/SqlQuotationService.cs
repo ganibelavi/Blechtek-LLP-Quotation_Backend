@@ -35,7 +35,7 @@ public class SqlQuotationService : IQuotationService
         _dbContext = dbContext;
         _settings = settings.Value;
         _outputFolder = Path.Combine(env.ContentRootPath, _settings.OutputFolder);
-        _templatePath = Path.Combine(env.ContentRootPath, "Templates", "QuotationTemplate.docx");
+        _templatePath = Path.Combine(env.ContentRootPath, "Templates", "QuotationTemplate_Updated.docx");
         Directory.CreateDirectory(_outputFolder);
     }
 
@@ -534,53 +534,116 @@ public class SqlQuotationService : IQuotationService
                     ["{{FinalPrice}}"] = finalPrice.ToString("N2")
                 };
 
+                PopulateScopeTable(body, modules, request.SelectedModules);
+
                 foreach (var paragraph in body.Descendants<Paragraph>())
                 {
-                    foreach (var run in paragraph.Descendants<Run>())
-                    {
-                        var text = run.Descendants<Text>().FirstOrDefault();
-                        if (text != null)
-                        {
-                            var originalText = text.Text;
-                            foreach (var kvp in replacements)
-                            {
-                                if (originalText.Contains(kvp.Key))
-                                {
-                                    text.Text = originalText.Replace(kvp.Key, kvp.Value);
-                                }
-                            }
-                        }
-                    }
-                }
+                    ReplaceParagraphText(paragraph, replacements);
 
-                // Also replace in tables
-                foreach (var table in body.Descendants<Table>())
-                {
-                    foreach (var cell in table.Descendants<TableCell>())
+                    if (string.Equals(
+                            paragraph.InnerText.Trim(),
+                            "QUOTATION TO",
+                            StringComparison.OrdinalIgnoreCase))
                     {
-                        foreach (var paragraph in cell.Descendants<Paragraph>())
-                        {
-                            foreach (var run in paragraph.Descendants<Run>())
+                        ReplaceParagraphText(
+                            paragraph,
+                            new Dictionary<string, string>
                             {
-                                var text = run.Descendants<Text>().FirstOrDefault();
-                                if (text != null)
-                                {
-                                    var originalText = text.Text;
-                                    foreach (var kvp in replacements)
-                                    {
-                                        if (originalText.Contains(kvp.Key))
-                                        {
-                                            text.Text = originalText.Replace(kvp.Key, kvp.Value);
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                                ["QUOTATION TO"] = $"QUOTATION TO - {request.OrganizationName}"
+                            });
                     }
                 }
             }
         }
 
         return outputPath;
+    }
+
+    private static void PopulateScopeTable(
+        Body body,
+        IReadOnlyCollection<ModuleItem> modules,
+        IEnumerable<string> selectedModuleNames)
+    {
+        var selectedModules = selectedModuleNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var scopeRow = body
+            .Descendants<TableRow>()
+            .FirstOrDefault(row =>
+            {
+                var rowText = string.Concat(row.Descendants<Text>().Select(text => text.Text));
+                return rowText.Contains("{{PILLAR}}", StringComparison.Ordinal) &&
+                       rowText.Contains("{{MODULE}}", StringComparison.Ordinal) &&
+                       rowText.Contains("{{SELECTED}}", StringComparison.Ordinal);
+            });
+
+        if (scopeRow is null) return;
+
+        foreach (var module in modules.Where(module => selectedModules.Contains(module.Module)))
+        {
+            var row = (TableRow)scopeRow.CloneNode(true);
+            var rowReplacements = new Dictionary<string, string>
+            {
+                ["{{PILLAR}}"] = module.Pillar,
+                ["{{MODULE}}"] = module.Module,
+                ["{{SELECTED}}"] = "Yes"
+            };
+            foreach (var paragraph in row.Descendants<Paragraph>())
+            {
+                ReplaceParagraphText(paragraph, rowReplacements);
+            }
+            scopeRow.InsertBeforeSelf(row);
+        }
+
+        scopeRow.Remove();
+    }
+
+    private static void ReplaceParagraphText(
+        Paragraph paragraph,
+        IReadOnlyDictionary<string, string> replacements)
+    {
+        var textGroup = new List<Text>();
+
+        void ReplaceCurrentTextGroup()
+        {
+            if (textGroup.Count == 0) return;
+
+            var originalText = string.Concat(textGroup.Select(text => text.Text));
+            var replacedText = originalText;
+            foreach (var replacement in replacements)
+            {
+                replacedText = replacedText.Replace(
+                    replacement.Key,
+                    replacement.Value,
+                    StringComparison.Ordinal);
+            }
+
+            if (!string.Equals(originalText, replacedText, StringComparison.Ordinal))
+            {
+                textGroup[0].Text = replacedText;
+                foreach (var textNode in textGroup.Skip(1))
+                {
+                    textNode.Text = string.Empty;
+                }
+            }
+
+            textGroup.Clear();
+        }
+
+        foreach (var run in paragraph.Elements<Run>())
+        {
+            foreach (var element in run.Elements())
+            {
+                if (element is Text text)
+                {
+                    textGroup.Add(text);
+                }
+                else if (element.LocalName == "tab")
+                {
+                    // Do not move text across tabs in the metadata layout.
+                    ReplaceCurrentTextGroup();
+                }
+            }
+        }
+
+        ReplaceCurrentTextGroup();
     }
 }

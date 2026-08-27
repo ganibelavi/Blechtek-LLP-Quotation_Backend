@@ -41,6 +41,7 @@ public class PdfConverterService : IPdfConverterService
         "Address:",
         "Contact No.:",
         "Email:",
+        "Quotation No:",
         "Quotation No.:",
         "Date:",
         "Reference:",
@@ -174,7 +175,8 @@ public class PdfConverterService : IPdfConverterService
 
     private ParagraphContent ExtractParagraphContent(Paragraph paragraph)
     {
-        var text = paragraph.InnerText.Trim();
+        // Extract text preserving tabs (w:tab elements) - InnerText doesn't include them
+        var text = ExtractTextWithTabs(paragraph);
         if (string.IsNullOrWhiteSpace(text)) return new ParagraphContent();
 
         var properties = paragraph.ParagraphProperties;
@@ -281,6 +283,30 @@ public class PdfConverterService : IPdfConverterService
             HasBottomBorder = hasBottomBorder,
             BorderColor = borderColor
         };
+    }
+
+    /// <summary>
+    /// Extracts text from a paragraph preserving tab characters (w:tab elements).
+    /// InnerText doesn't include tabs, so we manually build the text including tabs.
+    /// </summary>
+    private static string ExtractTextWithTabs(Paragraph paragraph)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var run in paragraph.Elements<Run>())
+        {
+            foreach (var element in run.Elements())
+            {
+                if (element is Text textElement)
+                {
+                    sb.Append(textElement.Text);
+                }
+                else if (element.LocalName == "tab") // w:tab element
+                {
+                    sb.Append('\t');
+                }
+            }
+        }
+        return sb.ToString().Trim();
     }
 
     private TableContent ExtractTableContent(Table table)
@@ -639,37 +665,10 @@ public class PdfConverterService : IPdfConverterService
         // Definition:, Installation pre-requisites...), render it as two spans so ONLY the
         // label portion is bold and any trailing value stays normal weight. This also correctly
         // covers the case where the paragraph is just the label by itself (rest will be empty).
-        if (TryGetBoldLabelPrefix(text, out var boldLabel, out var labelRest))
+        // Also handle tab-separated multiple labels in one paragraph (e.g. "Name: John\t\tQuotation No: Q-123")
+        if (TryGetBoldLabelPrefix(text, out var boldLabel, out var labelRest) || ContainsTabSeparatedLabels(text))
         {
-            var labelContainer = column.Item();
-
-            if (para.SpacingBefore > 0)
-                labelContainer = labelContainer.PaddingTop(para.SpacingBefore, Unit.Point);
-
-            if (para.SpacingAfter > 0)
-                labelContainer = labelContainer.PaddingBottom(para.SpacingAfter, Unit.Point);
-
-            if (para.HasBottomBorder)
-                labelContainer = labelContainer.BorderBottom(1).BorderColor(para.BorderColor ?? TableBorder);
-
-            labelContainer.Text(t =>
-            {
-                if (para.IsCentered)
-                    t.AlignCenter();
-
-                t.DefaultTextStyle(TextStyle.Default
-                    .FontSize(para.FontSize)
-                    .FontFamily(para.FontFamily)
-                    .FontColor(para.TextColor ?? TextBlack)
-                    .LineHeight(1.55f));
-
-                t.Span(boldLabel).Bold();
-                if (!string.IsNullOrEmpty(labelRest))
-                {
-                    t.Span(labelRest);
-                }
-            });
-
+            RenderParagraphWithLabels(column, para, text);
             return;
         }
 
@@ -707,6 +706,156 @@ public class PdfConverterService : IPdfConverterService
         {
             // QuestPDF handles numbering differently; keep text as-is.
         }
+    }
+
+    /// <summary>
+    /// Checks if the text contains tab-separated label-value pairs (e.g. "Name: John\t\tQuotation No: Q-123")
+    /// </summary>
+    private static bool ContainsTabSeparatedLabels(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        var segments = text.Split('\t');
+        foreach (var segment in segments)
+        {
+            var trimmed = segment.Trim();
+            if (!string.IsNullOrEmpty(trimmed))
+            {
+                foreach (var prefix in BoldLabelPrefixes)
+                {
+                    if (trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Renders a paragraph that may contain multiple tab-separated label-value pairs.
+    /// Each label is rendered bold, each value normal weight.
+    /// </summary>
+    private void RenderParagraphWithLabels(ColumnDescriptor column, ParagraphContent para, string text)
+    {
+        var segments = text.Split('\t');
+        var validSegments = segments
+            .Select(s => s.Trim())
+            .Where(s => !string.IsNullOrEmpty(s))
+            .ToList();
+
+        if (validSegments.Count <= 1)
+        {
+            // Fallback to single label rendering
+            if (TryGetBoldLabelPrefix(text, out var boldLabel, out var labelRest))
+            {
+                RenderSingleLabel(column, para, boldLabel, labelRest);
+            }
+            else
+            {
+                RenderPlainParagraph(column, para);
+            }
+            return;
+        }
+
+        // Render as a row with multiple columns for tab-separated labels
+        column.Item().Row(row =>
+        {
+            for (int i = 0; i < validSegments.Count; i++)
+            {
+                var segment = validSegments[i];
+                var isLast = i == validSegments.Count - 1;
+
+                if (TryGetBoldLabelPrefix(segment, out var boldLabel, out var labelRest))
+                {
+                    // Label + value segment
+                    var relativeWidth = isLast ? 1f : 1f; // Equal width for simplicity
+                    row.RelativeItem(relativeWidth).Column(col =>
+                    {
+                        col.Item().Text(t =>
+                        {
+                            t.DefaultTextStyle(TextStyle.Default
+                                .FontSize(para.FontSize)
+                                .FontFamily(para.FontFamily)
+                                .FontColor(para.TextColor ?? TextBlack)
+                                .LineHeight(1.55f));
+                            t.Span(boldLabel).Bold();
+                            if (!string.IsNullOrEmpty(labelRest))
+                            {
+                                t.Span(labelRest);
+                            }
+                        });
+                    });
+                }
+                else
+                {
+                    // Plain text segment
+                    row.RelativeItem().Column(col =>
+                    {
+                        col.Item().Text(segment)
+                            .FontSize(para.FontSize)
+                            .FontFamily(para.FontFamily)
+                            .FontColor(para.TextColor ?? TextBlack)
+                            .LineHeight(1.55f);
+                    });
+                }
+            }
+        });
+    }
+
+    private void RenderSingleLabel(ColumnDescriptor column, ParagraphContent para, string boldLabel, string labelRest)
+    {
+        var labelContainer = column.Item();
+
+        if (para.SpacingBefore > 0)
+            labelContainer = labelContainer.PaddingTop(para.SpacingBefore, Unit.Point);
+
+        if (para.SpacingAfter > 0)
+            labelContainer = labelContainer.PaddingBottom(para.SpacingAfter, Unit.Point);
+
+        if (para.HasBottomBorder)
+            labelContainer = labelContainer.BorderBottom(1).BorderColor(para.BorderColor ?? TableBorder);
+
+        labelContainer.Text(t =>
+        {
+            if (para.IsCentered)
+                t.AlignCenter();
+
+            t.DefaultTextStyle(TextStyle.Default
+                .FontSize(para.FontSize)
+                .FontFamily(para.FontFamily)
+                .FontColor(para.TextColor ?? TextBlack)
+                .LineHeight(1.55f));
+
+            t.Span(boldLabel).Bold();
+            if (!string.IsNullOrEmpty(labelRest))
+            {
+                t.Span(labelRest);
+            }
+        });
+    }
+
+    private void RenderPlainParagraph(ColumnDescriptor column, ParagraphContent para)
+    {
+        var paragraphContainer = column.Item();
+
+        if (para.SpacingBefore > 0)
+            paragraphContainer = paragraphContainer.PaddingTop(para.SpacingBefore, Unit.Point);
+
+        if (para.SpacingAfter > 0)
+            paragraphContainer = paragraphContainer.PaddingBottom(para.SpacingAfter, Unit.Point);
+
+        if (para.HasBottomBorder)
+            paragraphContainer = paragraphContainer.BorderBottom(1).BorderColor(para.BorderColor ?? TableBorder);
+
+        var textStyle = TextStyle.Default
+            .FontSize(para.FontSize)
+            .FontFamily(para.FontFamily)
+            .FontColor(para.TextColor ?? TextBlack)
+            .LineHeight(1.55f);
+
+        var textItem = paragraphContainer.Text(para.Text).Style(textStyle);
+
+        if (para.IsCentered)
+            textItem.AlignCenter();
     }
 
     private bool IsInTermsAndConditionsSection(int currentIndex, List<IDocumentElement> allElements)
