@@ -531,7 +531,8 @@ public class SqlQuotationService : IQuotationService
                     ["{{TotalPrice}}"] = totalPrice.ToString("N2"),
                     ["{{DiscountPercentage}}"] = discountPercentage.ToString("N2"),
                     ["{{DiscountAmount}}"] = discountAmount.ToString("N2"),
-                    ["{{FinalPrice}}"] = finalPrice.ToString("N2")
+                    ["{{FinalPrice}}"] = finalPrice.ToString("N2"),
+                    ["{{IMPLEMENTATION_PRICE}}"] = (discountPercentage > 0 ? finalPrice : totalPrice).ToString("N2")
                 };
 
                 PopulateScopeTable(body, modules, request.SelectedModules);
