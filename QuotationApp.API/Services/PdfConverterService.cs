@@ -593,6 +593,15 @@ public class PdfConverterService : IPdfConverterService
             return;
         }
 
+        // Check if we're in the Scope of Work section
+        var isScopeOfWork = IsInScopeOfWorkSection(index, allElements);
+
+        if (isScopeOfWork)
+        {
+            RenderScopeOfWorkBullet(column, para);
+            return;
+        }
+
         // Check if we're in the Terms and Conditions section
         var isTermsAndConditions = IsInTermsAndConditionsSection(index, allElements);
 
@@ -754,6 +763,64 @@ public class PdfConverterService : IPdfConverterService
         }
 
         return foundTermsHeading;
+    }
+
+    private bool IsInScopeOfWorkSection(int currentIndex, List<IDocumentElement> allElements)
+    {
+        // Look backwards to find if we're after "SCOPE OF WORK" heading and before the next section
+        bool foundScopeHeading = false;
+
+        for (int i = currentIndex - 1; i >= 0; i--)
+        {
+            if (allElements[i] is ParagraphContent prevPara)
+            {
+                var text = prevPara.Text.Trim().ToUpper();
+                if (text == "SCOPE OF WORK")
+                {
+                    foundScopeHeading = true;
+                    break;
+                }
+                // Stop if we hit another major section heading
+                if (IsSectionHeading(prevPara.Text) && text != "SCOPE OF WORK")
+                {
+                    break;
+                }
+            }
+        }
+
+        if (!foundScopeHeading) return false;
+
+        // Also check we're not past the next section (Deliverables note or next heading)
+        for (int i = currentIndex + 1; i < allElements.Count; i++)
+        {
+            if (allElements[i] is ParagraphContent nextPara)
+            {
+                var text = nextPara.Text.Trim().ToUpper();
+                if (text.StartsWith("DELIVERABLES DO NOT INCLUDE") || IsSectionHeading(nextPara.Text))
+                {
+                    return false; // We've left the scope of work section
+                }
+            }
+        }
+
+        return foundScopeHeading;
+    }
+
+    private void RenderScopeOfWorkBullet(ColumnDescriptor column, ParagraphContent para)
+    {
+        var text = para.Text.Trim();
+        if (string.IsNullOrEmpty(text)) return;
+
+        // Use black bullet character
+        const string bullet = "\u2022"; // •
+
+        column.Item().PaddingLeft(20).PaddingTop(4).PaddingBottom(4).Row(row =>
+        {
+            row.AutoItem().Width(15).AlignRight().Text(bullet)
+                .FontSize(10).FontFamily("Calibri").FontColor(TextBlack).Bold();
+            row.RelativeItem().PaddingLeft(8).Text(text)
+                .FontSize(10).FontFamily("Calibri").FontColor(TextBlack).LineHeight(1.5f);
+        });
     }
 
     private void RenderTermsAndConditionsItem(ColumnDescriptor column, ParagraphContent para, int index, List<IDocumentElement> allElements)
