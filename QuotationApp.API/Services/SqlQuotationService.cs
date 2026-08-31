@@ -112,6 +112,42 @@ public class SqlQuotationService : IQuotationService
         return await GenerateNextQuotationNoAsync();
     }
 
+    public async Task<List<QuotationRevisionEntry>> GetRevisionsAsync(string quotationId)
+    {
+        var quotation = await _dbContext.Quotations
+            .AsNoTracking()
+            .Include(q => q.QuotationModules)
+            .FirstOrDefaultAsync(q => q.Id == quotationId);
+        if (quotation is null) return new List<QuotationRevisionEntry>();
+
+        var modulesJson = SerializeModules(quotation.QuotationModules.Select(m => m.ModuleName));
+        var history = await _dbContext.QuotationHistory
+            .AsNoTracking()
+            .Where(h => h.OrganizationName == quotation.OrganizationName && h.ModulesJson == modulesJson)
+            .OrderByDescending(h => h.ChangedAt)
+            .ToListAsync();
+
+        return history.Select(h => new QuotationRevisionEntry
+            {
+                Id = h.Id,
+                QuotationId = h.QuotationId,
+                OrganizationName = h.OrganizationName,
+                QuotationNo = h.QuotationNo ?? string.Empty,
+                Date = h.Date,
+                ValidationDate = h.ValidationDate,
+                ReferenceBy = h.ReferenceBy ?? string.Empty,
+                QuotationToName = h.QuotationToName,
+                QuotationToAddress = h.QuotationToAddress,
+                QuotationToContactNo = h.QuotationToContactNo,
+                QuotationToEmail = h.QuotationToEmail,
+                Modules = JsonSerializer.Deserialize<List<string>>(h.ModulesJson) ?? new List<string>(),
+                DiscountPercentage = h.DiscountPercentage,
+                ChangedAt = h.ChangedAt,
+                ChangeType = h.ChangeType
+            })
+            .ToList();
+    }
+
     public string? ResolveFilePath(string quotationId, string extension)
     {
         // Guard against path traversal via the route-supplied id.
@@ -362,7 +398,32 @@ public class SqlQuotationService : IQuotationService
         };
 
         _dbContext.Quotations.Add(quotation);
+        AddHistorySnapshot(quotation, "Created");
         await _dbContext.SaveChangesAsync();
+    }
+
+    private static string SerializeModules(IEnumerable<string> modules) =>
+        JsonSerializer.Serialize(modules.OrderBy(m => m, StringComparer.OrdinalIgnoreCase).ToList());
+
+    private void AddHistorySnapshot(QuotationEntity quotation, string changeType)
+    {
+        _dbContext.QuotationHistory.Add(new QuotationHistoryEntity
+        {
+            QuotationId = quotation.Id,
+            OrganizationName = quotation.OrganizationName,
+            QuotationNo = quotation.QuotationNo,
+            Date = quotation.Date,
+            ValidationDate = quotation.ValidationDate,
+            ReferenceBy = quotation.ReferenceBy,
+            QuotationToName = quotation.QuotationToName,
+            QuotationToAddress = quotation.QuotationToAddress,
+            QuotationToContactNo = quotation.QuotationToContactNo,
+            QuotationToEmail = quotation.QuotationToEmail,
+            ModulesJson = SerializeModules(quotation.QuotationModules.Select(m => m.ModuleName)),
+            DiscountPercentage = quotation.DiscountPercentage,
+            ChangedAt = DateTime.UtcNow,
+            ChangeType = changeType
+        });
     }
 
     /// <summary>
@@ -379,6 +440,7 @@ public class SqlQuotationService : IQuotationService
 
         // Update discount percentage
         quotation.DiscountPercentage = discountPercentage > 0 ? discountPercentage : (decimal?)null;
+        AddHistorySnapshot(quotation, "DiscountUpdated");
 
         // Build request from stored data
         var request = new QuotationRequest
@@ -442,6 +504,7 @@ public class SqlQuotationService : IQuotationService
             QuotationId = quotationId,
             ModuleName = m
         }).ToList();
+        AddHistorySnapshot(quotation, "DetailsUpdated");
 
         // Build request from stored data with updated validation date and modules
         var request = new QuotationRequest

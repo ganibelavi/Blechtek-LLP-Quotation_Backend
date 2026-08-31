@@ -26,6 +26,26 @@ public interface IQuotationService
 
     /// <summary>Gets the next auto-generated quotation number without creating a quotation.</summary>
     Task<string> GetNextQuotationNoAsync();
+    Task<List<QuotationRevisionEntry>> GetRevisionsAsync(string quotationId);
+}
+
+public class QuotationRevisionEntry
+{
+    public int Id { get; set; }
+    public string QuotationId { get; set; } = string.Empty;
+    public string OrganizationName { get; set; } = string.Empty;
+    public string QuotationNo { get; set; } = string.Empty;
+    public DateTime? Date { get; set; }
+    public DateTime ValidationDate { get; set; }
+    public string ReferenceBy { get; set; } = string.Empty;
+    public string QuotationToName { get; set; } = string.Empty;
+    public string QuotationToAddress { get; set; } = string.Empty;
+    public string QuotationToContactNo { get; set; } = string.Empty;
+    public string QuotationToEmail { get; set; } = string.Empty;
+    public List<string> Modules { get; set; } = new();
+    public decimal? DiscountPercentage { get; set; }
+    public DateTime ChangedAt { get; set; }
+    public string ChangeType { get; set; } = string.Empty;
 }
 
 public class DashboardData

@@ -54,11 +54,28 @@ public class QuotationController : ControllerBase
             var history = await _quotationService.GetHistoryAsync(page, pageSize);
             return Ok(history);
         }
+
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to retrieve quotation history");
             return StatusCode(StatusCodes.Status500InternalServerError,
                 new { error = "Could not retrieve quotation history." });
+        }
+    }
+
+    [HttpGet("{quotationId}/revisions")]
+    [ProducesResponseType(typeof(List<QuotationRevisionEntry>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<List<QuotationRevisionEntry>>> GetRevisions(string quotationId)
+    {
+        try
+        {
+            return Ok(await _quotationService.GetRevisionsAsync(quotationId));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve revisions for quotation {QuotationId}", quotationId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "Could not retrieve quotation revisions." });
         }
     }
 

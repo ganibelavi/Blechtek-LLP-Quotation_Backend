@@ -98,6 +98,33 @@ using (var scope = app.Services.CreateScope())
         alterCommand.CommandText = "ALTER TABLE dbo.Quotations ADD CreatedByUser nvarchar(200) NULL;";
         alterCommand.ExecuteNonQuery();
     }
+
+    using var historyTableCommand = connection.CreateCommand();
+    historyTableCommand.CommandText = @"
+IF OBJECT_ID(N'dbo.QuotationHistory', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.QuotationHistory
+    (
+        Id int IDENTITY(1,1) NOT NULL CONSTRAINT PK_QuotationHistory PRIMARY KEY,
+        QuotationId nvarchar(50) NOT NULL,
+        OrganizationName nvarchar(200) NOT NULL,
+        QuotationNo nvarchar(50) NULL,
+        Date datetime2 NULL,
+        ValidationDate datetime2 NOT NULL,
+        ReferenceBy nvarchar(150) NULL,
+        QuotationToName nvarchar(150) NOT NULL,
+        QuotationToAddress nvarchar(400) NOT NULL,
+        QuotationToContactNo nvarchar(30) NOT NULL,
+        QuotationToEmail nvarchar(150) NOT NULL,
+        ModulesJson nvarchar(max) NOT NULL,
+        DiscountPercentage decimal(5,2) NULL,
+        ChangedAt datetime2 NOT NULL,
+        ChangeType nvarchar(30) NOT NULL
+    );
+    CREATE INDEX IX_QuotationHistory_QuotationId ON dbo.QuotationHistory (QuotationId);
+    CREATE INDEX IX_QuotationHistory_Organization_Modules ON dbo.QuotationHistory (OrganizationName, ModulesJson);
+END";
+    historyTableCommand.ExecuteNonQuery();
 }
 
 if (app.Environment.IsDevelopment())

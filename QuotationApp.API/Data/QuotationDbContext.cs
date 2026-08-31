@@ -17,6 +17,7 @@ public class QuotationDbContext : DbContext
     public DbSet<QuotationModuleEntity> QuotationModules { get; set; }
     public DbSet<UserEntity> Users { get; set; }
     public DbSet<LoginHistoryEntity> LoginHistory { get; set; }
+    public DbSet<QuotationHistoryEntity> QuotationHistory { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -56,6 +57,26 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.Email).IsRequired().HasMaxLength(200);
             entity.Property(e => e.LoggedAt).IsRequired();
             entity.ToTable("LoginHistory");
+        });
+
+        modelBuilder.Entity<QuotationHistoryEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.OrganizationName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.QuotationId).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.QuotationNo).HasMaxLength(50);
+            entity.Property(e => e.ReferenceBy).HasMaxLength(150);
+            entity.Property(e => e.QuotationToName).IsRequired().HasMaxLength(150);
+            entity.Property(e => e.QuotationToAddress).IsRequired().HasMaxLength(400);
+            entity.Property(e => e.QuotationToContactNo).IsRequired().HasMaxLength(30);
+            entity.Property(e => e.QuotationToEmail).IsRequired().HasMaxLength(150);
+            entity.Property(e => e.ModulesJson).IsRequired();
+            entity.Property(e => e.DiscountPercentage).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.ChangedAt).IsRequired();
+            entity.Property(e => e.ChangeType).IsRequired().HasMaxLength(30);
+            entity.HasIndex(e => new { e.OrganizationName, e.ModulesJson });
+            entity.HasIndex(e => e.QuotationId);
+            entity.ToTable("QuotationHistory");
         });
 
         // QuotationEntity configuration
@@ -167,4 +188,26 @@ public class LoginHistoryEntity
     public string Email { get; set; } = string.Empty;
     public DateTime LoggedAt { get; set; }
     public string? RemoteAddress { get; set; }
+}
+
+/// <summary>
+/// Immutable snapshot of a quotation used to display revision history.
+/// </summary>
+public class QuotationHistoryEntity
+{
+    public int Id { get; set; }
+    public string QuotationId { get; set; } = string.Empty;
+    public string OrganizationName { get; set; } = string.Empty;
+    public string? QuotationNo { get; set; }
+    public DateTime? Date { get; set; }
+    public DateTime ValidationDate { get; set; }
+    public string? ReferenceBy { get; set; }
+    public string QuotationToName { get; set; } = string.Empty;
+    public string QuotationToAddress { get; set; } = string.Empty;
+    public string QuotationToContactNo { get; set; } = string.Empty;
+    public string QuotationToEmail { get; set; } = string.Empty;
+    public string ModulesJson { get; set; } = "[]";
+    public decimal? DiscountPercentage { get; set; }
+    public DateTime ChangedAt { get; set; }
+    public string ChangeType { get; set; } = string.Empty;
 }

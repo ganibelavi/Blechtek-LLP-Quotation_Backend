@@ -10,6 +10,9 @@ namespace QuotationApp.API.Services;
 /// </summary>
 public class QuotationService : IQuotationService
 {
+    public Task<List<QuotationRevisionEntry>> GetRevisionsAsync(string quotationId) =>
+        throw new NotSupportedException("Quotation revisions require the SQL-backed quotation service.");
+
     private readonly IWordGeneratorService _wordGenerator;
     private readonly IPdfConverterService _pdfConverter;
     private readonly IModuleService _moduleService;
