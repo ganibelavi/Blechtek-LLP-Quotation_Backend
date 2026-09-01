@@ -63,6 +63,27 @@ public class QuotationController : ControllerBase
         }
     }
 
+    [HttpGet("{quotationId}")]
+    [ProducesResponseType(typeof(QuotationHistoryEntry), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<QuotationHistoryEntry>> GetQuotation(string quotationId)
+    {
+        try
+        {
+            var quotation = await _quotationService.GetQuotationAsync(quotationId);
+            if (quotation is null)
+                return NotFound(new { error = "Quotation not found." });
+
+            return Ok(quotation);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve quotation {QuotationId}", quotationId);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "Could not retrieve quotation details." });
+        }
+    }
+
     [HttpGet("{quotationId}/revisions")]
     [ProducesResponseType(typeof(List<QuotationRevisionEntry>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<QuotationRevisionEntry>>> GetRevisions(string quotationId)

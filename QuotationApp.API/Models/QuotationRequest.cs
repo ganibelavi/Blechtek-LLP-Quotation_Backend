@@ -63,6 +63,12 @@ public class QuotationResult
 }
 
 /// <summary>Represents a quotation entry in the history list.</summary>
+public class QuotationModuleDetail
+{
+    public string ModuleName { get; set; } = string.Empty;
+    public decimal Price { get; set; }
+}
+
 public class QuotationHistoryEntry
 {
     public string QuotationId { get; set; } = string.Empty;
@@ -76,6 +82,7 @@ public class QuotationHistoryEntry
     public string QuotationToEmail { get; set; } = string.Empty;
     public string ReferenceBy { get; set; } = string.Empty;
     public List<string> Modules { get; set; } = new();
+    public List<QuotationModuleDetail> ModuleDetails { get; set; } = new();
     public DateTime GeneratedAt { get; set; }
     public decimal? DiscountPercentage { get; set; }
 }

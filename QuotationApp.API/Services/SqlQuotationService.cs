@@ -128,23 +128,23 @@ public class SqlQuotationService : IQuotationService
             .ToListAsync();
 
         return history.Select(h => new QuotationRevisionEntry
-            {
-                Id = h.Id,
-                QuotationId = h.QuotationId,
-                OrganizationName = h.OrganizationName,
-                QuotationNo = h.QuotationNo ?? string.Empty,
-                Date = h.Date,
-                ValidationDate = h.ValidationDate,
-                ReferenceBy = h.ReferenceBy ?? string.Empty,
-                QuotationToName = h.QuotationToName,
-                QuotationToAddress = h.QuotationToAddress,
-                QuotationToContactNo = h.QuotationToContactNo,
-                QuotationToEmail = h.QuotationToEmail,
-                Modules = JsonSerializer.Deserialize<List<string>>(h.ModulesJson) ?? new List<string>(),
-                DiscountPercentage = h.DiscountPercentage,
-                ChangedAt = h.ChangedAt,
-                ChangeType = h.ChangeType
-            })
+        {
+            Id = h.Id,
+            QuotationId = h.QuotationId,
+            OrganizationName = h.OrganizationName,
+            QuotationNo = h.QuotationNo ?? string.Empty,
+            Date = h.Date,
+            ValidationDate = h.ValidationDate,
+            ReferenceBy = h.ReferenceBy ?? string.Empty,
+            QuotationToName = h.QuotationToName,
+            QuotationToAddress = h.QuotationToAddress,
+            QuotationToContactNo = h.QuotationToContactNo,
+            QuotationToEmail = h.QuotationToEmail,
+            Modules = JsonSerializer.Deserialize<List<string>>(h.ModulesJson) ?? new List<string>(),
+            DiscountPercentage = h.DiscountPercentage,
+            ChangedAt = h.ChangedAt,
+            ChangeType = h.ChangeType
+        })
             .ToList();
     }
 
@@ -162,12 +162,26 @@ public class SqlQuotationService : IQuotationService
     /// </summary>
     public async Task<List<QuotationHistoryEntry>> GetHistoryAsync(int page = 1, int pageSize = 20)
     {
-        return await _dbContext.Quotations
+        var quotations = await _dbContext.Quotations
             .AsNoTracking()
+            .Include(q => q.QuotationModules)
             .OrderByDescending(q => q.GeneratedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(q => new QuotationHistoryEntry
+            .ToListAsync();
+
+        var modulePrices = await _dbContext.Modules
+            .AsNoTracking()
+            .ToDictionaryAsync(m => m.ModuleName, m => m.Price ?? 0m, StringComparer.OrdinalIgnoreCase);
+
+        return quotations.Select(q =>
+        {
+            var moduleNames = q.QuotationModules
+                .Select(m => m.ModuleName)
+                .OrderBy(m => m, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return new QuotationHistoryEntry
             {
                 QuotationId = q.Id,
                 OrganizationName = q.OrganizationName,
@@ -179,11 +193,18 @@ public class SqlQuotationService : IQuotationService
                 QuotationToContactNo = q.QuotationToContactNo,
                 QuotationToEmail = q.QuotationToEmail,
                 ReferenceBy = q.ReferenceBy ?? string.Empty,
-                Modules = q.QuotationModules.Select(m => m.ModuleName).ToList(),
+                Modules = moduleNames,
+                ModuleDetails = moduleNames
+                    .Select(moduleName => new QuotationModuleDetail
+                    {
+                        ModuleName = moduleName,
+                        Price = modulePrices.GetValueOrDefault(moduleName, 0m)
+                    })
+                    .ToList(),
                 GeneratedAt = q.GeneratedAt,
                 DiscountPercentage = q.DiscountPercentage
-            })
-            .ToListAsync();
+            };
+        }).ToList();
     }
 
     /// <summary>
@@ -191,26 +212,46 @@ public class SqlQuotationService : IQuotationService
     /// </summary>
     public async Task<QuotationHistoryEntry?> GetQuotationAsync(string quotationId)
     {
-        return await _dbContext.Quotations
+        var quotation = await _dbContext.Quotations
             .AsNoTracking()
-            .Where(q => q.Id == quotationId)
-            .Select(q => new QuotationHistoryEntry
-            {
-                QuotationId = q.Id,
-                OrganizationName = q.OrganizationName,
-                QuotationNo = q.QuotationNo ?? string.Empty,
-                Date = q.Date ?? DateTime.MinValue,
-                ValidationDate = q.ValidationDate,
-                QuotationToName = q.QuotationToName,
-                QuotationToAddress = q.QuotationToAddress,
-                QuotationToContactNo = q.QuotationToContactNo,
-                QuotationToEmail = q.QuotationToEmail,
-                ReferenceBy = q.ReferenceBy ?? string.Empty,
-                Modules = q.QuotationModules.Select(m => m.ModuleName).ToList(),
-                GeneratedAt = q.GeneratedAt,
-                DiscountPercentage = q.DiscountPercentage
-            })
-            .FirstOrDefaultAsync();
+            .Include(q => q.QuotationModules)
+            .FirstOrDefaultAsync(q => q.Id == quotationId);
+
+        if (quotation is null)
+            return null;
+
+        var modulePrices = await _dbContext.Modules
+            .AsNoTracking()
+            .ToDictionaryAsync(m => m.ModuleName, m => m.Price ?? 0m, StringComparer.OrdinalIgnoreCase);
+
+        var moduleNames = quotation.QuotationModules
+            .Select(m => m.ModuleName)
+            .OrderBy(m => m, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new QuotationHistoryEntry
+        {
+            QuotationId = quotation.Id,
+            OrganizationName = quotation.OrganizationName,
+            QuotationNo = quotation.QuotationNo ?? string.Empty,
+            Date = quotation.Date ?? DateTime.MinValue,
+            ValidationDate = quotation.ValidationDate,
+            QuotationToName = quotation.QuotationToName,
+            QuotationToAddress = quotation.QuotationToAddress,
+            QuotationToContactNo = quotation.QuotationToContactNo,
+            QuotationToEmail = quotation.QuotationToEmail,
+            ReferenceBy = quotation.ReferenceBy ?? string.Empty,
+            Modules = moduleNames,
+            ModuleDetails = moduleNames
+                .Select(moduleName => new QuotationModuleDetail
+                {
+                    ModuleName = moduleName,
+                    Price = modulePrices.GetValueOrDefault(moduleName, 0m)
+                })
+                .ToList(),
+            GeneratedAt = quotation.GeneratedAt,
+            DiscountPercentage = quotation.DiscountPercentage
+        };
     }
 
     public async Task<DashboardData> GetDashboardDataAsync()
@@ -236,6 +277,7 @@ public class SqlQuotationService : IQuotationService
             .GroupBy(q => new { q.GeneratedAt.Year, q.GeneratedAt.Month })
             .Select(g =>
             {
+                var monthDate = new DateTime(g.Key.Year, g.Key.Month, 1);
                 var monthQuotes = g.ToList();
                 var totalPrice = monthQuotes.Sum(q =>
                     q.QuotationModules.Sum(m => modulePrices.GetValueOrDefault(m.ModuleName, 0)));
@@ -246,14 +288,21 @@ public class SqlQuotationService : IQuotationService
                     return price * discountPct / 100;
                 });
                 var revenue = totalPrice - totalDiscount;
-                return new MonthlyQuoteData
+                return new
                 {
-                    Month = new DateTime(g.Key.Year, g.Key.Month, 1).ToString("MMM yyyy"),
+                    SortKey = monthDate,
+                    Month = monthDate.ToString("MMM yyyy", System.Globalization.CultureInfo.InvariantCulture),
                     Count = g.Count(),
                     Revenue = revenue
                 };
             })
-            .OrderBy(m => DateTime.ParseExact(m.Month, "MMM yyyy", System.Globalization.CultureInfo.InvariantCulture))
+            .OrderBy(m => m.SortKey)
+            .Select(m => new MonthlyQuoteData
+            {
+                Month = m.Month,
+                Count = m.Count,
+                Revenue = m.Revenue
+            })
             .ToList();
 
         var userQuotationStats = allQuotations

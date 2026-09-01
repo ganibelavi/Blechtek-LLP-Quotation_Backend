@@ -18,6 +18,12 @@ public class QuotationDbContext : DbContext
     public DbSet<UserEntity> Users { get; set; }
     public DbSet<LoginHistoryEntity> LoginHistory { get; set; }
     public DbSet<QuotationHistoryEntity> QuotationHistory { get; set; }
+    public DbSet<CustomerEntity> Customers { get; set; }
+    public DbSet<ProductEntity> Products { get; set; }
+    public DbSet<PurchaseOrderEntity> PurchaseOrders { get; set; }
+    public DbSet<PurchaseOrderItemEntity> PurchaseOrderItems { get; set; }
+    public DbSet<InvoiceEntity> Invoices { get; set; }
+    public DbSet<InvoiceItemEntity> InvoiceItems { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -117,6 +123,119 @@ public class QuotationDbContext : DbContext
                 .HasForeignKey(e => e.ModuleName)
                 .HasPrincipalKey(m => m.ModuleName)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CustomerEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(255).HasColumnName("name");
+            entity.Property(e => e.Address).HasMaxLength(1000).HasColumnName("address");
+            entity.Property(e => e.State).HasMaxLength(100).HasColumnName("state");
+            entity.Property(e => e.StateCode).HasMaxLength(10).HasColumnName("state_code");
+            entity.Property(e => e.Gstn).HasMaxLength(20).HasColumnName("gstn");
+            entity.Property(e => e.CreatedAt).IsRequired().HasColumnName("created_at");
+            entity.ToTable("customers");
+        });
+
+        modelBuilder.Entity<ProductEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(255).HasColumnName("name");
+            entity.Property(e => e.HsnSac).HasMaxLength(20).HasColumnName("hsn_sac");
+            entity.Property(e => e.Uom).HasMaxLength(20).HasColumnName("uom");
+            entity.Property(e => e.DefaultRate).HasColumnType("decimal(12,2)").HasColumnName("default_rate");
+            entity.Property(e => e.CreatedAt).IsRequired().HasColumnName("created_at");
+            entity.ToTable("products");
+        });
+
+        modelBuilder.Entity<PurchaseOrderEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.CustomerId).IsRequired().HasColumnName("customer_id");
+            entity.Property(e => e.QuotationId).HasColumnName("quotation_id");
+            entity.Property(e => e.PoNo).IsRequired().HasMaxLength(50).HasColumnName("po_no");
+            entity.Property(e => e.PoDate).IsRequired().HasColumnName("po_date");
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20).HasColumnName("status");
+            entity.Property(e => e.DeliveryTerms).HasColumnName("delivery_terms");
+            entity.Property(e => e.PaymentTerms).HasColumnName("payment_terms");
+            entity.Property(e => e.CreatedAt).IsRequired().HasColumnName("created_at");
+            entity.HasIndex(e => e.PoNo).IsUnique();
+            entity.ToTable("purchase_orders");
+
+            entity.HasOne<CustomerEntity>()
+                .WithMany(c => c.PurchaseOrders)
+                .HasForeignKey(e => e.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<PurchaseOrderItemEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.PoId).IsRequired().HasColumnName("po_id");
+            entity.Property(e => e.ProductId).HasColumnName("product_id");
+            entity.Property(e => e.Description).IsRequired().HasColumnName("description");
+            entity.Property(e => e.Qty).HasColumnType("decimal(12,2)").HasColumnName("qty");
+            entity.Property(e => e.Uom).HasMaxLength(20).HasColumnName("uom");
+            entity.Property(e => e.Rate).HasColumnType("decimal(12,2)").HasColumnName("rate");
+            entity.ToTable("po_items");
+
+            entity.HasOne(e => e.PurchaseOrder)
+                .WithMany(p => p.Items)
+                .HasForeignKey(e => e.PoId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InvoiceEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.CustomerId).IsRequired().HasColumnName("customer_id");
+            entity.Property(e => e.PoId).HasColumnName("po_id");
+            entity.Property(e => e.InvoiceNo).IsRequired().HasMaxLength(50).HasColumnName("invoice_no");
+            entity.Property(e => e.InvoiceDate).IsRequired().HasColumnName("invoice_date");
+            entity.Property(e => e.PlaceOfSupply).HasMaxLength(100).HasColumnName("place_of_supply");
+            entity.Property(e => e.HsnCode).HasMaxLength(20).HasColumnName("hsn_code");
+            entity.Property(e => e.SacCode).HasMaxLength(20).HasColumnName("sac_code");
+            entity.Property(e => e.SgstPct).HasColumnType("decimal(5,2)").HasColumnName("sgst_pct");
+            entity.Property(e => e.CgstPct).HasColumnType("decimal(5,2)").HasColumnName("cgst_pct");
+            entity.Property(e => e.IgstPct).HasColumnType("decimal(5,2)").HasColumnName("igst_pct");
+            entity.Property(e => e.TdsPct).HasColumnType("decimal(5,2)").HasColumnName("tds_pct");
+            entity.Property(e => e.Insurance).HasColumnType("decimal(12,2)").HasColumnName("insurance");
+            entity.Property(e => e.ReverseCharge).HasColumnName("reverse_charge");
+            entity.Property(e => e.Subtotal).HasColumnType("decimal(14,2)").HasColumnName("subtotal");
+            entity.Property(e => e.GrandTotal).HasColumnType("decimal(14,2)").HasColumnName("grand_total");
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20).HasColumnName("status");
+            entity.Property(e => e.AmountInWords).HasMaxLength(1000).HasColumnName("amount_in_words");
+            entity.Property(e => e.CreatedAt).IsRequired().HasColumnName("created_at");
+            entity.HasIndex(e => e.InvoiceNo).IsUnique();
+            entity.ToTable("invoices");
+
+            entity.HasOne<CustomerEntity>()
+                .WithMany(c => c.Invoices)
+                .HasForeignKey(e => e.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<InvoiceItemEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.InvoiceId).IsRequired().HasColumnName("invoice_id");
+            entity.Property(e => e.ProductId).HasColumnName("product_id");
+            entity.Property(e => e.Description).IsRequired().HasColumnName("description");
+            entity.Property(e => e.Qty).HasColumnType("decimal(12,2)").HasColumnName("qty");
+            entity.Property(e => e.Uom).HasMaxLength(20).HasColumnName("uom");
+            entity.Property(e => e.Rate).HasColumnType("decimal(12,2)").HasColumnName("rate");
+            entity.ToTable("invoice_items");
+
+            entity.HasOne(e => e.Invoice)
+                .WithMany(i => i.Items)
+                .HasForeignKey(e => e.InvoiceId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
