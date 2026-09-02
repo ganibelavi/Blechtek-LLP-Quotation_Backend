@@ -14,6 +14,19 @@ public class CustomerEntity
     public ICollection<InvoiceEntity> Invoices { get; set; } = new List<InvoiceEntity>();
 }
 
+public class SupplierEntity
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Address { get; set; }
+    public string? State { get; set; }
+    public string? StateCode { get; set; }
+    public string? Gstn { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public ICollection<PurchaseOrderEntity> PurchaseOrders { get; set; } = new List<PurchaseOrderEntity>();
+}
+
 public class ProductEntity
 {
     public int Id { get; set; }
@@ -28,6 +41,7 @@ public class PurchaseOrderEntity
 {
     public int Id { get; set; }
     public int CustomerId { get; set; }
+    public int? SupplierId { get; set; }
     public int? QuotationId { get; set; }
     public string PoNo { get; set; } = string.Empty;
     public DateTime PoDate { get; set; } = DateTime.UtcNow;
@@ -94,6 +108,8 @@ public class InvoiceItemEntity
 
 public class CreatePurchaseOrderRequest
 {
+    public int? CustomerId { get; set; }
+    public int? SupplierId { get; set; }
     public string? CompanyName { get; set; }
     public string? PoNo { get; set; }
     public string? PoDate { get; set; }

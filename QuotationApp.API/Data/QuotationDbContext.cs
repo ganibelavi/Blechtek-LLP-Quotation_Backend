@@ -19,6 +19,7 @@ public class QuotationDbContext : DbContext
     public DbSet<LoginHistoryEntity> LoginHistory { get; set; }
     public DbSet<QuotationHistoryEntity> QuotationHistory { get; set; }
     public DbSet<CustomerEntity> Customers { get; set; }
+    public DbSet<SupplierEntity> Suppliers { get; set; }
     public DbSet<ProductEntity> Products { get; set; }
     public DbSet<PurchaseOrderEntity> PurchaseOrders { get; set; }
     public DbSet<PurchaseOrderItemEntity> PurchaseOrderItems { get; set; }
@@ -138,6 +139,19 @@ public class QuotationDbContext : DbContext
             entity.ToTable("customers");
         });
 
+        modelBuilder.Entity<SupplierEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(255).HasColumnName("name");
+            entity.Property(e => e.Address).HasMaxLength(1000).HasColumnName("address");
+            entity.Property(e => e.State).HasMaxLength(100).HasColumnName("state");
+            entity.Property(e => e.StateCode).HasMaxLength(10).HasColumnName("state_code");
+            entity.Property(e => e.Gstn).HasMaxLength(20).HasColumnName("gstn");
+            entity.Property(e => e.CreatedAt).IsRequired().HasColumnName("created_at");
+            entity.ToTable("suppliers");
+        });
+
         modelBuilder.Entity<ProductEntity>(entity =>
         {
             entity.HasKey(e => e.Id);
@@ -155,6 +169,7 @@ public class QuotationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.CustomerId).IsRequired().HasColumnName("customer_id");
+            entity.Property(e => e.SupplierId).HasColumnName("supplier_id");
             entity.Property(e => e.QuotationId).HasColumnName("quotation_id");
             entity.Property(e => e.PoNo).IsRequired().HasMaxLength(50).HasColumnName("po_no");
             entity.Property(e => e.PoDate).IsRequired().HasColumnName("po_date");
@@ -168,6 +183,11 @@ public class QuotationDbContext : DbContext
             entity.HasOne<CustomerEntity>()
                 .WithMany(c => c.PurchaseOrders)
                 .HasForeignKey(e => e.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<SupplierEntity>()
+                .WithMany(s => s.PurchaseOrders)
+                .HasForeignKey(e => e.SupplierId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

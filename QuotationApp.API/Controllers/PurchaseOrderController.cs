@@ -24,32 +24,23 @@ public class PurchaseOrderController : ControllerBase
             return BadRequest(new { error = "Purchase order payload is required." });
         }
 
-        var customerName = (request.CompanyName ?? request.SupplierName ?? request.BuyerName ?? "Unknown Customer").Trim();
-        if (string.IsNullOrWhiteSpace(customerName))
+        var buyerName = GetFirstNonEmpty(request.BuyerName, request.CompanyName, request.SupplierName, "Unknown Buyer");
+        var supplierName = GetFirstNonEmpty(request.SupplierName, request.CompanyName, request.BuyerName, buyerName);
+
+        if (string.IsNullOrWhiteSpace(buyerName) && string.IsNullOrWhiteSpace(supplierName))
         {
-            return BadRequest(new { error = "Company name is required." });
+            return BadRequest(new { error = "Buyer or supplier name is required." });
         }
 
-        var customer = await _db.Customers.FirstOrDefaultAsync(c => c.Name == customerName);
-        if (customer is null)
-        {
-            customer = new CustomerEntity
-            {
-                Name = customerName,
-                Address = request.SupplierAddress ?? request.BuyerAddress,
-                State = request.SupplierState ?? request.BuyerState,
-                StateCode = request.SupplierStateCode ?? request.BuyerStateCode,
-                Gstn = request.SupplierGSTN ?? request.BuyerGSTN,
-            };
-            _db.Customers.Add(customer);
-            await _db.SaveChangesAsync();
-        }
+        var buyer = await ResolveCustomerAsync(request.CustomerId, buyerName, request.BuyerAddress, request.BuyerState, request.BuyerStateCode, request.BuyerGSTN);
+        var supplier = await ResolveSupplierAsync(request.SupplierId, supplierName, request.SupplierAddress, request.SupplierState, request.SupplierStateCode, request.SupplierGSTN);
 
         var poNo = await ResolveUniquePoNoAsync(request.PoNo);
 
         var purchaseOrder = new PurchaseOrderEntity
         {
-            CustomerId = customer.Id,
+            CustomerId = buyer.Id,
+            SupplierId = supplier.Id,
             QuotationId = request.QuotationId,
             PoNo = poNo,
             PoDate = ParseDate(request.PoDate, DateTime.UtcNow),
@@ -83,6 +74,8 @@ public class PurchaseOrderController : ControllerBase
             }
         }
 
+        var totalAmount = request.Items.Sum(item => item.Qty * item.Rate);
+
         var response = new
         {
             id = purchaseOrder.Id,
@@ -90,14 +83,22 @@ public class PurchaseOrderController : ControllerBase
             poNo = purchaseOrder.PoNo,
             poDate = purchaseOrder.PoDate,
             status = purchaseOrder.Status,
-            companyName = customerName,
-            buyerName = customerName,
-            supplierName = request.SupplierName ?? customerName,
+            companyName = buyer.Name,
+            buyerName = buyer.Name,
+            buyerAddress = buyer.Address,
+            buyerState = buyer.State,
+            buyerStateCode = buyer.StateCode,
+            buyerGSTN = buyer.Gstn,
+            supplierName = supplier.Name,
+            supplierAddress = supplier.Address,
+            supplierState = supplier.State,
+            supplierStateCode = supplier.StateCode,
+            supplierGSTN = supplier.Gstn,
             deliveryTerms = purchaseOrder.DeliveryTerms,
             paymentTerms = purchaseOrder.PaymentTerms,
             quotationRefNo = request.QuotationRefNo,
             quotationRefDate = request.QuotationRefDate,
-            totalAmount = request.Items.Sum(item => item.Qty * item.Rate),
+            totalAmount = totalAmount,
             items = request.Items,
         };
 
@@ -116,10 +117,10 @@ public class PurchaseOrderController : ControllerBase
             return NotFound(new { error = "Purchase order not found." });
         }
 
-        var customerName = await _db.Customers
-            .Where(c => c.Id == record.CustomerId)
-            .Select(c => c.Name)
-            .FirstOrDefaultAsync();
+        var buyer = await _db.Customers.FirstOrDefaultAsync(c => c.Id == record.CustomerId);
+        var supplier = record.SupplierId.HasValue
+            ? await _db.Suppliers.FirstOrDefaultAsync(s => s.Id == record.SupplierId.Value)
+            : null;
 
         var response = new
         {
@@ -128,9 +129,17 @@ public class PurchaseOrderController : ControllerBase
             poNo = record.PoNo,
             poDate = record.PoDate,
             status = record.Status,
-            companyName = customerName,
-            buyerName = customerName,
-            supplierName = customerName,
+            companyName = buyer?.Name ?? supplier?.Name,
+            buyerName = buyer?.Name,
+            buyerAddress = buyer?.Address,
+            buyerState = buyer?.State,
+            buyerStateCode = buyer?.StateCode,
+            buyerGSTN = buyer?.Gstn,
+            supplierName = supplier?.Name ?? buyer?.Name,
+            supplierAddress = supplier?.Address ?? buyer?.Address,
+            supplierState = supplier?.State ?? buyer?.State,
+            supplierStateCode = supplier?.StateCode ?? buyer?.StateCode,
+            supplierGSTN = supplier?.Gstn ?? buyer?.Gstn,
             deliveryTerms = record.DeliveryTerms,
             paymentTerms = record.PaymentTerms,
             totalAmount = record.Items.Sum(i => i.Qty * i.Rate),
@@ -168,10 +177,67 @@ public class PurchaseOrderController : ControllerBase
                     .Where(c => c.Id == p.CustomerId)
                     .Select(c => c.Name)
                     .FirstOrDefault(),
-                supplierName = _db.Customers
+                buyerAddress = _db.Customers
                     .Where(c => c.Id == p.CustomerId)
-                    .Select(c => c.Name)
+                    .Select(c => c.Address)
                     .FirstOrDefault(),
+                buyerState = _db.Customers
+                    .Where(c => c.Id == p.CustomerId)
+                    .Select(c => c.State)
+                    .FirstOrDefault(),
+                buyerStateCode = _db.Customers
+                    .Where(c => c.Id == p.CustomerId)
+                    .Select(c => c.StateCode)
+                    .FirstOrDefault(),
+                buyerGSTN = _db.Customers
+                    .Where(c => c.Id == p.CustomerId)
+                    .Select(c => c.Gstn)
+                    .FirstOrDefault(),
+                supplierName = p.SupplierId.HasValue
+                    ? _db.Suppliers
+                        .Where(s => s.Id == p.SupplierId.Value)
+                        .Select(s => s.Name)
+                        .FirstOrDefault()
+                    : _db.Customers
+                        .Where(c => c.Id == p.CustomerId)
+                        .Select(c => c.Name)
+                        .FirstOrDefault(),
+                supplierAddress = p.SupplierId.HasValue
+                    ? _db.Suppliers
+                        .Where(s => s.Id == p.SupplierId.Value)
+                        .Select(s => s.Address)
+                        .FirstOrDefault()
+                    : _db.Customers
+                        .Where(c => c.Id == p.CustomerId)
+                        .Select(c => c.Address)
+                        .FirstOrDefault(),
+                supplierState = p.SupplierId.HasValue
+                    ? _db.Suppliers
+                        .Where(s => s.Id == p.SupplierId.Value)
+                        .Select(s => s.State)
+                        .FirstOrDefault()
+                    : _db.Customers
+                        .Where(c => c.Id == p.CustomerId)
+                        .Select(c => c.State)
+                        .FirstOrDefault(),
+                supplierStateCode = p.SupplierId.HasValue
+                    ? _db.Suppliers
+                        .Where(s => s.Id == p.SupplierId.Value)
+                        .Select(s => s.StateCode)
+                        .FirstOrDefault()
+                    : _db.Customers
+                        .Where(c => c.Id == p.CustomerId)
+                        .Select(c => c.StateCode)
+                        .FirstOrDefault(),
+                supplierGSTN = p.SupplierId.HasValue
+                    ? _db.Suppliers
+                        .Where(s => s.Id == p.SupplierId.Value)
+                        .Select(s => s.Gstn)
+                        .FirstOrDefault()
+                    : _db.Customers
+                        .Where(c => c.Id == p.CustomerId)
+                        .Select(c => c.Gstn)
+                        .FirstOrDefault(),
                 deliveryTerms = p.DeliveryTerms,
                 paymentTerms = p.PaymentTerms,
                 totalAmount = p.Items.Sum(i => i.Qty * i.Rate),
@@ -202,6 +268,85 @@ public class PurchaseOrderController : ControllerBase
         _db.PurchaseOrders.Remove(record);
         await _db.SaveChangesAsync();
         return NoContent();
+    }
+
+    private async Task<CustomerEntity> ResolveCustomerAsync(int? requestedCustomerId, string buyerName, string? buyerAddress, string? buyerState, string? buyerStateCode, string? buyerGstn)
+    {
+        if (requestedCustomerId.HasValue && requestedCustomerId.Value > 0)
+        {
+            var customer = await _db.Customers.FirstOrDefaultAsync(c => c.Id == requestedCustomerId.Value);
+            if (customer is not null)
+            {
+                return customer;
+            }
+        }
+
+        var trimmedBuyerName = buyerName.Trim();
+        var customerRecord = await _db.Customers.FirstOrDefaultAsync(c => c.Name == trimmedBuyerName);
+        if (customerRecord is not null)
+        {
+            return customerRecord;
+        }
+
+        var createdCustomer = new CustomerEntity
+        {
+            Name = trimmedBuyerName,
+            Address = buyerAddress,
+            State = buyerState,
+            StateCode = buyerStateCode,
+            Gstn = buyerGstn,
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        _db.Customers.Add(createdCustomer);
+        await _db.SaveChangesAsync();
+        return createdCustomer;
+    }
+
+    private async Task<SupplierEntity> ResolveSupplierAsync(int? requestedSupplierId, string supplierName, string? supplierAddress, string? supplierState, string? supplierStateCode, string? supplierGstn)
+    {
+        if (requestedSupplierId.HasValue && requestedSupplierId.Value > 0)
+        {
+            var supplier = await _db.Suppliers.FirstOrDefaultAsync(s => s.Id == requestedSupplierId.Value);
+            if (supplier is not null)
+            {
+                return supplier;
+            }
+        }
+
+        var trimmedSupplierName = supplierName.Trim();
+        var supplierRecord = await _db.Suppliers.FirstOrDefaultAsync(s => s.Name == trimmedSupplierName);
+        if (supplierRecord is not null)
+        {
+            return supplierRecord;
+        }
+
+        var createdSupplier = new SupplierEntity
+        {
+            Name = trimmedSupplierName,
+            Address = supplierAddress,
+            State = supplierState,
+            StateCode = supplierStateCode,
+            Gstn = supplierGstn,
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        _db.Suppliers.Add(createdSupplier);
+        await _db.SaveChangesAsync();
+        return createdSupplier;
+    }
+
+    private static string GetFirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return "Unknown";
     }
 
     private async Task<string> ResolveUniquePoNoAsync(string? requestedPoNo)
