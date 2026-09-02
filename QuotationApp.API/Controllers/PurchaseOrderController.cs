@@ -42,6 +42,8 @@ public class PurchaseOrderController : ControllerBase
             CustomerId = buyer.Id,
             SupplierId = supplier.Id,
             QuotationId = request.QuotationId,
+            QuotationRefNo = GetQuotationRefNo(request.QuotationId, request.QuotationRefNo),
+            QuotationRefDate = ParseNullableDate(request.QuotationRefDate),
             PoNo = poNo,
             PoDate = ParseDate(request.PoDate, DateTime.UtcNow),
             Status = string.IsNullOrWhiteSpace(request.Status) ? "open" : request.Status,
@@ -96,8 +98,8 @@ public class PurchaseOrderController : ControllerBase
             supplierGSTN = supplier.Gstn,
             deliveryTerms = purchaseOrder.DeliveryTerms,
             paymentTerms = purchaseOrder.PaymentTerms,
-            quotationRefNo = request.QuotationRefNo,
-            quotationRefDate = request.QuotationRefDate,
+            quotationRefNo = purchaseOrder.QuotationRefNo,
+            quotationRefDate = purchaseOrder.QuotationRefDate,
             totalAmount = totalAmount,
             items = request.Items,
         };
@@ -121,11 +123,13 @@ public class PurchaseOrderController : ControllerBase
         var supplier = record.SupplierId.HasValue
             ? await _db.Suppliers.FirstOrDefaultAsync(s => s.Id == record.SupplierId.Value)
             : null;
-
+        var linkedQuotationNo = await GetLinkedQuotationNoAsync(record.QuotationId);
         var response = new
         {
             id = record.Id,
             quotationId = record.QuotationId,
+            quotationRefNo = record.QuotationRefNo ?? linkedQuotationNo,
+            quotationRefDate = record.QuotationRefDate,
             poNo = record.PoNo,
             poDate = record.PoDate,
             status = record.Status,
@@ -162,86 +166,61 @@ public class PurchaseOrderController : ControllerBase
         var records = await _db.PurchaseOrders
             .Include(p => p.Items)
             .OrderByDescending(p => p.Id)
-            .Select(p => new
+            .ToListAsync();
+
+        var customerIds = records.Select(p => p.CustomerId).Distinct().ToList();
+        var supplierIds = records.Where(p => p.SupplierId.HasValue).Select(p => p.SupplierId!.Value).Distinct().ToList();
+
+        var customerLookup = await _db.Customers
+            .Where(c => customerIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c);
+
+        var supplierLookup = await _db.Suppliers
+            .Where(s => supplierIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => s);
+
+        var quotationLookup = await _db.Quotations
+            .AsNoTracking()
+            .Select(q => new { q.Id, q.QuotationNo })
+            .ToListAsync();
+
+        var response = records.Select(record =>
+        {
+            var buyer = customerLookup.TryGetValue(record.CustomerId, out var customer) ? customer : null;
+            var supplier = record.SupplierId.HasValue && supplierLookup.TryGetValue(record.SupplierId.Value, out var foundSupplier)
+                ? foundSupplier
+                : null;
+
+            var linkedQuotationNo = record.QuotationId.HasValue
+                ? quotationLookup.FirstOrDefault(q => q.Id == record.QuotationId.Value.ToString())?.QuotationNo
+                : null;
+
+            var totalAmount = record.Items.Sum(i => i.Qty * i.Rate);
+
+            return new
             {
-                id = p.Id,
-                quotationId = p.QuotationId,
-                poNo = p.PoNo,
-                poDate = p.PoDate,
-                status = p.Status,
-                companyName = _db.Customers
-                    .Where(c => c.Id == p.CustomerId)
-                    .Select(c => c.Name)
-                    .FirstOrDefault(),
-                buyerName = _db.Customers
-                    .Where(c => c.Id == p.CustomerId)
-                    .Select(c => c.Name)
-                    .FirstOrDefault(),
-                buyerAddress = _db.Customers
-                    .Where(c => c.Id == p.CustomerId)
-                    .Select(c => c.Address)
-                    .FirstOrDefault(),
-                buyerState = _db.Customers
-                    .Where(c => c.Id == p.CustomerId)
-                    .Select(c => c.State)
-                    .FirstOrDefault(),
-                buyerStateCode = _db.Customers
-                    .Where(c => c.Id == p.CustomerId)
-                    .Select(c => c.StateCode)
-                    .FirstOrDefault(),
-                buyerGSTN = _db.Customers
-                    .Where(c => c.Id == p.CustomerId)
-                    .Select(c => c.Gstn)
-                    .FirstOrDefault(),
-                supplierName = p.SupplierId.HasValue
-                    ? _db.Suppliers
-                        .Where(s => s.Id == p.SupplierId.Value)
-                        .Select(s => s.Name)
-                        .FirstOrDefault()
-                    : _db.Customers
-                        .Where(c => c.Id == p.CustomerId)
-                        .Select(c => c.Name)
-                        .FirstOrDefault(),
-                supplierAddress = p.SupplierId.HasValue
-                    ? _db.Suppliers
-                        .Where(s => s.Id == p.SupplierId.Value)
-                        .Select(s => s.Address)
-                        .FirstOrDefault()
-                    : _db.Customers
-                        .Where(c => c.Id == p.CustomerId)
-                        .Select(c => c.Address)
-                        .FirstOrDefault(),
-                supplierState = p.SupplierId.HasValue
-                    ? _db.Suppliers
-                        .Where(s => s.Id == p.SupplierId.Value)
-                        .Select(s => s.State)
-                        .FirstOrDefault()
-                    : _db.Customers
-                        .Where(c => c.Id == p.CustomerId)
-                        .Select(c => c.State)
-                        .FirstOrDefault(),
-                supplierStateCode = p.SupplierId.HasValue
-                    ? _db.Suppliers
-                        .Where(s => s.Id == p.SupplierId.Value)
-                        .Select(s => s.StateCode)
-                        .FirstOrDefault()
-                    : _db.Customers
-                        .Where(c => c.Id == p.CustomerId)
-                        .Select(c => c.StateCode)
-                        .FirstOrDefault(),
-                supplierGSTN = p.SupplierId.HasValue
-                    ? _db.Suppliers
-                        .Where(s => s.Id == p.SupplierId.Value)
-                        .Select(s => s.Gstn)
-                        .FirstOrDefault()
-                    : _db.Customers
-                        .Where(c => c.Id == p.CustomerId)
-                        .Select(c => c.Gstn)
-                        .FirstOrDefault(),
-                deliveryTerms = p.DeliveryTerms,
-                paymentTerms = p.PaymentTerms,
-                totalAmount = p.Items.Sum(i => i.Qty * i.Rate),
-                items = p.Items.Select(i => new
+                id = record.Id,
+                quotationId = record.QuotationId,
+                quotationRefNo = record.QuotationRefNo ?? linkedQuotationNo,
+                quotationRefDate = record.QuotationRefDate,
+                poNo = record.PoNo,
+                poDate = record.PoDate,
+                status = record.Status,
+                companyName = buyer?.Name ?? supplier?.Name,
+                buyerName = buyer?.Name,
+                buyerAddress = buyer?.Address,
+                buyerState = buyer?.State,
+                buyerStateCode = buyer?.StateCode,
+                buyerGSTN = buyer?.Gstn,
+                supplierName = supplier?.Name ?? buyer?.Name,
+                supplierAddress = supplier?.Address ?? buyer?.Address,
+                supplierState = supplier?.State ?? buyer?.State,
+                supplierStateCode = supplier?.StateCode ?? buyer?.StateCode,
+                supplierGSTN = supplier?.Gstn ?? buyer?.Gstn,
+                deliveryTerms = record.DeliveryTerms,
+                paymentTerms = record.PaymentTerms,
+                totalAmount = totalAmount,
+                items = record.Items.Select(i => new
                 {
                     id = i.Id,
                     description = i.Description,
@@ -249,10 +228,10 @@ public class PurchaseOrderController : ControllerBase
                     uom = i.Uom,
                     rate = i.Rate,
                 }).ToList(),
-            })
-            .ToListAsync();
+            };
+        }).ToList();
 
-        return Ok(records);
+        return Ok(response);
     }
 
     [HttpDelete("{id:int}")]
@@ -370,6 +349,48 @@ public class PurchaseOrderController : ControllerBase
         }
 
         return candidate;
+    }
+
+    private async Task<string?> GetLinkedQuotationNoAsync(int? quotationId)
+    {
+        if (!quotationId.HasValue)
+        {
+            return null;
+        }
+
+        var lookupId = quotationId.Value.ToString();
+        return await _db.Quotations
+            .AsNoTracking()
+            .Where(q => q.Id == lookupId)
+            .Select(q => q.QuotationNo)
+            .FirstOrDefaultAsync();
+    }
+
+    private static string? GetQuotationRefNo(int? quotationId, string? requestQuotationRefNo)
+    {
+        if (!string.IsNullOrWhiteSpace(requestQuotationRefNo))
+        {
+            return requestQuotationRefNo.Trim();
+        }
+
+        if (!quotationId.HasValue)
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    private static DateTime? ParseNullableDate(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return DateTime.TryParse(value, out var parsed)
+            ? parsed
+            : null;
     }
 
     private static DateTime ParseDate(string? value, DateTime fallback)

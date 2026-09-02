@@ -43,6 +43,8 @@ public class PurchaseOrderEntity
     public int CustomerId { get; set; }
     public int? SupplierId { get; set; }
     public int? QuotationId { get; set; }
+    public string? QuotationRefNo { get; set; }
+    public DateTime? QuotationRefDate { get; set; }
     public string PoNo { get; set; } = string.Empty;
     public DateTime PoDate { get; set; } = DateTime.UtcNow;
     public string Status { get; set; } = "open";
