@@ -94,6 +94,20 @@ public class InvoiceEntity
     public ICollection<InvoiceItemEntity> Items { get; set; } = new List<InvoiceItemEntity>();
 }
 
+public class InvoiceBankDetailEntity
+{
+    public int Id { get; set; }
+    public int InvoiceId { get; set; }
+    public string? BankName { get; set; }
+    public string? AccountNo { get; set; }
+    public string? AccountType { get; set; }
+    public string? Ifsc { get; set; }
+    public string? MsmeNo { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public InvoiceEntity? Invoice { get; set; }
+}
+
 public class InvoiceItemEntity
 {
     public int Id { get; set; }

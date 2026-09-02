@@ -24,6 +24,7 @@ public class QuotationDbContext : DbContext
     public DbSet<PurchaseOrderEntity> PurchaseOrders { get; set; }
     public DbSet<PurchaseOrderItemEntity> PurchaseOrderItems { get; set; }
     public DbSet<InvoiceEntity> Invoices { get; set; }
+    public DbSet<InvoiceBankDetailEntity> InvoiceBankDetails { get; set; }
     public DbSet<InvoiceItemEntity> InvoiceItems { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -256,6 +257,25 @@ public class QuotationDbContext : DbContext
 
             entity.HasOne(e => e.Invoice)
                 .WithMany(i => i.Items)
+                .HasForeignKey(e => e.InvoiceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InvoiceBankDetailEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.InvoiceId).IsRequired().HasColumnName("invoice_id");
+            entity.Property(e => e.BankName).HasMaxLength(255).HasColumnName("bank_name");
+            entity.Property(e => e.AccountNo).HasMaxLength(100).HasColumnName("account_no");
+            entity.Property(e => e.AccountType).HasMaxLength(100).HasColumnName("account_type");
+            entity.Property(e => e.Ifsc).HasMaxLength(50).HasColumnName("ifsc");
+            entity.Property(e => e.MsmeNo).HasMaxLength(100).HasColumnName("msme_no");
+            entity.Property(e => e.CreatedAt).IsRequired().HasColumnName("created_at");
+            entity.ToTable("invoice_bank_details");
+
+            entity.HasOne(e => e.Invoice)
+                .WithMany()
                 .HasForeignKey(e => e.InvoiceId)
                 .OnDelete(DeleteBehavior.Cascade);
         });

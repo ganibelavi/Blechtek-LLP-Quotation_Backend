@@ -72,6 +72,20 @@ public class InvoiceController : ControllerBase
         _db.Invoices.Add(invoice);
         await _db.SaveChangesAsync();
 
+        var bankDetails = new InvoiceBankDetailEntity
+        {
+            InvoiceId = invoice.Id,
+            BankName = request.BankName,
+            AccountNo = request.AccountNo,
+            AccountType = request.AccountType,
+            Ifsc = request.Ifsc,
+            MsmeNo = request.MsmeNo,
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        _db.InvoiceBankDetails.Add(bankDetails);
+        await _db.SaveChangesAsync();
+
         if (request.Items is { Count: > 0 })
         {
             var lineItems = request.Items
@@ -118,6 +132,11 @@ public class InvoiceController : ControllerBase
                 supplierState = request.SupplierState,
                 supplierStateCode = request.SupplierStateCode,
                 supplierGSTN = request.SupplierGSTN,
+                bankName = bankDetails.BankName,
+                accountNo = bankDetails.AccountNo,
+                accountType = bankDetails.AccountType ?? "Current",
+                ifsc = bankDetails.Ifsc,
+                msmeNo = bankDetails.MsmeNo,
                 receiverName = request.ReceiverName,
                 receiverAddress = request.ReceiverAddress,
                 receiverState = request.ReceiverState,
@@ -163,32 +182,11 @@ public class InvoiceController : ControllerBase
             return NotFound(new { error = "Invoice not found." });
         }
 
-        var customerName = await _db.Customers
-            .Where(c => c.Id == record.CustomerId)
-            .Select(c => c.Name)
-            .FirstOrDefaultAsync();
+        var customer = await _db.Customers.FirstOrDefaultAsync(c => c.Id == record.CustomerId);
+        var bankDetails = await _db.InvoiceBankDetails.FirstOrDefaultAsync(b => b.InvoiceId == record.Id);
+        var totalAmount = record.Items.Sum(item => item.Qty * item.Rate);
 
-        var response = new
-        {
-            id = record.Id,
-            poId = record.PoId,
-            invoiceNo = record.InvoiceNo,
-            companyName = customerName,
-            receiverName = customerName,
-            dateOfIssue = record.InvoiceDate,
-            poNoDate = record.InvoiceNo,
-            totalAmount = record.Items.Sum(item => item.Qty * item.Rate),
-            items = record.Items.Select(item => new
-            {
-                id = item.Id,
-                description = item.Description,
-                qty = item.Qty,
-                uom = item.Uom,
-                rate = item.Rate,
-            }).ToList(),
-        };
-
-        return Ok(response);
+        return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails));
     }
 
     [HttpGet]
@@ -197,33 +195,32 @@ public class InvoiceController : ControllerBase
         var records = await _db.Invoices
             .Include(i => i.Items)
             .OrderByDescending(i => i.Id)
-            .Select(i => new
-            {
-                id = i.Id,
-                invoiceNo = i.InvoiceNo,
-                companyName = _db.Customers
-                    .Where(c => c.Id == i.CustomerId)
-                    .Select(c => c.Name)
-                    .FirstOrDefault(),
-                receiverName = _db.Customers
-                    .Where(c => c.Id == i.CustomerId)
-                    .Select(c => c.Name)
-                    .FirstOrDefault(),
-                dateOfIssue = i.InvoiceDate,
-                poNoDate = i.InvoiceNo,
-                totalAmount = i.Items.Sum(item => item.Qty * item.Rate),
-                items = i.Items.Select(item => new
-                {
-                    id = item.Id,
-                    description = item.Description,
-                    qty = item.Qty,
-                    uom = item.Uom,
-                    rate = item.Rate,
-                }).ToList(),
-            })
             .ToListAsync();
 
-        return Ok(records);
+        if (records.Count == 0)
+        {
+            return Ok(new List<object>());
+        }
+
+        var customerIds = records.Select(r => r.CustomerId).Distinct().ToList();
+        var customers = await _db.Customers
+            .Where(c => customerIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c);
+        var bankDetailsByInvoiceId = await _db.InvoiceBankDetails
+            .Where(b => records.Select(r => r.Id).Contains(b.InvoiceId))
+            .ToDictionaryAsync(b => b.InvoiceId, b => b);
+
+        var response = records
+            .Select(record =>
+            {
+                var customer = customers.TryGetValue(record.CustomerId, out var matchedCustomer) ? matchedCustomer : null;
+                var totalAmount = record.Items.Sum(item => item.Qty * item.Rate);
+                var bankDetails = bankDetailsByInvoiceId.TryGetValue(record.Id, out var matchedBank) ? matchedBank : null;
+                return BuildInvoiceResponse(record, customer, totalAmount, bankDetails);
+            })
+            .ToList();
+
+        return Ok(response);
     }
 
     [HttpDelete("{id:int}")]
@@ -239,6 +236,95 @@ public class InvoiceController : ControllerBase
         _db.Invoices.Remove(record);
         await _db.SaveChangesAsync();
         return NoContent();
+    }
+
+    private static object BuildInvoiceResponse(InvoiceEntity record, CustomerEntity? customer, decimal totalAmount, InvoiceBankDetailEntity? bankDetails)
+    {
+        var customerName = customer?.Name ?? "";
+        var customerAddress = customer?.Address ?? "";
+        var customerState = customer?.State ?? "";
+        var customerStateCode = customer?.StateCode ?? "";
+        var customerGstn = customer?.Gstn ?? "";
+        var items = record.Items.Select(item => new
+        {
+            id = item.Id,
+            description = item.Description,
+            qty = item.Qty,
+            uom = item.Uom,
+            rate = item.Rate,
+        }).ToList();
+
+        var bankName = bankDetails?.BankName ?? "";
+        var accountNo = bankDetails?.AccountNo ?? "";
+        var accountType = string.IsNullOrWhiteSpace(bankDetails?.AccountType) ? "Current" : bankDetails.AccountType;
+        var ifsc = bankDetails?.Ifsc ?? "";
+        var msmeNo = bankDetails?.MsmeNo ?? "";
+
+        return new
+        {
+            id = record.Id,
+            poId = record.PoId,
+            invoiceNo = record.InvoiceNo,
+            companyName = customerName,
+            receiverName = customerName,
+            consigneeName = customerName,
+            dateOfIssue = record.InvoiceDate,
+            poNoDate = record.InvoiceNo,
+            totalAmount = totalAmount,
+            items = items,
+            invoice = new
+            {
+                originalFor = "ORIGINAL FOR RECIPIENT",
+                companyName = customerName,
+                invoiceNo = record.InvoiceNo,
+                dateOfIssue = record.InvoiceDate,
+                timeOfIssue = "",
+                placeOfService = record.PlaceOfSupply,
+                supplierName = customerName,
+                supplierAddress = customerAddress,
+                supplierState = customerState,
+                supplierStateCode = customerStateCode,
+                supplierGSTN = customerGstn,
+                bankName = bankName,
+                accountNo = accountNo,
+                accountType = accountType,
+                ifsc = ifsc,
+                msmeNo = msmeNo,
+                receiverName = customerName,
+                receiverAddress = customerAddress,
+                receiverState = customerState,
+                receiverStateCode = customerStateCode,
+                receiverGSTN = customerGstn,
+                consigneeName = customerName,
+                consigneeAddress = customerAddress,
+                consigneeState = customerState,
+                consigneeStateCode = customerStateCode,
+                consigneeGSTN = customerGstn,
+                poNoDate = record.InvoiceNo,
+                hsnCode = record.HsnCode,
+                sacCode = record.SacCode,
+                reverseCharge = record.ReverseCharge ? "Yes" : "No",
+                amountInWords = record.AmountInWords,
+                termsOfSale = "",
+                sgstPct = record.SgstPct,
+                cgstPct = record.CgstPct,
+                igstPct = record.IgstPct,
+                tdsPct = record.TdsPct,
+                insurance = record.Insurance,
+            },
+            totals = new
+            {
+                totalQty = items.Sum(item => (decimal)item.qty),
+                totalPrice = totalAmount,
+                subtotal = totalAmount,
+                grandTotal = totalAmount,
+                sgst = 0m,
+                cgst = 0m,
+                igst = 0m,
+                tds = 0m,
+                insurance = record.Insurance,
+            },
+        };
     }
 
     private async Task<string> ResolveUniqueInvoiceNoAsync(string? requestedInvoiceNo)
