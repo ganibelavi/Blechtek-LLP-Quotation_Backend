@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using QuotationApp.API.Models;
 
 namespace QuotationApp.API.Data;
@@ -20,6 +21,10 @@ public class QuotationDbContext : DbContext
     public DbSet<QuotationHistoryEntity> QuotationHistory { get; set; }
     public DbSet<CustomerEntity> Customers { get; set; }
     public DbSet<SupplierEntity> Suppliers { get; set; }
+    public DbSet<CompanyProfileEntity> CompanyProfiles { get; set; }
+    public DbSet<CompanyBankAccountEntity> CompanyBankAccounts { get; set; }
+    public DbSet<GstRateEntity> GstRates { get; set; }
+    public DbSet<TermsTemplateEntity> TermsTemplates { get; set; }
     public DbSet<ProductEntity> Products { get; set; }
     public DbSet<PurchaseOrderEntity> PurchaseOrders { get; set; }
     public DbSet<PurchaseOrderItemEntity> PurchaseOrderItems { get; set; }
@@ -153,6 +158,45 @@ public class QuotationDbContext : DbContext
             entity.ToTable("suppliers");
         });
 
+        modelBuilder.Entity<CompanyProfileEntity>(entity => ConfigureMaster(entity, "company_profile", new Dictionary<string, string>
+        {
+            ["Name"] = "name",
+            ["Address"] = "address",
+            ["State"] = "state",
+            ["StateCode"] = "state_code",
+            ["Gstn"] = "gstn",
+            ["DefaultTermsOfSale"] = "default_terms_of_sale",
+            ["IsActive"] = "is_active"
+        }));
+        modelBuilder.Entity<CompanyBankAccountEntity>(entity => ConfigureMaster(entity, "company_bank_accounts", new Dictionary<string, string>
+        {
+            ["BankName"] = "bank_name",
+            ["AccountNo"] = "account_no",
+            ["AccountType"] = "account_type",
+            ["Ifsc"] = "ifsc",
+            ["MsmeNo"] = "msme_no",
+            ["IsDefault"] = "is_default",
+            ["IsActive"] = "is_active"
+        }));
+        modelBuilder.Entity<GstRateEntity>(entity => ConfigureMaster(entity, "gst_rates", new Dictionary<string, string>
+        {
+            ["Label"] = "label",
+            ["SgstPct"] = "sgst_pct",
+            ["CgstPct"] = "cgst_pct",
+            ["IgstPct"] = "igst_pct",
+            ["IsActive"] = "is_active",
+            ["CreatedAt"] = "created_at"
+        }));
+        modelBuilder.Entity<TermsTemplateEntity>(entity => ConfigureMaster(entity, "terms_templates", new Dictionary<string, string>
+        {
+            ["Type"] = "type",
+            ["Label"] = "label",
+            ["Content"] = "content",
+            ["IsDefault"] = "is_default",
+            ["IsActive"] = "is_active",
+            ["CreatedAt"] = "created_at"
+        }));
+
         modelBuilder.Entity<ProductEntity>(entity =>
         {
             entity.HasKey(e => e.Id);
@@ -279,6 +323,18 @@ public class QuotationDbContext : DbContext
                 .HasForeignKey(e => e.InvoiceId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+    }
+
+    private static void ConfigureMaster<TEntity>(
+        EntityTypeBuilder<TEntity> entity,
+        string tableName,
+        IReadOnlyDictionary<string, string> columns)
+        where TEntity : class
+    {
+        entity.HasKey("Id");
+        foreach (var column in columns)
+            entity.Property(column.Key).HasColumnName(column.Value);
+        entity.ToTable(tableName);
     }
 }
 

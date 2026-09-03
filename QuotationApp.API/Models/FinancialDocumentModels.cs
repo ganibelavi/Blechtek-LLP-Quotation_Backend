@@ -27,6 +27,52 @@ public class SupplierEntity
     public ICollection<PurchaseOrderEntity> PurchaseOrders { get; set; } = new List<PurchaseOrderEntity>();
 }
 
+public class CompanyProfileEntity
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Address { get; set; }
+    public string? State { get; set; }
+    public string? StateCode { get; set; }
+    public string? Gstn { get; set; }
+    public string? DefaultTermsOfSale { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public class CompanyBankAccountEntity
+{
+    public int Id { get; set; }
+    public string? BankName { get; set; }
+    public string? AccountNo { get; set; }
+    public string AccountType { get; set; } = "Current";
+    public string? Ifsc { get; set; }
+    public string? MsmeNo { get; set; }
+    public bool IsDefault { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public class GstRateEntity
+{
+    public int Id { get; set; }
+    public string Label { get; set; } = string.Empty;
+    public decimal SgstPct { get; set; }
+    public decimal CgstPct { get; set; }
+    public decimal IgstPct { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public class TermsTemplateEntity
+{
+    public int Id { get; set; }
+    public string Type { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+    public bool IsDefault { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
 public class ProductEntity
 {
     public int Id { get; set; }

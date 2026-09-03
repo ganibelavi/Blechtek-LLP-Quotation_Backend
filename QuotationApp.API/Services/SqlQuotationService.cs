@@ -315,7 +315,7 @@ public class SqlQuotationService : IQuotationService
                 QuoteCount = g.Count()
             })
             .OrderByDescending(u => u.QuoteCount)
-            .Take(8)
+            .Take(5)
             .ToList();
 
         // Status breakdown - using ValidationDate to determine status
@@ -336,7 +336,7 @@ public class SqlQuotationService : IQuotationService
                 Count = g.Count()
             })
             .OrderByDescending(m => m.Count)
-            .Take(10)
+            .Take(5)
             .ToListAsync();
 
         // Top organizations
@@ -360,7 +360,7 @@ public class SqlQuotationService : IQuotationService
                 Machine = m.Module,
                 Utilization = maxModuleCount > 0 ? (int)Math.Round((m.Count * 100m) / maxModuleCount) : 0
             })
-            .Take(8)
+            .Take(5)
             .ToList();
 
         // Calculate total quoted amount across all quotations

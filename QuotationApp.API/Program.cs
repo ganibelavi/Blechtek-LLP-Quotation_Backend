@@ -125,6 +125,19 @@ BEGIN
     CREATE INDEX IX_QuotationHistory_Organization_Modules ON dbo.QuotationHistory (OrganizationName, ModulesJson);
 END";
     historyTableCommand.ExecuteNonQuery();
+
+    using var masterTablesCommand = connection.CreateCommand();
+    masterTablesCommand.CommandText = @"
+IF OBJECT_ID(N'dbo.company_profile', N'U') IS NULL
+CREATE TABLE dbo.company_profile (id int IDENTITY(1,1) PRIMARY KEY, name varchar(255) NOT NULL, address varchar(1000) NULL, state varchar(100) NULL, state_code varchar(10) NULL, gstn varchar(20) NULL, default_terms_of_sale nvarchar(max) NULL, is_active bit NOT NULL DEFAULT 1);
+IF OBJECT_ID(N'dbo.company_bank_accounts', N'U') IS NULL
+CREATE TABLE dbo.company_bank_accounts (id int IDENTITY(1,1) PRIMARY KEY, bank_name varchar(255) NULL, account_no varchar(100) NULL, account_type varchar(50) NOT NULL DEFAULT 'Current', ifsc varchar(50) NULL, msme_no varchar(100) NULL, is_default bit NOT NULL DEFAULT 0, is_active bit NOT NULL DEFAULT 1);
+IF OBJECT_ID(N'dbo.gst_rates', N'U') IS NULL
+CREATE TABLE dbo.gst_rates (id int IDENTITY(1,1) PRIMARY KEY, label varchar(100) NOT NULL, sgst_pct decimal(5,2) NOT NULL DEFAULT 0, cgst_pct decimal(5,2) NOT NULL DEFAULT 0, igst_pct decimal(5,2) NOT NULL DEFAULT 0, is_active bit NOT NULL DEFAULT 1, created_at datetime2 NOT NULL DEFAULT SYSUTCDATETIME());
+IF OBJECT_ID(N'dbo.terms_templates', N'U') IS NULL
+CREATE TABLE dbo.terms_templates (id int IDENTITY(1,1) PRIMARY KEY, type varchar(30) NOT NULL, label varchar(150) NOT NULL, content nvarchar(max) NOT NULL, is_default bit NOT NULL DEFAULT 0, is_active bit NOT NULL DEFAULT 1, created_at datetime2 NOT NULL DEFAULT SYSUTCDATETIME());
+";
+    masterTablesCommand.ExecuteNonQuery();
 }
 
 if (app.Environment.IsDevelopment())
