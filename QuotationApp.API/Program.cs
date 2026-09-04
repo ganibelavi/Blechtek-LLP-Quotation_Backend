@@ -139,8 +139,8 @@ CREATE TABLE dbo.terms_templates (id int IDENTITY(1,1) PRIMARY KEY, type varchar
 ";
     masterTablesCommand.ExecuteNonQuery();
 
-using var customerSchemaCommand = connection.CreateCommand();
-customerSchemaCommand.CommandText = @"
+    using var customerSchemaCommand = connection.CreateCommand();
+    customerSchemaCommand.CommandText = @"
 IF OBJECT_ID(N'dbo.customers', N'U') IS NOT NULL
 BEGIN
 IF COL_LENGTH(N'dbo.customers', N'contact_name') IS NULL
@@ -150,12 +150,28 @@ IF COL_LENGTH(N'dbo.customers', N'contact_number') IS NULL
 IF COL_LENGTH(N'dbo.customers', N'email') IS NULL
     ALTER TABLE dbo.customers ADD email varchar(255) NULL;
 END";
-customerSchemaCommand.ExecuteNonQuery();
+    customerSchemaCommand.ExecuteNonQuery();
 
-using var purchaseOrderSchemaCommand = connection.CreateCommand();
-purchaseOrderSchemaCommand.CommandText = @"
+    using var purchaseOrderSchemaCommand = connection.CreateCommand();
+    purchaseOrderSchemaCommand.CommandText = @"
 IF OBJECT_ID(N'dbo.purchase_orders', N'U') IS NOT NULL
 BEGIN
+IF COL_LENGTH(N'dbo.purchase_orders', N'quotation_id') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD quotation_id nvarchar(50) NULL;
+ELSE
+BEGIN
+    DECLARE @quotationForeignKeys nvarchar(max) = N'';
+    SELECT @quotationForeignKeys = @quotationForeignKeys
+        + N'ALTER TABLE ' + QUOTENAME(OBJECT_SCHEMA_NAME(fk.parent_object_id))
+        + N'.' + QUOTENAME(OBJECT_NAME(fk.parent_object_id))
+        + N' DROP CONSTRAINT ' + QUOTENAME(fk.name) + N';'
+    FROM sys.foreign_keys fk
+    INNER JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+    WHERE fk.parent_object_id = OBJECT_ID(N'dbo.purchase_orders')
+      AND COL_NAME(fkc.parent_object_id, fkc.parent_column_id) = N'quotation_id';
+    IF @quotationForeignKeys <> N'' EXEC sp_executesql @quotationForeignKeys;
+    ALTER TABLE dbo.purchase_orders ALTER COLUMN quotation_id nvarchar(50) NULL;
+END;
 IF COL_LENGTH(N'dbo.purchase_orders', N'po_direction') IS NULL
     ALTER TABLE dbo.purchase_orders ADD po_direction varchar(20) NULL;
 IF COL_LENGTH(N'dbo.purchase_orders', N'received_from_email') IS NULL
@@ -174,8 +190,24 @@ IF COL_LENGTH(N'dbo.purchase_orders', N'uploaded_by') IS NULL
     ALTER TABLE dbo.purchase_orders ADD uploaded_by varchar(200) NULL;
 IF COL_LENGTH(N'dbo.purchase_orders', N'received_at') IS NULL
     ALTER TABLE dbo.purchase_orders ADD received_at datetime2 NULL;
+
+DECLARE @auditForeignKeys nvarchar(max) = N'';
+SELECT @auditForeignKeys = @auditForeignKeys
+    + N'ALTER TABLE ' + QUOTENAME(OBJECT_SCHEMA_NAME(fk.parent_object_id))
+    + N'.' + QUOTENAME(OBJECT_NAME(fk.parent_object_id))
+    + N' DROP CONSTRAINT ' + QUOTENAME(fk.name) + N';'
+FROM sys.foreign_keys fk
+INNER JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+WHERE fk.parent_object_id = OBJECT_ID(N'dbo.purchase_orders')
+  AND COL_NAME(fkc.parent_object_id, fkc.parent_column_id) IN (N'verified_by', N'uploaded_by');
+IF @auditForeignKeys <> N'' EXEC sp_executesql @auditForeignKeys;
+
+IF COL_LENGTH(N'dbo.purchase_orders', N'verified_by') IS NOT NULL
+    ALTER TABLE dbo.purchase_orders ALTER COLUMN verified_by nvarchar(200) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'uploaded_by') IS NOT NULL
+    ALTER TABLE dbo.purchase_orders ALTER COLUMN uploaded_by nvarchar(200) NULL;
 END";
-purchaseOrderSchemaCommand.ExecuteNonQuery();
+    purchaseOrderSchemaCommand.ExecuteNonQuery();
 }
 
 if (app.Environment.IsDevelopment())

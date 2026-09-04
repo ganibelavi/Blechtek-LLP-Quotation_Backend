@@ -54,10 +54,10 @@ public class PurchaseOrderController : ControllerBase
             ReceivedFromEmail = request.ReceivedFromEmail,
             AttachmentUrl = request.AttachmentUrl,
             VerificationStatus = string.IsNullOrWhiteSpace(request.VerificationStatus) ? "pending" : request.VerificationStatus,
-            VerifiedBy = request.VerifiedBy,
+            VerifiedBy = string.IsNullOrWhiteSpace(request.VerifiedBy) ? null : request.VerifiedBy.Trim(),
             VerifiedAt = ParseNullableDate(request.VerifiedAt),
             VerificationNotes = request.VerificationNotes,
-            UploadedBy = request.UploadedBy,
+            UploadedBy = string.IsNullOrWhiteSpace(request.UploadedBy) ? null : request.UploadedBy.Trim(),
             ReceivedAt = ParseNullableDate(request.ReceivedAt),
         };
 
@@ -222,8 +222,8 @@ public class PurchaseOrderController : ControllerBase
                 ? foundSupplier
                 : null;
 
-            var linkedQuotationNo = record.QuotationId.HasValue
-                ? quotationLookup.FirstOrDefault(q => q.Id == record.QuotationId.Value.ToString())?.QuotationNo
+            var linkedQuotationNo = !string.IsNullOrWhiteSpace(record.QuotationId)
+                ? quotationLookup.FirstOrDefault(q => q.Id == record.QuotationId)?.QuotationNo
                 : null;
 
             var totalAmount = record.Items.Sum(i => i.Qty * i.Rate);
@@ -393,29 +393,28 @@ public class PurchaseOrderController : ControllerBase
         return candidate;
     }
 
-    private async Task<string?> GetLinkedQuotationNoAsync(int? quotationId)
+    private async Task<string?> GetLinkedQuotationNoAsync(string? quotationId)
     {
-        if (!quotationId.HasValue)
+        if (string.IsNullOrWhiteSpace(quotationId))
         {
             return null;
         }
 
-        var lookupId = quotationId.Value.ToString();
         return await _db.Quotations
             .AsNoTracking()
-            .Where(q => q.Id == lookupId)
+            .Where(q => q.Id == quotationId)
             .Select(q => q.QuotationNo)
             .FirstOrDefaultAsync();
     }
 
-    private static string? GetQuotationRefNo(int? quotationId, string? requestQuotationRefNo)
+    private static string? GetQuotationRefNo(string? quotationId, string? requestQuotationRefNo)
     {
         if (!string.IsNullOrWhiteSpace(requestQuotationRefNo))
         {
             return requestQuotationRefNo.Trim();
         }
 
-        if (!quotationId.HasValue)
+        if (string.IsNullOrWhiteSpace(quotationId))
         {
             return null;
         }

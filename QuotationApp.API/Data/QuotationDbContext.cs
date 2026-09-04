@@ -218,7 +218,7 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.CustomerId).IsRequired().HasColumnName("customer_id");
             entity.Property(e => e.SupplierId).HasColumnName("supplier_id");
-            entity.Property(e => e.QuotationId).HasColumnName("quotation_id");
+            entity.Property(e => e.QuotationId).HasMaxLength(50).HasColumnType("nvarchar(50)").HasColumnName("quotation_id");
             entity.Property(e => e.QuotationRefNo).HasMaxLength(100).HasColumnName("quotation_ref_no");
             entity.Property(e => e.QuotationRefDate).HasColumnName("quotation_ref_date");
             entity.Property(e => e.PoNo).IsRequired().HasMaxLength(50).HasColumnName("po_no");

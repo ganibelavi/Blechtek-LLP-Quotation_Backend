@@ -91,7 +91,7 @@ public class PurchaseOrderEntity
     public int Id { get; set; }
     public int CustomerId { get; set; }
     public int? SupplierId { get; set; }
-    public int? QuotationId { get; set; }
+    public string? QuotationId { get; set; }
     public string? QuotationRefNo { get; set; }
     public DateTime? QuotationRefDate { get; set; }
     public string PoNo { get; set; } = string.Empty;
@@ -204,7 +204,7 @@ public class CreatePurchaseOrderRequest
     public string? PaymentTerms { get; set; }
     public string? ExpectedDeliveryDate { get; set; }
     public string? Notes { get; set; }
-    public int? QuotationId { get; set; }
+    public string? QuotationId { get; set; }
     public decimal TotalAmount { get; set; }
     public string? PoDirection { get; set; }
     public string? ReceivedFromEmail { get; set; }
