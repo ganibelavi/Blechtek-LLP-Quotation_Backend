@@ -276,6 +276,42 @@ public class PurchaseOrderController : ControllerBase
         return Ok(response);
     }
 
+    [HttpPatch("{id:int}/verification")]
+    public async Task<ActionResult<object>> UpdateVerification(
+        int id,
+        [FromBody] UpdatePurchaseOrderVerificationRequest request)
+    {
+        var allowedStatuses = new[] { "pending", "verified", "mismatch", "rejected" };
+        var status = request?.VerificationStatus?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(status) || !allowedStatuses.Contains(status))
+        {
+            return BadRequest(new { error = "Verification status must be pending, verified, mismatch, or rejected." });
+        }
+
+        var purchaseOrder = await _db.PurchaseOrders.FirstOrDefaultAsync(po => po.Id == id);
+        if (purchaseOrder is null)
+        {
+            return NotFound(new { error = "Purchase order not found." });
+        }
+
+        purchaseOrder.VerificationStatus = status;
+        purchaseOrder.VerificationNotes = string.IsNullOrWhiteSpace(request?.VerificationNotes)
+            ? null
+            : request.VerificationNotes.Trim();
+        purchaseOrder.VerifiedAt = status == "verified" ? DateTime.UtcNow : null;
+        purchaseOrder.VerifiedBy = null;
+
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            id = purchaseOrder.Id,
+            verificationStatus = purchaseOrder.VerificationStatus,
+            verificationNotes = purchaseOrder.VerificationNotes,
+            verifiedAt = purchaseOrder.VerifiedAt,
+        });
+    }
+
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {

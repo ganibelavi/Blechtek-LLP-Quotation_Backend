@@ -226,6 +226,12 @@ public class PurchaseOrderItemRequest
     public decimal Rate { get; set; }
 }
 
+public class UpdatePurchaseOrderVerificationRequest
+{
+    public string? VerificationStatus { get; set; }
+    public string? VerificationNotes { get; set; }
+}
+
 public class CreateInvoiceRequest
 {
     public string? OriginalFor { get; set; }

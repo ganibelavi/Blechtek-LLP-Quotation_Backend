@@ -237,7 +237,7 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.UploadedBy).HasMaxLength(200).HasColumnName("uploaded_by");
             entity.Property(e => e.ReceivedAt).HasColumnName("received_at");
             entity.HasIndex(e => e.PoNo).IsUnique();
-            entity.ToTable("purchase_orders");
+            entity.ToTable("purchase_orders", table => table.HasTrigger("trg_po_verification_history"));
 
             entity.HasOne<CustomerEntity>()
                 .WithMany(c => c.PurchaseOrders)
