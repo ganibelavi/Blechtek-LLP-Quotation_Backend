@@ -208,6 +208,19 @@ IF COL_LENGTH(N'dbo.purchase_orders', N'uploaded_by') IS NOT NULL
     ALTER TABLE dbo.purchase_orders ALTER COLUMN uploaded_by nvarchar(200) NULL;
 END";
     purchaseOrderSchemaCommand.ExecuteNonQuery();
+
+    using var moduleSchemaCommand = connection.CreateCommand();
+    moduleSchemaCommand.CommandText = @"
+IF OBJECT_ID(N'dbo.Modules', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.Modules', N'HsnCode') IS NULL
+        ALTER TABLE dbo.Modules ADD HsnCode nvarchar(20) NULL;
+    IF COL_LENGTH(N'dbo.Modules', N'SacCode') IS NULL
+        ALTER TABLE dbo.Modules ADD SacCode nvarchar(20) NULL;
+    IF COL_LENGTH(N'dbo.Modules', N'ReverseChargeDefault') IS NULL
+        ALTER TABLE dbo.Modules ADD ReverseChargeDefault bit NOT NULL CONSTRAINT DF_Modules_ReverseChargeDefault DEFAULT 0;
+END";
+    moduleSchemaCommand.ExecuteNonQuery();
 }
 
 if (app.Environment.IsDevelopment())

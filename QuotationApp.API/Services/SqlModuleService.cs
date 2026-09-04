@@ -45,7 +45,10 @@ public class SqlModuleService : IModuleService
                     Pillar = m.Pillar,
                     Module = m.ModuleName,
                     ModuleName = m.ModuleName,
-                    Price = m.Price
+                    Price = m.Price,
+                    HsnCode = m.HsnCode,
+                    SacCode = m.SacCode,
+                    ReverseChargeDefault = m.ReverseChargeDefault
                 })
                 .ToListAsync();
 
@@ -67,7 +70,10 @@ public class SqlModuleService : IModuleService
         {
             Pillar = request.Pillar,
             ModuleName = request.ModuleName,
-            Price = request.Price
+            Price = request.Price,
+            HsnCode = request.HsnCode,
+            SacCode = request.SacCode,
+            ReverseChargeDefault = request.ReverseChargeDefault
         };
 
         _dbContext.Modules.Add(entity);
@@ -113,7 +119,10 @@ public class SqlModuleService : IModuleService
                 UPDATE [Modules]
                 SET [Pillar] = {request.Pillar},
                     [ModuleName] = {request.ModuleName},
-                    [Price] = {request.Price}
+                    [Price] = {request.Price},
+                    [HsnCode] = {request.HsnCode},
+                    [SacCode] = {request.SacCode},
+                    [ReverseChargeDefault] = {request.ReverseChargeDefault}
                 WHERE [Id] = {id}");
 
             _cache = null;
@@ -123,12 +132,18 @@ public class SqlModuleService : IModuleService
                 Pillar = request.Pillar,
                 Module = request.ModuleName,
                 ModuleName = request.ModuleName,
-                Price = request.Price
+                Price = request.Price,
+                HsnCode = request.HsnCode,
+                SacCode = request.SacCode,
+                ReverseChargeDefault = request.ReverseChargeDefault
             };
         }
 
         entity.Pillar = request.Pillar;
         entity.Price = request.Price;
+        entity.HsnCode = request.HsnCode;
+        entity.SacCode = request.SacCode;
+        entity.ReverseChargeDefault = request.ReverseChargeDefault;
         await _dbContext.SaveChangesAsync();
         _cache = null;
         return ToModuleItem(entity);
@@ -185,6 +200,9 @@ public class SqlModuleService : IModuleService
         Pillar = entity.Pillar,
         Module = entity.ModuleName,
         ModuleName = entity.ModuleName,
-        Price = entity.Price
+        Price = entity.Price,
+        HsnCode = entity.HsnCode,
+        SacCode = entity.SacCode,
+        ReverseChargeDefault = entity.ReverseChargeDefault
     };
 }

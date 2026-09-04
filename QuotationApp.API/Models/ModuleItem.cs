@@ -11,6 +11,9 @@ public class ModuleItem
     public string Module { get; set; } = string.Empty;
     public string ModuleName { get; set; } = string.Empty;
     public decimal? Price { get; set; }
+    public string? HsnCode { get; set; }
+    public string? SacCode { get; set; }
+    public bool ReverseChargeDefault { get; set; }
 }
 
 public class ModuleUpsertRequest
@@ -18,4 +21,7 @@ public class ModuleUpsertRequest
     public string Pillar { get; set; } = string.Empty;
     public string ModuleName { get; set; } = string.Empty;
     public decimal? Price { get; set; }
+    public string? HsnCode { get; set; }
+    public string? SacCode { get; set; }
+    public bool ReverseChargeDefault { get; set; }
 }
