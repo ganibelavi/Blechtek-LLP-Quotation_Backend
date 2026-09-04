@@ -8,6 +8,9 @@ public class CustomerEntity
     public string? State { get; set; }
     public string? StateCode { get; set; }
     public string? Gstn { get; set; }
+    public string? ContactName { get; set; }
+    public string? ContactNumber { get; set; }
+    public string? Email { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<PurchaseOrderEntity> PurchaseOrders { get; set; } = new List<PurchaseOrderEntity>();
@@ -97,6 +100,15 @@ public class PurchaseOrderEntity
     public string? DeliveryTerms { get; set; }
     public string? PaymentTerms { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public string? PoDirection { get; set; }
+    public string? ReceivedFromEmail { get; set; }
+    public string? AttachmentUrl { get; set; }
+    public string? VerificationStatus { get; set; } = "pending";
+    public string? VerifiedBy { get; set; }
+    public DateTime? VerifiedAt { get; set; }
+    public string? VerificationNotes { get; set; }
+    public string? UploadedBy { get; set; }
+    public DateTime? ReceivedAt { get; set; }
 
     public ICollection<PurchaseOrderItemEntity> Items { get; set; } = new List<PurchaseOrderItemEntity>();
 }
@@ -194,6 +206,15 @@ public class CreatePurchaseOrderRequest
     public string? Notes { get; set; }
     public int? QuotationId { get; set; }
     public decimal TotalAmount { get; set; }
+    public string? PoDirection { get; set; }
+    public string? ReceivedFromEmail { get; set; }
+    public string? AttachmentUrl { get; set; }
+    public string? VerificationStatus { get; set; }
+    public string? VerifiedBy { get; set; }
+    public string? VerifiedAt { get; set; }
+    public string? VerificationNotes { get; set; }
+    public string? UploadedBy { get; set; }
+    public string? ReceivedAt { get; set; }
     public List<PurchaseOrderItemRequest> Items { get; set; } = new();
 }
 

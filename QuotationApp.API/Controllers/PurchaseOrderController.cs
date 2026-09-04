@@ -50,6 +50,15 @@ public class PurchaseOrderController : ControllerBase
             DeliveryTerms = request.DeliveryTerms,
             PaymentTerms = request.PaymentTerms,
             CreatedAt = DateTime.UtcNow,
+            PoDirection = request.PoDirection,
+            ReceivedFromEmail = request.ReceivedFromEmail,
+            AttachmentUrl = request.AttachmentUrl,
+            VerificationStatus = string.IsNullOrWhiteSpace(request.VerificationStatus) ? "pending" : request.VerificationStatus,
+            VerifiedBy = request.VerifiedBy,
+            VerifiedAt = ParseNullableDate(request.VerifiedAt),
+            VerificationNotes = request.VerificationNotes,
+            UploadedBy = request.UploadedBy,
+            ReceivedAt = ParseNullableDate(request.ReceivedAt),
         };
 
         _db.PurchaseOrders.Add(purchaseOrder);
@@ -81,6 +90,8 @@ public class PurchaseOrderController : ControllerBase
         var response = new
         {
             id = purchaseOrder.Id,
+            customerId = purchaseOrder.CustomerId,
+            supplierId = purchaseOrder.SupplierId,
             quotationId = purchaseOrder.QuotationId,
             poNo = purchaseOrder.PoNo,
             poDate = purchaseOrder.PoDate,
@@ -100,6 +111,15 @@ public class PurchaseOrderController : ControllerBase
             paymentTerms = purchaseOrder.PaymentTerms,
             quotationRefNo = purchaseOrder.QuotationRefNo,
             quotationRefDate = purchaseOrder.QuotationRefDate,
+            poDirection = purchaseOrder.PoDirection,
+            receivedFromEmail = purchaseOrder.ReceivedFromEmail,
+            attachmentUrl = purchaseOrder.AttachmentUrl,
+            verificationStatus = purchaseOrder.VerificationStatus,
+            verifiedBy = purchaseOrder.VerifiedBy,
+            verifiedAt = purchaseOrder.VerifiedAt,
+            verificationNotes = purchaseOrder.VerificationNotes,
+            uploadedBy = purchaseOrder.UploadedBy,
+            receivedAt = purchaseOrder.ReceivedAt,
             totalAmount = totalAmount,
             items = request.Items,
         };
@@ -127,9 +147,20 @@ public class PurchaseOrderController : ControllerBase
         var response = new
         {
             id = record.Id,
+            customerId = record.CustomerId,
+            supplierId = record.SupplierId,
             quotationId = record.QuotationId,
             quotationRefNo = record.QuotationRefNo ?? linkedQuotationNo,
             quotationRefDate = record.QuotationRefDate,
+            poDirection = record.PoDirection,
+            receivedFromEmail = record.ReceivedFromEmail,
+            attachmentUrl = record.AttachmentUrl,
+            verificationStatus = record.VerificationStatus,
+            verifiedBy = record.VerifiedBy,
+            verifiedAt = record.VerifiedAt,
+            verificationNotes = record.VerificationNotes,
+            uploadedBy = record.UploadedBy,
+            receivedAt = record.ReceivedAt,
             poNo = record.PoNo,
             poDate = record.PoDate,
             status = record.Status,
@@ -200,6 +231,8 @@ public class PurchaseOrderController : ControllerBase
             return new
             {
                 id = record.Id,
+                customerId = record.CustomerId,
+                supplierId = record.SupplierId,
                 quotationId = record.QuotationId,
                 quotationRefNo = record.QuotationRefNo ?? linkedQuotationNo,
                 quotationRefDate = record.QuotationRefDate,
@@ -219,6 +252,15 @@ public class PurchaseOrderController : ControllerBase
                 supplierGSTN = supplier?.Gstn ?? buyer?.Gstn,
                 deliveryTerms = record.DeliveryTerms,
                 paymentTerms = record.PaymentTerms,
+                poDirection = record.PoDirection,
+                receivedFromEmail = record.ReceivedFromEmail,
+                attachmentUrl = record.AttachmentUrl,
+                verificationStatus = record.VerificationStatus,
+                verifiedBy = record.VerifiedBy,
+                verifiedAt = record.VerifiedAt,
+                verificationNotes = record.VerificationNotes,
+                uploadedBy = record.UploadedBy,
+                receivedAt = record.ReceivedAt,
                 totalAmount = totalAmount,
                 items = record.Items.Select(i => new
                 {

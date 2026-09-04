@@ -141,6 +141,9 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.State).HasMaxLength(100).HasColumnName("state");
             entity.Property(e => e.StateCode).HasMaxLength(10).HasColumnName("state_code");
             entity.Property(e => e.Gstn).HasMaxLength(20).HasColumnName("gstn");
+            entity.Property(e => e.ContactName).HasMaxLength(150).HasColumnName("contact_name");
+            entity.Property(e => e.ContactNumber).HasMaxLength(30).HasColumnName("contact_number");
+            entity.Property(e => e.Email).HasMaxLength(255).HasColumnName("email");
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnName("created_at");
             entity.ToTable("customers");
         });
@@ -224,6 +227,15 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.DeliveryTerms).HasColumnName("delivery_terms");
             entity.Property(e => e.PaymentTerms).HasColumnName("payment_terms");
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnName("created_at");
+            entity.Property(e => e.PoDirection).HasMaxLength(20).HasColumnName("po_direction");
+            entity.Property(e => e.ReceivedFromEmail).HasMaxLength(255).HasColumnName("received_from_email");
+            entity.Property(e => e.AttachmentUrl).HasMaxLength(1000).HasColumnName("attachment_url");
+            entity.Property(e => e.VerificationStatus).HasMaxLength(30).HasColumnName("verification_status");
+            entity.Property(e => e.VerifiedBy).HasMaxLength(200).HasColumnName("verified_by");
+            entity.Property(e => e.VerifiedAt).HasColumnName("verified_at");
+            entity.Property(e => e.VerificationNotes).HasColumnName("verification_notes");
+            entity.Property(e => e.UploadedBy).HasMaxLength(200).HasColumnName("uploaded_by");
+            entity.Property(e => e.ReceivedAt).HasColumnName("received_at");
             entity.HasIndex(e => e.PoNo).IsUnique();
             entity.ToTable("purchase_orders");
 

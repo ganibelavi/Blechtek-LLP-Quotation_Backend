@@ -138,6 +138,44 @@ IF OBJECT_ID(N'dbo.terms_templates', N'U') IS NULL
 CREATE TABLE dbo.terms_templates (id int IDENTITY(1,1) PRIMARY KEY, type varchar(30) NOT NULL, label varchar(150) NOT NULL, content nvarchar(max) NOT NULL, is_default bit NOT NULL DEFAULT 0, is_active bit NOT NULL DEFAULT 1, created_at datetime2 NOT NULL DEFAULT SYSUTCDATETIME());
 ";
     masterTablesCommand.ExecuteNonQuery();
+
+using var customerSchemaCommand = connection.CreateCommand();
+customerSchemaCommand.CommandText = @"
+IF OBJECT_ID(N'dbo.customers', N'U') IS NOT NULL
+BEGIN
+IF COL_LENGTH(N'dbo.customers', N'contact_name') IS NULL
+    ALTER TABLE dbo.customers ADD contact_name varchar(150) NULL;
+IF COL_LENGTH(N'dbo.customers', N'contact_number') IS NULL
+    ALTER TABLE dbo.customers ADD contact_number varchar(30) NULL;
+IF COL_LENGTH(N'dbo.customers', N'email') IS NULL
+    ALTER TABLE dbo.customers ADD email varchar(255) NULL;
+END";
+customerSchemaCommand.ExecuteNonQuery();
+
+using var purchaseOrderSchemaCommand = connection.CreateCommand();
+purchaseOrderSchemaCommand.CommandText = @"
+IF OBJECT_ID(N'dbo.purchase_orders', N'U') IS NOT NULL
+BEGIN
+IF COL_LENGTH(N'dbo.purchase_orders', N'po_direction') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD po_direction varchar(20) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'received_from_email') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD received_from_email varchar(255) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'attachment_url') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD attachment_url varchar(1000) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'verification_status') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD verification_status varchar(30) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'verified_by') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD verified_by varchar(200) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'verified_at') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD verified_at datetime2 NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'verification_notes') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD verification_notes varchar(max) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'uploaded_by') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD uploaded_by varchar(200) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'received_at') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD received_at datetime2 NULL;
+END";
+purchaseOrderSchemaCommand.ExecuteNonQuery();
 }
 
 if (app.Environment.IsDevelopment())
