@@ -293,8 +293,21 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.Status).IsRequired().HasMaxLength(20).HasColumnName("status");
             entity.Property(e => e.AmountInWords).HasMaxLength(1000).HasColumnName("amount_in_words");
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnName("created_at");
+            entity.Property(e => e.CompanyProfileId).HasColumnName("company_profile_id");
+            entity.Property(e => e.SellerName).HasMaxLength(255).HasColumnName("seller_name");
+            entity.Property(e => e.SellerAddress).HasMaxLength(1000).HasColumnName("seller_address");
+            entity.Property(e => e.SellerState).HasMaxLength(100).HasColumnName("seller_state");
+            entity.Property(e => e.SellerStateCode).HasMaxLength(10).HasColumnName("seller_state_code");
+            entity.Property(e => e.SellerGstn).HasMaxLength(20).HasColumnName("seller_gstn");
+            entity.Property(e => e.BuyerName).HasMaxLength(255).HasColumnName("buyer_name");
+            entity.Property(e => e.BuyerAddress).HasMaxLength(1000).HasColumnName("buyer_address");
+            entity.Property(e => e.BuyerState).HasMaxLength(100).HasColumnName("buyer_state");
+            entity.Property(e => e.BuyerStateCode).HasMaxLength(10).HasColumnName("buyer_state_code");
+            entity.Property(e => e.BuyerGstn).HasMaxLength(20).HasColumnName("buyer_gstn");
+            entity.Property(e => e.ShipToAddress).HasMaxLength(1000).HasColumnName("ship_to_address");
+            entity.Property(e => e.GstRateId).HasColumnName("gst_rate_id");
             entity.HasIndex(e => e.InvoiceNo).IsUnique();
-            entity.ToTable("invoices");
+            entity.ToTable("invoices", table => table.HasTrigger("trg_invoice_requires_verified_po"));
 
             entity.HasOne<CustomerEntity>()
                 .WithMany(c => c.Invoices)

@@ -148,6 +148,19 @@ public class InvoiceEntity
     public string Status { get; set; } = "unpaid";
     public string? AmountInWords { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public int? CompanyProfileId { get; set; }
+    public string? SellerName { get; set; }
+    public string? SellerAddress { get; set; }
+    public string? SellerState { get; set; }
+    public string? SellerStateCode { get; set; }
+    public string? SellerGstn { get; set; }
+    public string? BuyerName { get; set; }
+    public string? BuyerAddress { get; set; }
+    public string? BuyerState { get; set; }
+    public string? BuyerStateCode { get; set; }
+    public string? BuyerGstn { get; set; }
+    public string? ShipToAddress { get; set; }
+    public int? GstRateId { get; set; }
 
     public ICollection<InvoiceItemEntity> Items { get; set; } = new List<InvoiceItemEntity>();
 }
@@ -234,6 +247,9 @@ public class UpdatePurchaseOrderVerificationRequest
 
 public class CreateInvoiceRequest
 {
+    public int? CustomerId { get; set; }
+    public int? CompanyProfileId { get; set; }
+    public int? GstRateId { get; set; }
     public string? OriginalFor { get; set; }
     public string? CompanyName { get; set; }
     public string? InvoiceNo { get; set; }
@@ -260,6 +276,17 @@ public class CreateInvoiceRequest
     public string? ConsigneeState { get; set; }
     public string? ConsigneeStateCode { get; set; }
     public string? ConsigneeGSTN { get; set; }
+    public string? SellerName { get; set; }
+    public string? SellerAddress { get; set; }
+    public string? SellerState { get; set; }
+    public string? SellerStateCode { get; set; }
+    public string? SellerGSTN { get; set; }
+    public string? BuyerName { get; set; }
+    public string? BuyerAddress { get; set; }
+    public string? BuyerState { get; set; }
+    public string? BuyerStateCode { get; set; }
+    public string? BuyerGSTN { get; set; }
+    public string? ShipToAddress { get; set; }
     public string? PoNoDate { get; set; }
     public string? HsnCode { get; set; }
     public string? SacCode { get; set; }

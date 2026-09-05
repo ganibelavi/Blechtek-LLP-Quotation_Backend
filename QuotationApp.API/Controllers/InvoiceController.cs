@@ -24,13 +24,15 @@ public class InvoiceController : ControllerBase
             return BadRequest(new { error = "Invoice payload is required." });
         }
 
-        var customerName = (request.CompanyName ?? request.SupplierName ?? request.ReceiverName ?? request.ConsigneeName ?? "Unknown Customer").Trim();
+        var customerName = (request.BuyerName ?? request.CompanyName ?? request.SupplierName ?? request.ReceiverName ?? request.ConsigneeName ?? "Unknown Customer").Trim();
         if (string.IsNullOrWhiteSpace(customerName))
         {
             return BadRequest(new { error = "Company name is required." });
         }
 
-        var customer = await _db.Customers.FirstOrDefaultAsync(c => c.Name == customerName);
+        var customer = request.CustomerId.HasValue
+            ? await _db.Customers.FirstOrDefaultAsync(c => c.Id == request.CustomerId.Value)
+            : await _db.Customers.FirstOrDefaultAsync(c => c.Name == customerName);
         if (customer is null)
         {
             customer = new CustomerEntity
@@ -67,6 +69,19 @@ public class InvoiceController : ControllerBase
             Status = "unpaid",
             AmountInWords = request.AmountInWords,
             CreatedAt = DateTime.UtcNow,
+            CompanyProfileId = request.CompanyProfileId,
+            SellerName = request.SellerName ?? request.SupplierName,
+            SellerAddress = request.SellerAddress ?? request.SupplierAddress,
+            SellerState = request.SellerState ?? request.SupplierState,
+            SellerStateCode = request.SellerStateCode ?? request.SupplierStateCode,
+            SellerGstn = request.SellerGSTN ?? request.SupplierGSTN,
+            BuyerName = request.BuyerName ?? request.ReceiverName ?? request.ConsigneeName,
+            BuyerAddress = request.BuyerAddress ?? request.ReceiverAddress ?? request.ConsigneeAddress,
+            BuyerState = request.BuyerState ?? request.ReceiverState ?? request.ConsigneeState,
+            BuyerStateCode = request.BuyerStateCode ?? request.ReceiverStateCode ?? request.ConsigneeStateCode,
+            BuyerGstn = request.BuyerGSTN ?? request.ReceiverGSTN ?? request.ConsigneeGSTN,
+            ShipToAddress = request.ShipToAddress,
+            GstRateId = request.GstRateId,
         };
 
         _db.Invoices.Add(invoice);
@@ -240,11 +255,11 @@ public class InvoiceController : ControllerBase
 
     private static object BuildInvoiceResponse(InvoiceEntity record, CustomerEntity? customer, decimal totalAmount, InvoiceBankDetailEntity? bankDetails)
     {
-        var customerName = customer?.Name ?? "";
-        var customerAddress = customer?.Address ?? "";
-        var customerState = customer?.State ?? "";
-        var customerStateCode = customer?.StateCode ?? "";
-        var customerGstn = customer?.Gstn ?? "";
+        var customerName = record.BuyerName ?? customer?.Name ?? "";
+        var customerAddress = record.BuyerAddress ?? customer?.Address ?? "";
+        var customerState = record.BuyerState ?? customer?.State ?? "";
+        var customerStateCode = record.BuyerStateCode ?? customer?.StateCode ?? "";
+        var customerGstn = record.BuyerGstn ?? customer?.Gstn ?? "";
         var items = record.Items.Select(item => new
         {
             id = item.Id,
@@ -280,11 +295,11 @@ public class InvoiceController : ControllerBase
                 dateOfIssue = record.InvoiceDate,
                 timeOfIssue = "",
                 placeOfService = record.PlaceOfSupply,
-                supplierName = customerName,
-                supplierAddress = customerAddress,
-                supplierState = customerState,
-                supplierStateCode = customerStateCode,
-                supplierGSTN = customerGstn,
+                supplierName = record.SellerName ?? customerName,
+                supplierAddress = record.SellerAddress ?? customerAddress,
+                supplierState = record.SellerState ?? customerState,
+                supplierStateCode = record.SellerStateCode ?? customerStateCode,
+                supplierGSTN = record.SellerGstn ?? customerGstn,
                 bankName = bankName,
                 accountNo = accountNo,
                 accountType = accountType,
@@ -311,6 +326,19 @@ public class InvoiceController : ControllerBase
                 igstPct = record.IgstPct,
                 tdsPct = record.TdsPct,
                 insurance = record.Insurance,
+                companyProfileId = record.CompanyProfileId,
+                sellerName = record.SellerName,
+                sellerAddress = record.SellerAddress,
+                sellerState = record.SellerState,
+                sellerStateCode = record.SellerStateCode,
+                sellerGSTN = record.SellerGstn,
+                buyerName = record.BuyerName,
+                buyerAddress = record.BuyerAddress,
+                buyerState = record.BuyerState,
+                buyerStateCode = record.BuyerStateCode,
+                buyerGSTN = record.BuyerGstn,
+                shipToAddress = record.ShipToAddress,
+                gstRateId = record.GstRateId,
             },
             totals = new
             {

@@ -221,6 +221,39 @@ BEGIN
         ALTER TABLE dbo.Modules ADD ReverseChargeDefault bit NOT NULL CONSTRAINT DF_Modules_ReverseChargeDefault DEFAULT 0;
 END";
     moduleSchemaCommand.ExecuteNonQuery();
+
+    using var invoiceSchemaCommand = connection.CreateCommand();
+    invoiceSchemaCommand.CommandText = @"
+IF OBJECT_ID(N'dbo.invoices', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.invoices', N'company_profile_id') IS NULL
+        ALTER TABLE dbo.invoices ADD company_profile_id int NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'seller_name') IS NULL
+        ALTER TABLE dbo.invoices ADD seller_name nvarchar(255) NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'seller_address') IS NULL
+        ALTER TABLE dbo.invoices ADD seller_address nvarchar(1000) NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'seller_state') IS NULL
+        ALTER TABLE dbo.invoices ADD seller_state nvarchar(100) NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'seller_state_code') IS NULL
+        ALTER TABLE dbo.invoices ADD seller_state_code nvarchar(10) NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'seller_gstn') IS NULL
+        ALTER TABLE dbo.invoices ADD seller_gstn nvarchar(20) NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'buyer_name') IS NULL
+        ALTER TABLE dbo.invoices ADD buyer_name nvarchar(255) NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'buyer_address') IS NULL
+        ALTER TABLE dbo.invoices ADD buyer_address nvarchar(1000) NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'buyer_state') IS NULL
+        ALTER TABLE dbo.invoices ADD buyer_state nvarchar(100) NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'buyer_state_code') IS NULL
+        ALTER TABLE dbo.invoices ADD buyer_state_code nvarchar(10) NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'buyer_gstn') IS NULL
+        ALTER TABLE dbo.invoices ADD buyer_gstn nvarchar(20) NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'ship_to_address') IS NULL
+        ALTER TABLE dbo.invoices ADD ship_to_address nvarchar(1000) NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'gst_rate_id') IS NULL
+        ALTER TABLE dbo.invoices ADD gst_rate_id int NULL;
+END";
+    invoiceSchemaCommand.ExecuteNonQuery();
 }
 
 if (app.Environment.IsDevelopment())
