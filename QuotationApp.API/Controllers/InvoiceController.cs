@@ -16,6 +16,12 @@ public class InvoiceController : ControllerBase
         _db = db;
     }
 
+    [HttpGet("next-number")]
+    public async Task<ActionResult<object>> GetNextNumber()
+    {
+        return Ok(new { invoiceNo = await GenerateInvoiceNoAsync() });
+    }
+
     [HttpPost]
     public async Task<ActionResult<object>> Create([FromBody] CreateInvoiceRequest request)
     {
@@ -28,6 +34,22 @@ public class InvoiceController : ControllerBase
         if (string.IsNullOrWhiteSpace(customerName))
         {
             return BadRequest(new { error = "Company name is required." });
+        }
+
+        if (request.PoId.HasValue)
+        {
+            var purchaseOrder = await _db.PurchaseOrders
+                .AsNoTracking()
+                .FirstOrDefaultAsync(po => po.Id == request.PoId.Value);
+            if (purchaseOrder is null)
+            {
+                return BadRequest(new { error = "The referenced purchase order does not exist." });
+            }
+
+            if (!string.Equals(purchaseOrder.VerificationStatus, "verified", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { error = "Only verified purchase orders can be invoiced." });
+            }
         }
 
         var customer = request.CustomerId.HasValue
@@ -47,7 +69,7 @@ public class InvoiceController : ControllerBase
             await _db.SaveChangesAsync();
         }
 
-        var invoiceNo = await ResolveUniqueInvoiceNoAsync(request.InvoiceNo);
+        var invoiceNo = await ResolveRequestedOrGeneratedInvoiceNoAsync(request.InvoiceNo);
 
         var invoice = new InvoiceEntity
         {
@@ -355,27 +377,41 @@ public class InvoiceController : ControllerBase
         };
     }
 
-    private async Task<string> ResolveUniqueInvoiceNoAsync(string? requestedInvoiceNo)
+    private async Task<string> GenerateInvoiceNoAsync()
+    {
+        var now = DateTime.UtcNow.AddHours(5.5);
+        var financialYear = $"FY{now.Year}-{(now.Year + 1) % 100:00}";
+        var prefix = $"BTSS/{financialYear}/INV-";
+        var existingNumbers = await _db.Invoices
+            .AsNoTracking()
+            .Where(invoice => invoice.InvoiceNo != null && invoice.InvoiceNo.StartsWith(prefix))
+            .Select(invoice => invoice.InvoiceNo!)
+            .ToListAsync();
+        var nextNumber = existingNumbers
+            .Select(number => int.TryParse(number[prefix.Length..], out var value) ? value : 0)
+            .DefaultIfEmpty(0)
+            .Max() + 1;
+
+        var candidate = $"{prefix}{nextNumber:0000}";
+        while (await _db.Invoices.AnyAsync(invoice => invoice.InvoiceNo == candidate))
+        {
+            nextNumber++;
+            candidate = $"{prefix}{nextNumber:0000}";
+        }
+        return candidate;
+    }
+
+    private async Task<string> ResolveRequestedOrGeneratedInvoiceNoAsync(string? requestedInvoiceNo)
     {
         var trimmed = requestedInvoiceNo?.Trim();
-        if (!string.IsNullOrWhiteSpace(trimmed) && !await _db.Invoices.AnyAsync(i => i.InvoiceNo == trimmed))
+        if (!string.IsNullOrWhiteSpace(trimmed) &&
+            trimmed.StartsWith("BTSS/FY", StringComparison.OrdinalIgnoreCase) &&
+            !await _db.Invoices.AnyAsync(invoice => invoice.InvoiceNo == trimmed))
         {
             return trimmed;
         }
 
-        var baseInvoiceNo = string.IsNullOrWhiteSpace(trimmed)
-            ? $"INV-{DateTime.UtcNow:yyyyMMdd}"
-            : trimmed;
-
-        var candidate = baseInvoiceNo;
-        var index = 1;
-        while (await _db.Invoices.AnyAsync(i => i.InvoiceNo == candidate))
-        {
-            candidate = $"{baseInvoiceNo}-{index}";
-            index++;
-        }
-
-        return candidate;
+        return await GenerateInvoiceNoAsync();
     }
 
     private static DateTime ParseDate(string? value, DateTime fallback)

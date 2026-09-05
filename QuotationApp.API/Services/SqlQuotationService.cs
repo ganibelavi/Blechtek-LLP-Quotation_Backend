@@ -74,7 +74,8 @@ public class SqlQuotationService : IQuotationService
     private async Task<string> GenerateNextQuotationNoAsync()
     {
         var prefix = _settings.QuotationNoPrefix;
-        var financialYear = _settings.FinancialYear;
+        var currentDate = DateTime.UtcNow.AddHours(5.5);
+        var financialYear = $"FY{currentDate.Year}-{(currentDate.Year + 1) % 100:00}";
         var sequencePrefix = _settings.SequencePrefix;
         var sequenceDigits = _settings.SequenceDigits;
 

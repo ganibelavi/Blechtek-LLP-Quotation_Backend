@@ -16,6 +16,12 @@ public class PurchaseOrderController : ControllerBase
         _db = db;
     }
 
+    [HttpGet("next-number")]
+    public async Task<ActionResult<object>> GetNextNumber()
+    {
+        return Ok(new { poNo = await GeneratePoNoAsync() });
+    }
+
     [HttpPost]
     public async Task<ActionResult<object>> Create([FromBody] CreatePurchaseOrderRequest request)
     {
@@ -35,7 +41,7 @@ public class PurchaseOrderController : ControllerBase
         var buyer = await ResolveCustomerAsync(request.CustomerId, buyerName, request.BuyerAddress, request.BuyerState, request.BuyerStateCode, request.BuyerGSTN);
         var supplier = await ResolveSupplierAsync(request.SupplierId, supplierName, request.SupplierAddress, request.SupplierState, request.SupplierStateCode, request.SupplierGSTN);
 
-        var poNo = await ResolveUniquePoNoAsync(request.PoNo);
+        var poNo = await ResolveRequestedOrGeneratedPoNoAsync(request.PoNo);
 
         var purchaseOrder = new PurchaseOrderEntity
         {
@@ -406,27 +412,41 @@ public class PurchaseOrderController : ControllerBase
         return "Unknown";
     }
 
-    private async Task<string> ResolveUniquePoNoAsync(string? requestedPoNo)
+    private async Task<string> GeneratePoNoAsync()
+    {
+        var now = DateTime.UtcNow.AddHours(5.5);
+        var financialYear = $"FY{now.Year}-{(now.Year + 1) % 100:00}";
+        var prefix = $"BTSS/{financialYear}/PO-";
+        var existingNumbers = await _db.PurchaseOrders
+            .AsNoTracking()
+            .Where(po => po.PoNo != null && po.PoNo.StartsWith(prefix))
+            .Select(po => po.PoNo!)
+            .ToListAsync();
+        var nextNumber = existingNumbers
+            .Select(number => int.TryParse(number[prefix.Length..], out var value) ? value : 0)
+            .DefaultIfEmpty(0)
+            .Max() + 1;
+
+        var candidate = $"{prefix}{nextNumber:0000}";
+        while (await _db.PurchaseOrders.AnyAsync(po => po.PoNo == candidate))
+        {
+            nextNumber++;
+            candidate = $"{prefix}{nextNumber:0000}";
+        }
+        return candidate;
+    }
+
+    private async Task<string> ResolveRequestedOrGeneratedPoNoAsync(string? requestedPoNo)
     {
         var trimmed = requestedPoNo?.Trim();
-        if (!string.IsNullOrWhiteSpace(trimmed) && !await _db.PurchaseOrders.AnyAsync(p => p.PoNo == trimmed))
+        if (!string.IsNullOrWhiteSpace(trimmed) &&
+            trimmed.StartsWith("BTSS/FY", StringComparison.OrdinalIgnoreCase) &&
+            !await _db.PurchaseOrders.AnyAsync(po => po.PoNo == trimmed))
         {
             return trimmed;
         }
 
-        var basePoNo = string.IsNullOrWhiteSpace(trimmed)
-            ? $"PO-{DateTime.UtcNow:yyyyMMdd}"
-            : trimmed;
-
-        var candidate = basePoNo;
-        var index = 1;
-        while (await _db.PurchaseOrders.AnyAsync(p => p.PoNo == candidate))
-        {
-            candidate = $"{basePoNo}-{index}";
-            index++;
-        }
-
-        return candidate;
+        return await GeneratePoNoAsync();
     }
 
     private async Task<string?> GetLinkedQuotationNoAsync(string? quotationId)
