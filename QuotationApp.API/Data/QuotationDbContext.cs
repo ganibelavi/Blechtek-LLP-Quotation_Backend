@@ -347,8 +347,8 @@ public class QuotationDbContext : DbContext
             entity.ToTable("invoice_bank_details");
 
             entity.HasOne(e => e.Invoice)
-                .WithMany()
-                .HasForeignKey(e => e.InvoiceId)
+                .WithOne(i => i.BankDetails)
+                .HasForeignKey<InvoiceBankDetailEntity>(e => e.InvoiceId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

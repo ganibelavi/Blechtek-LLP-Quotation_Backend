@@ -163,6 +163,8 @@ public class InvoiceEntity
     public int? GstRateId { get; set; }
 
     public ICollection<InvoiceItemEntity> Items { get; set; } = new List<InvoiceItemEntity>();
+
+    public InvoiceBankDetailEntity? BankDetails { get; set; }
 }
 
 public class InvoiceBankDetailEntity
@@ -310,4 +312,9 @@ public class InvoiceItemRequest
     public decimal Qty { get; set; } = 1m;
     public string? Uom { get; set; } = "Nos.";
     public decimal Rate { get; set; }
+}
+
+public class UpdateInvoiceStatusRequest
+{
+    public string? Status { get; set; }
 }

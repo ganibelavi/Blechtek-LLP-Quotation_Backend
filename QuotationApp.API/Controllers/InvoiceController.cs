@@ -275,6 +275,188 @@ public class InvoiceController : ControllerBase
         return NoContent();
     }
 
+    [HttpPut("{id:int}")]
+    public async Task<ActionResult<object>> Update(int id, [FromBody] CreateInvoiceRequest request)
+    {
+        if (request is null)
+        {
+            return BadRequest(new { error = "Invoice payload is required." });
+        }
+
+        var record = await _db.Invoices
+            .Include(i => i.Items)
+            .Include(i => i.BankDetails)
+            .FirstOrDefaultAsync(i => i.Id == id);
+
+        if (record is null)
+        {
+            return NotFound(new { error = "Invoice not found." });
+        }
+
+        var customerName = (request.BuyerName ?? request.CompanyName ?? request.SupplierName ?? request.ReceiverName ?? request.ConsigneeName ?? "Unknown Customer").Trim();
+        if (string.IsNullOrWhiteSpace(customerName))
+        {
+            return BadRequest(new { error = "Company name is required." });
+        }
+
+        if (request.PoId.HasValue)
+        {
+            var purchaseOrder = await _db.PurchaseOrders
+                .AsNoTracking()
+                .FirstOrDefaultAsync(po => po.Id == request.PoId.Value);
+            if (purchaseOrder is null)
+            {
+                return BadRequest(new { error = "The referenced purchase order does not exist." });
+            }
+
+            if (!string.Equals(purchaseOrder.VerificationStatus, "verified", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { error = "Only verified purchase orders can be invoiced." });
+            }
+        }
+
+        var customer = request.CustomerId.HasValue
+            ? await _db.Customers.FirstOrDefaultAsync(c => c.Id == request.CustomerId.Value)
+            : await _db.Customers.FirstOrDefaultAsync(c => c.Name == customerName);
+        if (customer is null)
+        {
+            customer = new CustomerEntity
+            {
+                Name = customerName,
+                Address = request.SupplierAddress ?? request.ReceiverAddress ?? request.ConsigneeAddress,
+                State = request.SupplierState ?? request.ReceiverState ?? request.ConsigneeState,
+                StateCode = request.SupplierStateCode ?? request.ReceiverStateCode ?? request.ConsigneeStateCode,
+                Gstn = request.SupplierGSTN ?? request.ReceiverGSTN ?? request.ConsigneeGSTN,
+            };
+            _db.Customers.Add(customer);
+            await _db.SaveChangesAsync();
+        }
+
+        record.CustomerId = customer.Id;
+        record.PoId = request.PoId;
+        record.InvoiceNo = await ResolveRequestedOrGeneratedInvoiceNoAsync(request.InvoiceNo);
+        record.InvoiceDate = ParseDate(request.DateOfIssue, DateTime.UtcNow);
+        record.PlaceOfSupply = request.PlaceOfService;
+        record.HsnCode = request.HsnCode;
+        record.SacCode = request.SacCode;
+        record.SgstPct = request.SgstPct;
+        record.CgstPct = request.CgstPct;
+        record.IgstPct = request.IgstPct;
+        record.TdsPct = request.TdsPct;
+        record.Insurance = request.Insurance;
+        record.ReverseCharge = !string.IsNullOrWhiteSpace(request.ReverseCharge) && request.ReverseCharge.Equals("Yes", StringComparison.OrdinalIgnoreCase);
+        record.Subtotal = request.TotalAmount;
+        record.GrandTotal = request.TotalAmount;
+        record.AmountInWords = request.AmountInWords;
+        record.CompanyProfileId = request.CompanyProfileId;
+        record.SellerName = request.SellerName ?? request.SupplierName;
+        record.SellerAddress = request.SellerAddress ?? request.SupplierAddress;
+        record.SellerState = request.SellerState ?? request.SupplierState;
+        record.SellerStateCode = request.SellerStateCode ?? request.SupplierStateCode;
+        record.SellerGstn = request.SellerGSTN ?? request.SupplierGSTN;
+        record.BuyerName = request.BuyerName ?? request.ReceiverName ?? request.ConsigneeName;
+        record.BuyerAddress = request.BuyerAddress ?? request.ReceiverAddress ?? request.ConsigneeAddress;
+        record.BuyerState = request.BuyerState ?? request.ReceiverState ?? request.ConsigneeState;
+        record.BuyerStateCode = request.BuyerStateCode ?? request.ReceiverStateCode ?? request.ConsigneeStateCode;
+        record.BuyerGstn = request.BuyerGSTN ?? request.ReceiverGSTN ?? request.ConsigneeGSTN;
+        record.ShipToAddress = request.ShipToAddress;
+        record.GstRateId = request.GstRateId;
+
+        // Update bank details
+        var bankDetails = record.BankDetails ?? new InvoiceBankDetailEntity { InvoiceId = record.Id };
+        bankDetails.BankName = request.BankName;
+        bankDetails.AccountNo = request.AccountNo;
+        bankDetails.AccountType = request.AccountType;
+        bankDetails.Ifsc = request.Ifsc;
+        bankDetails.MsmeNo = request.MsmeNo;
+
+        if (record.BankDetails == null)
+        {
+            _db.InvoiceBankDetails.Add(bankDetails);
+        }
+        else
+        {
+            _db.InvoiceBankDetails.Update(bankDetails);
+        }
+
+        // Update line items - remove existing and add new
+        _db.InvoiceItems.RemoveRange(record.Items);
+
+        if (request.Items is { Count: > 0 })
+        {
+            var lineItems = request.Items
+                .Where(item => !string.IsNullOrWhiteSpace(item.Description))
+                .Select(item => new InvoiceItemEntity
+                {
+                    InvoiceId = record.Id,
+                    Description = item.Description ?? "",
+                    Qty = item.Qty <= 0 ? 1 : item.Qty,
+                    Uom = string.IsNullOrWhiteSpace(item.Uom) ? "Nos." : item.Uom,
+                    Rate = item.Rate,
+                })
+                .ToList();
+
+            if (lineItems.Count > 0)
+            {
+                _db.InvoiceItems.AddRange(lineItems);
+            }
+        }
+
+        await _db.SaveChangesAsync();
+
+        // Return updated invoice response
+        var updatedRecord = await _db.Invoices
+            .Include(i => i.Items)
+            .Include(i => i.BankDetails)
+            .FirstOrDefaultAsync(i => i.Id == id);
+
+        var updatedCustomer = await _db.Customers.FirstOrDefaultAsync(c => c.Id == updatedRecord.CustomerId);
+        var updatedBankDetails = updatedRecord.BankDetails;
+        var updatedTotalAmount = updatedRecord.Items.Sum(item => item.Qty * item.Rate);
+
+        return Ok(BuildInvoiceResponse(updatedRecord, updatedCustomer, updatedTotalAmount, updatedBankDetails));
+    }
+
+    [HttpPatch("{id:int}/status")]
+    public async Task<ActionResult<object>> UpdateStatus(int id, [FromBody] UpdateInvoiceStatusRequest request)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.Status))
+        {
+            return BadRequest(new { error = "Status is required." });
+        }
+
+        var validStatuses = new[]
+        {
+            "draft",
+            "advance_received",
+            "partially_paid",
+            "paid",
+            "overdue",
+        };
+        if (!validStatuses.Contains(request.Status.ToLowerInvariant()))
+        {
+            return BadRequest(new
+            {
+                error = "Invalid status. Valid values: draft, advance_received, partially_paid, paid, overdue",
+            });
+        }
+
+        var record = await _db.Invoices.FirstOrDefaultAsync(i => i.Id == id);
+        if (record is null)
+        {
+            return NotFound(new { error = "Invoice not found." });
+        }
+
+        record.Status = request.Status.ToLowerInvariant();
+        await _db.SaveChangesAsync();
+
+        var customer = await _db.Customers.FirstOrDefaultAsync(c => c.Id == record.CustomerId);
+        var bankDetails = await _db.InvoiceBankDetails.FirstOrDefaultAsync(b => b.InvoiceId == record.Id);
+        var totalAmount = record.Items.Sum(item => item.Qty * item.Rate);
+
+        return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails));
+    }
+
     private static object BuildInvoiceResponse(InvoiceEntity record, CustomerEntity? customer, decimal totalAmount, InvoiceBankDetailEntity? bankDetails)
     {
         var customerName = record.BuyerName ?? customer?.Name ?? "";
@@ -307,6 +489,7 @@ public class InvoiceController : ControllerBase
             consigneeName = customerName,
             dateOfIssue = record.InvoiceDate,
             poNoDate = record.InvoiceNo,
+            status = record.Status,
             totalAmount = totalAmount,
             items = items,
             invoice = new
@@ -361,6 +544,7 @@ public class InvoiceController : ControllerBase
                 buyerGSTN = record.BuyerGstn,
                 shipToAddress = record.ShipToAddress,
                 gstRateId = record.GstRateId,
+                status = record.Status,
             },
             totals = new
             {
