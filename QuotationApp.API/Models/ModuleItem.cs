@@ -14,6 +14,7 @@ public class ModuleItem
     public string? HsnCode { get; set; }
     public string? SacCode { get; set; }
     public bool ReverseChargeDefault { get; set; }
+    public decimal? ImplementationEffortCost { get; set; }
 }
 
 public class ModuleUpsertRequest
@@ -24,4 +25,5 @@ public class ModuleUpsertRequest
     public string? HsnCode { get; set; }
     public string? SacCode { get; set; }
     public bool ReverseChargeDefault { get; set; }
+    public decimal? ImplementationEffortCost { get; set; }
 }

@@ -219,6 +219,8 @@ BEGIN
         ALTER TABLE dbo.Modules ADD SacCode nvarchar(20) NULL;
     IF COL_LENGTH(N'dbo.Modules', N'ReverseChargeDefault') IS NULL
         ALTER TABLE dbo.Modules ADD ReverseChargeDefault bit NOT NULL CONSTRAINT DF_Modules_ReverseChargeDefault DEFAULT 0;
+    IF COL_LENGTH(N'dbo.Modules', N'ImplementationEffortCost') IS NULL
+        ALTER TABLE dbo.Modules ADD ImplementationEffortCost decimal(18,2) NULL;
 END";
     moduleSchemaCommand.ExecuteNonQuery();
 

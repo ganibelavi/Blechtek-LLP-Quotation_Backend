@@ -29,10 +29,16 @@ public class ModulesController : ControllerBase
             var module = await _moduleService.AddModuleAsync(request);
             return CreatedAtAction(nameof(GetAll), new { id = module.Id }, module);
         }
+        catch (InvalidOperationException exception)
+        {
+            return Conflict(new { error = exception.Message });
+        }
         catch (Microsoft.EntityFrameworkCore.DbUpdateException)
         {
-            // Likely a unique constraint violation on ModuleName - return a friendly conflict response
-            return Conflict(new { error = "A module with this name already exists." });
+            return Conflict(new
+            {
+                error = "The module could not be saved because its ModuleName conflicts with an existing database record.",
+            });
         }
         catch (Exception)
         {

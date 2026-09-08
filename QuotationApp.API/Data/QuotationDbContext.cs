@@ -46,6 +46,7 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.HsnCode).HasMaxLength(20).HasColumnName("HsnCode");
             entity.Property(e => e.SacCode).HasMaxLength(20).HasColumnName("SacCode");
             entity.Property(e => e.ReverseChargeDefault).HasColumnName("ReverseChargeDefault");
+            entity.Property(e => e.ImplementationEffortCost).HasColumnType("decimal(18,2)").HasColumnName("ImplementationEffortCost");
             entity.HasIndex(e => e.ModuleName).IsUnique();
             entity.ToTable("Modules");
         });
@@ -378,6 +379,7 @@ public class ModuleEntity
     public string? HsnCode { get; set; }
     public string? SacCode { get; set; }
     public bool ReverseChargeDefault { get; set; }
+    public decimal? ImplementationEffortCost { get; set; }
 }
 
 /// <summary>

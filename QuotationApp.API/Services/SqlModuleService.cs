@@ -48,7 +48,8 @@ public class SqlModuleService : IModuleService
                     Price = m.Price,
                     HsnCode = m.HsnCode,
                     SacCode = m.SacCode,
-                    ReverseChargeDefault = m.ReverseChargeDefault
+                    ReverseChargeDefault = m.ReverseChargeDefault,
+                    ImplementationEffortCost = m.ImplementationEffortCost,
                 })
                 .ToListAsync();
 
@@ -66,14 +67,26 @@ public class SqlModuleService : IModuleService
     /// </summary>
     public async Task<ModuleItem> AddModuleAsync(ModuleUpsertRequest request)
     {
+        var pillar = request.Pillar.Trim();
+        var moduleName = request.ModuleName.Trim();
+        var duplicateNameExists = await _dbContext.Modules
+            .AnyAsync(item => item.ModuleName == moduleName);
+
+        if (duplicateNameExists)
+        {
+            throw new InvalidOperationException(
+                $"A module with the name \"{moduleName}\" already exists. Use a different ModuleName.");
+        }
+
         var entity = new ModuleEntity
         {
-            Pillar = request.Pillar,
-            ModuleName = request.ModuleName,
+            Pillar = pillar,
+            ModuleName = moduleName,
             Price = request.Price,
             HsnCode = request.HsnCode,
             SacCode = request.SacCode,
-            ReverseChargeDefault = request.ReverseChargeDefault
+            ReverseChargeDefault = request.ReverseChargeDefault,
+            ImplementationEffortCost = request.ImplementationEffortCost,
         };
 
         _dbContext.Modules.Add(entity);
@@ -90,9 +103,11 @@ public class SqlModuleService : IModuleService
         var entity = await _dbContext.Modules.FindAsync(id);
         if (entity == null) return null;
 
+        var pillar = request.Pillar.Trim();
+        var moduleName = request.ModuleName.Trim();
         var moduleNameChanged = !string.Equals(
             entity.ModuleName,
-            request.ModuleName,
+            moduleName,
             StringComparison.Ordinal);
 
         if (moduleNameChanged)
@@ -107,43 +122,47 @@ public class SqlModuleService : IModuleService
             }
 
             var duplicateNameExists = await _dbContext.Modules
-                .AnyAsync(item => item.Id != id && item.ModuleName == request.ModuleName);
+                .AnyAsync(item => item.Id != id && item.ModuleName == moduleName);
             if (duplicateNameExists)
             {
-                throw new InvalidOperationException("A module with this name already exists.");
+                throw new InvalidOperationException(
+                    $"A module with the name \"{moduleName}\" already exists. Use a different ModuleName.");
             }
 
             // ModuleName is an alternate key. EF Core does not permit changing key
             // values on a tracked entity, so use a parameterized SQL update here.
             await _dbContext.Database.ExecuteSqlInterpolatedAsync($@"
                 UPDATE [Modules]
-                SET [Pillar] = {request.Pillar},
-                    [ModuleName] = {request.ModuleName},
+                SET [Pillar] = {pillar},
+                    [ModuleName] = {moduleName},
                     [Price] = {request.Price},
                     [HsnCode] = {request.HsnCode},
                     [SacCode] = {request.SacCode},
-                    [ReverseChargeDefault] = {request.ReverseChargeDefault}
+                    [ReverseChargeDefault] = {request.ReverseChargeDefault},
+                    [ImplementationEffortCost] = {request.ImplementationEffortCost}
                 WHERE [Id] = {id}");
 
             _cache = null;
             return new ModuleItem
             {
                 Id = id,
-                Pillar = request.Pillar,
-                Module = request.ModuleName,
-                ModuleName = request.ModuleName,
+                Pillar = pillar,
+                Module = moduleName,
+                ModuleName = moduleName,
                 Price = request.Price,
                 HsnCode = request.HsnCode,
                 SacCode = request.SacCode,
-                ReverseChargeDefault = request.ReverseChargeDefault
+                ReverseChargeDefault = request.ReverseChargeDefault,
+                ImplementationEffortCost = request.ImplementationEffortCost,
             };
         }
 
-        entity.Pillar = request.Pillar;
+        entity.Pillar = pillar;
         entity.Price = request.Price;
         entity.HsnCode = request.HsnCode;
         entity.SacCode = request.SacCode;
         entity.ReverseChargeDefault = request.ReverseChargeDefault;
+        entity.ImplementationEffortCost = request.ImplementationEffortCost;
         await _dbContext.SaveChangesAsync();
         _cache = null;
         return ToModuleItem(entity);
@@ -203,6 +222,7 @@ public class SqlModuleService : IModuleService
         Price = entity.Price,
         HsnCode = entity.HsnCode,
         SacCode = entity.SacCode,
-        ReverseChargeDefault = entity.ReverseChargeDefault
+        ReverseChargeDefault = entity.ReverseChargeDefault,
+        ImplementationEffortCost = entity.ImplementationEffortCost
     };
 }
