@@ -570,6 +570,14 @@ public class SqlQuotationService : IQuotationService
             QuotationNo = quotation.QuotationNo ?? string.Empty,
             Date = quotation.Date ?? DateTime.UtcNow,
             SelectedModules = quotation.QuotationModules.Select(m => m.ModuleName).ToList(),
+            ModuleDetails = quotation.QuotationModules.Select(m => new QuotationModuleRequest
+            {
+                ModuleName = m.ModuleName,
+                NoOfUsers = m.NoOfUsers,
+                NoOfInstallations = m.NoOfInstallations,
+                NoOfSites = m.NoOfSites,
+                ImplementationEffortUnit = m.ImplementationEffortUnit
+            }).ToList(),
             QuotationTo = new QuotationToInfo
             {
                 Name = quotation.QuotationToName,
@@ -634,6 +642,16 @@ public class SqlQuotationService : IQuotationService
             QuotationNo = quotation.QuotationNo ?? string.Empty,
             Date = quotation.Date ?? DateTime.UtcNow,
             SelectedModules = selectedModules,
+            ModuleDetails = quotation.QuotationModules
+                .Where(m => selectedModules.Contains(m.ModuleName, StringComparer.OrdinalIgnoreCase))
+                .Select(m => new QuotationModuleRequest
+                {
+                    ModuleName = m.ModuleName,
+                    NoOfUsers = m.NoOfUsers,
+                    NoOfInstallations = m.NoOfInstallations,
+                    NoOfSites = m.NoOfSites,
+                    ImplementationEffortUnit = m.ImplementationEffortUnit
+                }).ToList(),
             QuotationTo = new QuotationToInfo
             {
                 Name = quotation.QuotationToName,
@@ -684,18 +702,23 @@ public class SqlQuotationService : IQuotationService
                 var modules = await moduleService.GetModulesAsync();
                 var modulePrices = modules.ToDictionary(m => m.Module, StringComparer.OrdinalIgnoreCase);
 
-                var totalPrice = request.SelectedModules.Sum(moduleName =>
+                var modulePriceTotal = request.SelectedModules.Sum(moduleName =>
+                {
+                    var module = modulePrices.GetValueOrDefault(moduleName);
+                    return module?.Price ?? 0m;
+                });
+                var implementationPriceTotal = request.SelectedModules.Sum(moduleName =>
                 {
                     var module = modulePrices.GetValueOrDefault(moduleName);
                     var detail = request.ModuleDetails
                         .FirstOrDefault(d => string.Equals(d.ModuleName, moduleName, StringComparison.OrdinalIgnoreCase));
-                    return (module?.Price ?? 0m) +
-                        (module?.ImplementationEffortCost ?? 0m) *
+                    return (module?.ImplementationEffortCost ?? 0m) *
                         GetEffortMultiplier(detail?.ImplementationEffortUnit);
                 });
+                var subtotal = modulePriceTotal + implementationPriceTotal;
                 var discountPercentage = request.DiscountPercentage > 0 ? request.DiscountPercentage : 0m;
-                var discountAmount = totalPrice * discountPercentage / 100m;
-                var finalPrice = totalPrice - discountAmount;
+                var discountAmount = subtotal * discountPercentage / 100m;
+                var finalPrice = subtotal - discountAmount;
 
                 var replacements = new Dictionary<string, string>
                 {
@@ -710,6 +733,9 @@ public class SqlQuotationService : IQuotationService
                     ["{{QuotationTo.Email}}"] = request.QuotationTo?.Email ?? "",
                     ["{{SelectedModules}}"] = string.Join(", ", request.SelectedModules),
                     ["{{MODULE_LIST}}"] = string.Join(", ", request.SelectedModules),
+                    ["{{MODULE_REQUIREMENTS}}"] = FormatModuleRequirements(
+                        request.SelectedModules,
+                        request.ModuleDetails),
                     // Template placeholders (from temp_template)
                     ["{{CONTACT_NAME}}"] = request.QuotationTo?.Name ?? "",
                     ["{{CONTACT_ADDRESS}}"] = request.QuotationTo?.Address ?? "",
@@ -718,11 +744,14 @@ public class SqlQuotationService : IQuotationService
                     ["{{ORG_NAME}}"] = request.OrganizationName ?? "",
                     ["{{REQUIRED}}"] = string.Join(", ", request.SelectedModules),
                     ["{{VALIDATION_DATE}}"] = request.ValidationDate.ToString("dd/MM/yyyy"),
-                    ["{{TotalPrice}}"] = totalPrice.ToString("N2"),
+                    ["{{TotalPrice}}"] = subtotal.ToString("N2"),
+                    ["{{MODULE_PRICE}}"] = modulePriceTotal.ToString("N2"),
+                    ["{{IMPLEMENTATION_TOTAL}}"] = implementationPriceTotal.ToString("N2"),
+                    ["{{SUBTOTAL}}"] = subtotal.ToString("N2"),
                     ["{{DiscountPercentage}}"] = discountPercentage.ToString("N2"),
                     ["{{DiscountAmount}}"] = discountAmount.ToString("N2"),
                     ["{{FinalPrice}}"] = finalPrice.ToString("N2"),
-                    ["{{IMPLEMENTATION_PRICE}}"] = (discountPercentage > 0 ? finalPrice : totalPrice).ToString("N2")
+                    ["{{IMPLEMENTATION_PRICE}}"] = implementationPriceTotal.ToString("N2")
                 };
 
                 PopulateScopeTable(body, modules, request.SelectedModules);
@@ -755,14 +784,38 @@ public class SqlQuotationService : IQuotationService
     {
         return effortUnit?.Trim() switch
         {
-            "1 Man Month" => 1m,
-            "0.5 Man Month" => 0.5m,
-            "2 Man Month" => 2m,
-            "1 Day" => 1m / 30m,
-            "2 Days" => 2m / 30m,
-            "1 Week" => 7m / 30m,
+            // ImplementationEffortCost is a per-man-day rate.
+            "1 Man Month" => 30m,
+            "0.5 Man Month" => 15m,
+            "2 Man Month" => 60m,
+            "1 Day" => 1m,
+            "2 Days" => 2m,
+            "1 Week" => 7m,
             _ => 0m
         };
+    }
+
+    private static string FormatModuleRequirements(
+        IEnumerable<string> selectedModules,
+        IEnumerable<QuotationModuleRequest>? moduleDetails)
+    {
+        var detailsByModule = (moduleDetails ?? Enumerable.Empty<QuotationModuleRequest>())
+            .ToDictionary(
+                detail => detail.ModuleName.Trim(),
+                StringComparer.OrdinalIgnoreCase);
+
+        return string.Join(
+            Environment.NewLine + Environment.NewLine,
+            selectedModules.Select(moduleName =>
+            {
+                detailsByModule.TryGetValue(moduleName.Trim(), out var detail);
+                return string.Join(
+                    Environment.NewLine,
+                    $"{moduleName}:",
+                    $"No. of Users: {detail?.NoOfUsers?.ToString() ?? "—"}",
+                    $"No. of Installations: {detail?.NoOfInstallations?.ToString() ?? "—"}",
+                    $"No. of Sites: {detail?.NoOfSites?.ToString() ?? "—"}");
+            }));
     }
 
     private static void PopulateScopeTable(
