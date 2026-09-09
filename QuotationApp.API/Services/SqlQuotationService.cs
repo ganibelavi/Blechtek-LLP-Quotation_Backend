@@ -16,6 +16,16 @@ namespace QuotationApp.API.Services;
 /// </summary>
 public class SqlQuotationService : IQuotationService
 {
+    private static readonly HashSet<string> AllowedEffortUnits = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "1 Man Month",
+        "0.5 Man Month",
+        "2 Man Month",
+        "1 Day",
+        "2 Days",
+        "1 Week"
+    };
+
     private readonly IPdfConverterService _pdfConverter;
     private readonly IModuleService _moduleService;
     private readonly QuotationDbContext _dbContext;
@@ -42,6 +52,7 @@ public class SqlQuotationService : IQuotationService
     public async Task<QuotationResult> GenerateQuotationAsync(QuotationRequest request)
     {
         await ValidateModulesAsync(request.SelectedModules);
+        ValidateModuleDetails(request);
 
         var quotationId = $"Q-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8]}";
 
@@ -199,7 +210,15 @@ public class SqlQuotationService : IQuotationService
                     .Select(moduleName => new QuotationModuleDetail
                     {
                         ModuleName = moduleName,
-                        Price = modulePrices.GetValueOrDefault(moduleName, 0m)
+                        Price = modulePrices.GetValueOrDefault(moduleName, 0m),
+                        NoOfUsers = q.QuotationModules
+                            .First(m => m.ModuleName == moduleName).NoOfUsers,
+                        NoOfInstallations = q.QuotationModules
+                            .First(m => m.ModuleName == moduleName).NoOfInstallations,
+                        NoOfSites = q.QuotationModules
+                            .First(m => m.ModuleName == moduleName).NoOfSites,
+                        ImplementationEffortUnit = q.QuotationModules
+                            .First(m => m.ModuleName == moduleName).ImplementationEffortUnit
                     })
                     .ToList(),
                 GeneratedAt = q.GeneratedAt,
@@ -247,7 +266,15 @@ public class SqlQuotationService : IQuotationService
                 .Select(moduleName => new QuotationModuleDetail
                 {
                     ModuleName = moduleName,
-                    Price = modulePrices.GetValueOrDefault(moduleName, 0m)
+                    Price = modulePrices.GetValueOrDefault(moduleName, 0m),
+                    NoOfUsers = quotation.QuotationModules
+                        .First(m => m.ModuleName == moduleName).NoOfUsers,
+                    NoOfInstallations = quotation.QuotationModules
+                        .First(m => m.ModuleName == moduleName).NoOfInstallations,
+                    NoOfSites = quotation.QuotationModules
+                        .First(m => m.ModuleName == moduleName).NoOfSites,
+                    ImplementationEffortUnit = quotation.QuotationModules
+                        .First(m => m.ModuleName == moduleName).ImplementationEffortUnit
                 })
                 .ToList(),
             GeneratedAt = quotation.GeneratedAt,
@@ -425,6 +452,9 @@ public class SqlQuotationService : IQuotationService
 
     private async Task SaveToDatabaseAsync(QuotationResult result, QuotationRequest request, string quotationNo)
     {
+        var detailsByModule = request.ModuleDetails
+            .ToDictionary(d => d.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
+
         var quotation = new QuotationEntity
         {
             Id = result.QuotationId,
@@ -443,7 +473,13 @@ public class SqlQuotationService : IQuotationService
             QuotationModules = request.SelectedModules.Select(m => new QuotationModuleEntity
             {
                 QuotationId = result.QuotationId,
-                ModuleName = m
+                ModuleName = m,
+                NoOfUsers = detailsByModule.TryGetValue(m, out var detail) ? detail.NoOfUsers : null,
+                NoOfInstallations = detailsByModule.TryGetValue(m, out detail) ? detail.NoOfInstallations : null,
+                NoOfSites = detailsByModule.TryGetValue(m, out detail) ? detail.NoOfSites : null,
+                ImplementationEffortUnit = detailsByModule.TryGetValue(m, out detail)
+                    ? detail.ImplementationEffortUnit
+                    : null
             }).ToList()
         };
 
@@ -454,6 +490,39 @@ public class SqlQuotationService : IQuotationService
 
     private static string SerializeModules(IEnumerable<string> modules) =>
         JsonSerializer.Serialize(modules.OrderBy(m => m, StringComparer.OrdinalIgnoreCase).ToList());
+
+    private static void ValidateModuleDetails(QuotationRequest request)
+    {
+        var selected = new HashSet<string>(
+            request.SelectedModules.Select(m => m.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+
+        var details = request.ModuleDetails ?? new List<QuotationModuleRequest>();
+        var duplicate = details
+            .GroupBy(d => d.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(g => g.Count() > 1);
+
+        if (duplicate is not null)
+            throw new ArgumentException($"Module details contain duplicate module '{duplicate.Key}'.");
+
+        var unknown = details
+            .Where(d => !selected.Contains(d.ModuleName.Trim()))
+            .Select(d => d.ModuleName)
+            .ToList();
+
+        if (unknown.Count > 0)
+            throw new ArgumentException($"Module details contain unselected module(s): {string.Join(", ", unknown)}.");
+
+        foreach (var detail in details)
+        {
+            if (!string.IsNullOrWhiteSpace(detail.ImplementationEffortUnit) &&
+                !AllowedEffortUnits.Contains(detail.ImplementationEffortUnit.Trim()))
+            {
+                throw new ArgumentException(
+                    $"Invalid implementation effort for '{detail.ModuleName}'.");
+            }
+        }
+    }
 
     private void AddHistorySnapshot(QuotationEntity quotation, string changeType)
     {
@@ -613,9 +682,17 @@ public class SqlQuotationService : IQuotationService
             {
                 var moduleService = _moduleService;
                 var modules = await moduleService.GetModulesAsync();
-                var modulePrices = modules.ToDictionary(m => m.Module, m => m.Price ?? 0m);
+                var modulePrices = modules.ToDictionary(m => m.Module, StringComparer.OrdinalIgnoreCase);
 
-                var totalPrice = request.SelectedModules.Sum(m => modulePrices.GetValueOrDefault(m, 0m));
+                var totalPrice = request.SelectedModules.Sum(moduleName =>
+                {
+                    var module = modulePrices.GetValueOrDefault(moduleName);
+                    var detail = request.ModuleDetails
+                        .FirstOrDefault(d => string.Equals(d.ModuleName, moduleName, StringComparison.OrdinalIgnoreCase));
+                    return (module?.Price ?? 0m) +
+                        (module?.ImplementationEffortCost ?? 0m) *
+                        GetEffortMultiplier(detail?.ImplementationEffortUnit);
+                });
                 var discountPercentage = request.DiscountPercentage > 0 ? request.DiscountPercentage : 0m;
                 var discountAmount = totalPrice * discountPercentage / 100m;
                 var finalPrice = totalPrice - discountAmount;
@@ -666,11 +743,26 @@ public class SqlQuotationService : IQuotationService
                                 ["QUOTATION TO"] = $"QUOTATION TO - {request.OrganizationName}"
                             });
                     }
+
                 }
             }
         }
 
         return outputPath;
+    }
+
+    private static decimal GetEffortMultiplier(string? effortUnit)
+    {
+        return effortUnit?.Trim() switch
+        {
+            "1 Man Month" => 1m,
+            "0.5 Man Month" => 0.5m,
+            "2 Man Month" => 2m,
+            "1 Day" => 1m / 30m,
+            "2 Days" => 2m / 30m,
+            "1 Week" => 7m / 30m,
+            _ => 0m
+        };
     }
 
     private static void PopulateScopeTable(

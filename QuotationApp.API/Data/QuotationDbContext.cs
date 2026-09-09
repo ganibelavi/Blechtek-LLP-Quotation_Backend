@@ -122,6 +122,7 @@ public class QuotationDbContext : DbContext
             entity.HasKey(e => new { e.QuotationId, e.ModuleName });
             entity.Property(e => e.QuotationId).HasMaxLength(50);
             entity.Property(e => e.ModuleName).HasMaxLength(200);
+            entity.Property(e => e.ImplementationEffortUnit).HasMaxLength(30);
             entity.ToTable("QuotationModules");
 
             entity.HasOne<QuotationEntity>()
@@ -411,6 +412,10 @@ public class QuotationModuleEntity
 {
     public string QuotationId { get; set; } = string.Empty;
     public string ModuleName { get; set; } = string.Empty;
+    public int? NoOfUsers { get; set; }
+    public int? NoOfInstallations { get; set; }
+    public int? NoOfSites { get; set; }
+    public string? ImplementationEffortUnit { get; set; }
 }
 
 /// <summary>

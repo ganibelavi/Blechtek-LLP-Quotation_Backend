@@ -27,12 +27,32 @@ public class QuotationRequest
     [Required, MinLength(1, ErrorMessage = "Select at least one module.")]
     public List<string> SelectedModules { get; set; } = new();
 
+    public List<QuotationModuleRequest> ModuleDetails { get; set; } = new();
+
     [Required]
     public QuotationToInfo QuotationTo { get; set; } = new();
 
     /// <summary>Discount percentage to apply on module prices (0-100).</summary>
     [Range(0, 100, ErrorMessage = "Discount must be between 0 and 100.")]
     public decimal DiscountPercentage { get; set; } = 0;
+}
+
+public class QuotationModuleRequest
+{
+    [Required, StringLength(200)]
+    public string ModuleName { get; set; } = string.Empty;
+
+    [Range(0, int.MaxValue)]
+    public int? NoOfUsers { get; set; }
+
+    [Range(0, int.MaxValue)]
+    public int? NoOfInstallations { get; set; }
+
+    [Range(0, int.MaxValue)]
+    public int? NoOfSites { get; set; }
+
+    [StringLength(30)]
+    public string? ImplementationEffortUnit { get; set; }
 }
 
 public class QuotationToInfo
@@ -67,6 +87,10 @@ public class QuotationModuleDetail
 {
     public string ModuleName { get; set; } = string.Empty;
     public decimal Price { get; set; }
+    public int? NoOfUsers { get; set; }
+    public int? NoOfInstallations { get; set; }
+    public int? NoOfSites { get; set; }
+    public string? ImplementationEffortUnit { get; set; }
 }
 
 public class QuotationHistoryEntry
