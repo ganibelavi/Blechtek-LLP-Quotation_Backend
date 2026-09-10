@@ -719,22 +719,36 @@ public class SqlQuotationService : IQuotationService
                 var discountPercentage = request.DiscountPercentage > 0 ? request.DiscountPercentage : 0m;
                 var discountAmount = subtotal * discountPercentage / 100m;
                 var finalPrice = subtotal - discountAmount;
-                var moduleDetailsText = FormatModuleDetails(
+                var moduleParticularsText = FormatModuleParticulars(
                     request.SelectedModules,
-                    request.ModuleDetails);
-                var modulePricingText = FormatModulePricing(
+                    request.ModuleDetails,
+                    discountPercentage);
+                var modulePricingValuesText = FormatModulePricingValues(
                     request.SelectedModules,
                     request.ModuleDetails,
                     modulePrices,
                     discountPercentage,
                     subtotal);
-                var overallPricingText = FormatOverallPricing(
+                var overallPricingParticularsText = FormatOverallPricingParticulars(
+                    discountPercentage);
+                var overallPricingValuesText = FormatOverallPricingValues(
                     modulePriceTotal,
                     implementationPriceTotal,
                     subtotal,
                     discountPercentage,
                     discountAmount,
                     finalPrice);
+                var pricingParticularsText = string.Join(
+                    Environment.NewLine,
+                    "Product License - {{MODULE_LIST}} (single installation). Scope as listed above.",
+                    moduleParticularsText,
+                    string.Empty,
+                    overallPricingParticularsText);
+                var pricingValuesText = string.Join(
+                    Environment.NewLine,
+                    modulePricingValuesText,
+                    string.Empty,
+                    overallPricingValuesText);
 
                 var replacements = new Dictionary<string, string>
                 {
@@ -752,9 +766,9 @@ public class SqlQuotationService : IQuotationService
                     ["{{MODULE_REQUIREMENTS}}"] = FormatModuleRequirements(
                         request.SelectedModules,
                         request.ModuleDetails),
-                    ["{{MODULE_DETAILS}}"] = moduleDetailsText,
-                    ["{{MODULE_PRICING}}"] = modulePricingText,
-                    ["{{OVERALL_PRICING}}"] = overallPricingText,
+                    ["{{MODULE_DETAILS}}"] = string.Empty,
+                    ["{{MODULE_PRICING}}"] = string.Empty,
+                    ["{{OVERALL_PRICING}}"] = string.Empty,
                     // Template placeholders (from temp_template)
                     ["{{CONTACT_NAME}}"] = request.QuotationTo?.Name ?? "",
                     ["{{CONTACT_ADDRESS}}"] = request.QuotationTo?.Address ?? "",
@@ -774,6 +788,11 @@ public class SqlQuotationService : IQuotationService
                 };
 
                 PopulateScopeTable(body, modules, request.SelectedModules);
+                PopulatePricingTable(
+                    body,
+                    pricingParticularsText,
+                    pricingValuesText);
+                NormalizeStandardPricingRows(body);
 
                 foreach (var paragraph in body.Descendants<Paragraph>())
                 {
@@ -861,7 +880,37 @@ public class SqlQuotationService : IQuotationService
             }));
     }
 
-    private static string FormatModulePricing(
+    private static string FormatModuleParticulars(
+        IEnumerable<string> selectedModules,
+        IEnumerable<QuotationModuleRequest>? moduleDetails,
+        decimal discountPercentage)
+    {
+        var detailsByModule = (moduleDetails ?? Enumerable.Empty<QuotationModuleRequest>())
+            .ToDictionary(
+                detail => detail.ModuleName.Trim(),
+                StringComparer.OrdinalIgnoreCase);
+
+        return string.Join(
+            Environment.NewLine + Environment.NewLine,
+            selectedModules.Select(moduleName =>
+            {
+                detailsByModule.TryGetValue(moduleName.Trim(), out var detail);
+                return string.Join(
+                    Environment.NewLine,
+                    $"{moduleName}:",
+                    $"No. of Users: {detail?.NoOfUsers?.ToString() ?? "—"}",
+                    $"No. of Installations: {detail?.NoOfInstallations?.ToString() ?? "—"}",
+                    $"No. of Sites: {detail?.NoOfSites?.ToString() ?? "—"}",
+                    $"Implementation Effort: {detail?.ImplementationEffortUnit ?? "—"}",
+                    "Module Price:",
+                    "Implementation Total:",
+                    "Module Subtotal:",
+                    $"Discount ({discountPercentage:N2}%):",
+                    "Module Final Price:");
+            }));
+    }
+
+    private static string FormatModulePricingValues(
         IEnumerable<string> selectedModules,
         IEnumerable<QuotationModuleRequest>? moduleDetails,
         IReadOnlyDictionary<string, ModuleItem> modulePrices,
@@ -873,9 +922,15 @@ public class SqlQuotationService : IQuotationService
                 detail => detail.ModuleName.Trim(),
                 StringComparer.OrdinalIgnoreCase);
 
-        return string.Join(
-            Environment.NewLine + Environment.NewLine,
-            selectedModules.Select(moduleName =>
+        var lines = new List<string>
+        {
+            string.Empty
+        };
+
+        var moduleNames = selectedModules.ToList();
+        for (var index = 0; index < moduleNames.Count; index++)
+        {
+            var moduleName = moduleNames[index];
             {
                 modulePrices.TryGetValue(moduleName, out var module);
                 detailsByModule.TryGetValue(moduleName.Trim(), out var detail);
@@ -889,18 +944,35 @@ public class SqlQuotationService : IQuotationService
                     : moduleSubtotal * discountPercentage / 100m;
                 var moduleFinalPrice = moduleSubtotal - moduleDiscount;
 
-                return string.Join(
-                    Environment.NewLine,
-                    $"{moduleName}:",
-                    $"Module Price: {modulePrice:N2}",
-                    $"Implementation Total: {implementationTotal:N2}",
-                    $"Module Subtotal: {moduleSubtotal:N2}",
-                    $"Discount ({discountPercentage:N2}%): {moduleDiscount:N2}",
-                    $"Module Final Price: {moduleFinalPrice:N2}");
-            }));
+                lines.AddRange(Enumerable.Repeat(string.Empty, 5));
+                lines.Add($"{modulePrice:N2}");
+                lines.Add($"{implementationTotal:N2}");
+                lines.Add($"{moduleSubtotal:N2}");
+                lines.Add($"{moduleDiscount:N2}");
+                lines.Add($"{moduleFinalPrice:N2}");
+                if (index < moduleNames.Count - 1)
+                {
+                    lines.Add(string.Empty);
+                }
+            }
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 
-    private static string FormatOverallPricing(
+    private static string FormatOverallPricingParticulars(decimal discountPercentage)
+    {
+        return string.Join(
+            Environment.NewLine,
+            "Overall Calculation:",
+            "Module Price:",
+            "Implementation Total:",
+            "Subtotal:",
+            $"Discount ({discountPercentage:N2}%):",
+            "Final Price:");
+    }
+
+    private static string FormatOverallPricingValues(
         decimal modulePriceTotal,
         decimal implementationPriceTotal,
         decimal subtotal,
@@ -911,13 +983,11 @@ public class SqlQuotationService : IQuotationService
         return string.Join(
             Environment.NewLine,
             "",
-            "",
-            "Overall Calculation:",
-            $"Module Price: {modulePriceTotal:N2}",
-            $"Implementation Total: {implementationPriceTotal:N2}",
-            $"Subtotal: {subtotal:N2}",
-            $"Discount ({discountPercentage:N2}%): {discountAmount:N2}",
-            $"Final Price: {finalPrice:N2}");
+            $"{modulePriceTotal:N2}",
+            $"{implementationPriceTotal:N2}",
+            $"{subtotal:N2}",
+            $"{discountAmount:N2}",
+            $"{finalPrice:N2}");
     }
 
     private static void PopulateScopeTable(
@@ -955,6 +1025,138 @@ public class SqlQuotationService : IQuotationService
         }
 
         scopeRow.Remove();
+    }
+
+    private static void PopulatePricingTable(
+        Body body,
+        string particularsText,
+        string valuesText)
+    {
+        var pricingRow = body
+            .Descendants<TableRow>()
+            .FirstOrDefault(row =>
+            {
+                var rowText = string.Concat(row.Descendants<Text>().Select(text => text.Text));
+                return rowText.Contains("{{MODULE_PRICING}}", StringComparison.Ordinal) &&
+                       rowText.Contains("{{OVERALL_PRICING}}", StringComparison.Ordinal);
+            });
+
+        if (pricingRow is null) return;
+
+        var particularsLines = SplitTextLines(particularsText);
+        var valueLines = SplitTextLines(valuesText);
+        var lineCount = Math.Max(particularsLines.Count, valueLines.Count);
+
+        for (var index = 0; index < lineCount; index++)
+        {
+            var row = (TableRow)pricingRow.CloneNode(true);
+            var cells = row.Elements<TableCell>().ToList();
+            if (cells.Count < 3) continue;
+
+            ReplaceTableCellText(
+                cells[0],
+                index == 0 ? "1" : string.Empty,
+                false);
+            var particularsLine = index < particularsLines.Count
+                ? particularsLines[index]
+                : string.Empty;
+            var priceLine = index < valueLines.Count
+                ? valueLines[index]
+                : string.Empty;
+            ReplaceTableCellText(
+                cells[1],
+                particularsLine,
+                IsBoldParticularsLine(particularsLines, index));
+            ReplaceTableCellText(
+                cells[2],
+                priceLine,
+                IsBoldPriceLine(particularsLine));
+
+            pricingRow.InsertBeforeSelf(row);
+        }
+
+        pricingRow.Remove();
+    }
+
+    private static List<string> SplitTextLines(string text)
+    {
+        return text
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n')
+            .ToList();
+    }
+
+    private static bool IsBoldParticularsLine(
+        IReadOnlyList<string> particularsLines,
+        int index)
+    {
+        var line = particularsLines[index].Trim();
+        var isModuleName = line.EndsWith(":", StringComparison.Ordinal) &&
+            index + 1 < particularsLines.Count &&
+            particularsLines[index + 1].Trim().StartsWith(
+                "No. of Users:",
+                StringComparison.OrdinalIgnoreCase);
+
+        return isModuleName ||
+            line.Equals("Overall Calculation:", StringComparison.OrdinalIgnoreCase) ||
+            line.Equals("Final Price:", StringComparison.OrdinalIgnoreCase) ||
+            line.Equals("Module Final Price:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsBoldPriceLine(string particularsLine)
+    {
+        var line = particularsLine.Trim();
+        return line.Equals("Module Final Price:", StringComparison.OrdinalIgnoreCase) ||
+            line.Equals("Final Price:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void ReplaceTableCellText(
+        TableCell cell,
+        string value,
+        bool isBold)
+    {
+        cell.RemoveAllChildren<Paragraph>();
+        var run = new Run(new Text(value ?? string.Empty));
+        if (isBold)
+        {
+            run.RunProperties = new RunProperties(new Bold());
+        }
+
+        cell.AppendChild(
+            new Paragraph(run));
+    }
+
+    private static void NormalizeStandardPricingRows(Body body)
+    {
+        var pricingTable = body
+            .Descendants<Table>()
+            .FirstOrDefault(table =>
+                table.Descendants<Text>().Any(text =>
+                    text.Text.Trim().Equals("Price (INR)", StringComparison.OrdinalIgnoreCase)));
+
+        if (pricingTable is null) return;
+
+        foreach (var row in pricingTable.Elements<TableRow>())
+        {
+            var rowText = string.Concat(row.Descendants<Text>().Select(text => text.Text));
+            var rowNumber = row.Elements<TableCell>()
+                .FirstOrDefault()?
+                .InnerText
+                .Trim();
+
+            var isStandardPricingRow = rowNumber is "2" or "3" or "4" or "5" or "6";
+            var isSupportLevelRow = rowText.Contains(
+                "Support Level",
+                StringComparison.OrdinalIgnoreCase);
+            if (!isStandardPricingRow && !isSupportLevelRow) continue;
+
+            foreach (var runProperties in row.Descendants<RunProperties>())
+            {
+                runProperties.Bold = null;
+                runProperties.BoldComplexScript = null;
+            }
+        }
     }
 
     private static void ReplaceParagraphText(

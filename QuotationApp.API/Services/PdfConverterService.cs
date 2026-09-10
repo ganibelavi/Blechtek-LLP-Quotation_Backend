@@ -2,6 +2,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Linq;
+using System.Globalization;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
@@ -71,6 +72,7 @@ public class PdfConverterService : IPdfConverterService
                 rest = text.Substring(prefix.Length);
                 return true;
             }
+
         }
         return false;
     }
@@ -1114,6 +1116,50 @@ public class PdfConverterService : IPdfConverterService
                trimmed.Equals("SCOPE OF WORK", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static void AlignPricingCellValues(CellContent particularsCell, CellContent priceCell)
+    {
+        var particularsLines = SplitCellLines(particularsCell.Text);
+        var numericValues = SplitCellLines(priceCell.Text)
+            .Where(line => decimal.TryParse(
+                line.Trim(),
+                NumberStyles.Number,
+                CultureInfo.InvariantCulture,
+                out _))
+            .ToList();
+
+        var valueIndex = 0;
+        var alignedPriceLines = particularsLines.Select(line =>
+        {
+            var trimmedLine = line.Trim();
+            var isPriceLabel =
+                trimmedLine.StartsWith("Module Price:", StringComparison.OrdinalIgnoreCase) ||
+                trimmedLine.StartsWith("Implementation Total:", StringComparison.OrdinalIgnoreCase) ||
+                trimmedLine.StartsWith("Module Subtotal:", StringComparison.OrdinalIgnoreCase) ||
+                trimmedLine.StartsWith("Discount (", StringComparison.OrdinalIgnoreCase) ||
+                trimmedLine.StartsWith("Module Final Price:", StringComparison.OrdinalIgnoreCase) ||
+                trimmedLine.StartsWith("Subtotal:", StringComparison.OrdinalIgnoreCase) ||
+                trimmedLine.StartsWith("Final Price:", StringComparison.OrdinalIgnoreCase);
+
+            if (!isPriceLabel || valueIndex >= numericValues.Count)
+            {
+                return string.Empty;
+            }
+
+            return numericValues[valueIndex++];
+        });
+
+        priceCell.Text = string.Join("\n", alignedPriceLines);
+    }
+
+    private static List<string> SplitCellLines(string text)
+    {
+        return text
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n')
+            .ToList();
+    }
+
     private void RenderTable(ColumnDescriptor column, TableContent table)
     {
         if (table.Rows.Count == 0) return;
@@ -1130,6 +1176,11 @@ public class PdfConverterService : IPdfConverterService
             table.Rows[0][0].Text.Trim().Equals("Sr. No.", StringComparison.OrdinalIgnoreCase) &&
             table.Rows[0][1].Text.Trim().Equals("Particulars", StringComparison.OrdinalIgnoreCase) &&
             table.Rows[0][2].Text.Trim().Equals("Price in INR", StringComparison.OrdinalIgnoreCase);
+
+        if (isPricingTable && table.Rows.Count > 1 && table.Rows[1].Count >= 3)
+        {
+            AlignPricingCellValues(table.Rows[1][1], table.Rows[1][2]);
+        }
 
         // Check if this is a scope table (has specific headers for scope)
         var isScopeTable = table.Rows.Count > 0 && table.Rows[0].Count >= 2 &&
@@ -1228,18 +1279,25 @@ public class PdfConverterService : IPdfConverterService
                                     cellBuilder = cellBuilder.Background(cellBackground.Value);
                                 }
 
-                                // For pricing table, right-align the price column (last column)
+                                // For pricing table, right-align the price column (last column).
                                 var textElement = cellBuilder.Text(cell.Text)
                                         .FontSize(10).FontFamily("Calibri").FontColor(cellTextColor).LineHeight(1.4f);
 
                                 if (isPricingTable && cell == row.Last())
                                 {
-                                    textElement.AlignRight().Bold();
+                                    textElement.AlignRight();
                                 }
                                 // For scope table, also right-align last column if it's a price/amount column
                                 else if (isScopeTable && cell == row.Last() && IsPriceColumn(cell.Text))
                                 {
-                                    textElement.AlignRight().Bold();
+                                    textElement.AlignRight();
+                                }
+
+                                var shouldBoldPricingCell = !isPricingTable ||
+                                    IsPricingCellBold(cell.Text);
+                                if (cell.IsBold && shouldBoldPricingCell)
+                                {
+                                    textElement.Bold();
                                 }
                             }
                         }
@@ -1253,6 +1311,23 @@ public class PdfConverterService : IPdfConverterService
         return trimmed.StartsWith("₹") || trimmed.StartsWith("Rs") ||
                System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^\d+(\.\d{1,2})?$") ||
                trimmed.Contains(",") && System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^[\d,\.]+$");
+    }
+
+    private static bool IsPricingCellBold(string text)
+    {
+        var trimmed = text.Trim();
+        return trimmed.EndsWith(":", StringComparison.Ordinal) &&
+            (trimmed.Equals("Overall Calculation:", StringComparison.OrdinalIgnoreCase) ||
+             trimmed.Equals("Final Price:", StringComparison.OrdinalIgnoreCase) ||
+             trimmed.Equals("Module Final Price:", StringComparison.OrdinalIgnoreCase) ||
+             trimmed.StartsWith("Product License -", StringComparison.OrdinalIgnoreCase) ||
+             trimmed.EndsWith(":", StringComparison.Ordinal) &&
+             !trimmed.StartsWith("No. of ", StringComparison.OrdinalIgnoreCase) &&
+             !trimmed.StartsWith("Implementation Effort:", StringComparison.OrdinalIgnoreCase) &&
+             !trimmed.StartsWith("Module Price:", StringComparison.OrdinalIgnoreCase) &&
+             !trimmed.StartsWith("Implementation Total:", StringComparison.OrdinalIgnoreCase) &&
+             !trimmed.StartsWith("Module Subtotal:", StringComparison.OrdinalIgnoreCase) &&
+             !trimmed.StartsWith("Discount (", StringComparison.OrdinalIgnoreCase));
     }
 
     private void RenderQuotationToGrid(ColumnDescriptor column, TableContent table)
