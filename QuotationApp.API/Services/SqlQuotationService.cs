@@ -719,6 +719,22 @@ public class SqlQuotationService : IQuotationService
                 var discountPercentage = request.DiscountPercentage > 0 ? request.DiscountPercentage : 0m;
                 var discountAmount = subtotal * discountPercentage / 100m;
                 var finalPrice = subtotal - discountAmount;
+                var moduleDetailsText = FormatModuleDetails(
+                    request.SelectedModules,
+                    request.ModuleDetails);
+                var modulePricingText = FormatModulePricing(
+                    request.SelectedModules,
+                    request.ModuleDetails,
+                    modulePrices,
+                    discountPercentage,
+                    subtotal);
+                var overallPricingText = FormatOverallPricing(
+                    modulePriceTotal,
+                    implementationPriceTotal,
+                    subtotal,
+                    discountPercentage,
+                    discountAmount,
+                    finalPrice);
 
                 var replacements = new Dictionary<string, string>
                 {
@@ -736,6 +752,9 @@ public class SqlQuotationService : IQuotationService
                     ["{{MODULE_REQUIREMENTS}}"] = FormatModuleRequirements(
                         request.SelectedModules,
                         request.ModuleDetails),
+                    ["{{MODULE_DETAILS}}"] = moduleDetailsText,
+                    ["{{MODULE_PRICING}}"] = modulePricingText,
+                    ["{{OVERALL_PRICING}}"] = overallPricingText,
                     // Template placeholders (from temp_template)
                     ["{{CONTACT_NAME}}"] = request.QuotationTo?.Name ?? "",
                     ["{{CONTACT_ADDRESS}}"] = request.QuotationTo?.Address ?? "",
@@ -744,14 +763,14 @@ public class SqlQuotationService : IQuotationService
                     ["{{ORG_NAME}}"] = request.OrganizationName ?? "",
                     ["{{REQUIRED}}"] = string.Join(", ", request.SelectedModules),
                     ["{{VALIDATION_DATE}}"] = request.ValidationDate.ToString("dd/MM/yyyy"),
-                    ["{{TotalPrice}}"] = subtotal.ToString("N2"),
-                    ["{{MODULE_PRICE}}"] = modulePriceTotal.ToString("N2"),
-                    ["{{IMPLEMENTATION_TOTAL}}"] = implementationPriceTotal.ToString("N2"),
-                    ["{{SUBTOTAL}}"] = subtotal.ToString("N2"),
-                    ["{{DiscountPercentage}}"] = discountPercentage.ToString("N2"),
-                    ["{{DiscountAmount}}"] = discountAmount.ToString("N2"),
-                    ["{{FinalPrice}}"] = finalPrice.ToString("N2"),
-                    ["{{IMPLEMENTATION_PRICE}}"] = implementationPriceTotal.ToString("N2")
+                    ["{{TotalPrice}}"] = $"Total Price: {subtotal:N2}",
+                    ["{{MODULE_PRICE}}"] = $"Module Price: {modulePriceTotal:N2}",
+                    ["{{IMPLEMENTATION_TOTAL}}"] = $"Implementation Total: {implementationPriceTotal:N2}",
+                    ["{{SUBTOTAL}}"] = $"Subtotal: {subtotal:N2}",
+                    ["{{DiscountPercentage}}"] = $"Discount Percentage: {discountPercentage:N2}%",
+                    ["{{DiscountAmount}}"] = $"Discount Amount: {discountAmount:N2}",
+                    ["{{FinalPrice}}"] = $"Final Price: {finalPrice:N2}",
+                    ["{{IMPLEMENTATION_PRICE}}"] = $"Implementation Price: {implementationPriceTotal:N2}"
                 };
 
                 PopulateScopeTable(body, modules, request.SelectedModules);
@@ -816,6 +835,89 @@ public class SqlQuotationService : IQuotationService
                     $"No. of Installations: {detail?.NoOfInstallations?.ToString() ?? "—"}",
                     $"No. of Sites: {detail?.NoOfSites?.ToString() ?? "—"}");
             }));
+    }
+
+    private static string FormatModuleDetails(
+        IEnumerable<string> selectedModules,
+        IEnumerable<QuotationModuleRequest>? moduleDetails)
+    {
+        var detailsByModule = (moduleDetails ?? Enumerable.Empty<QuotationModuleRequest>())
+            .ToDictionary(
+                detail => detail.ModuleName.Trim(),
+                StringComparer.OrdinalIgnoreCase);
+
+        return string.Join(
+            Environment.NewLine + Environment.NewLine,
+            selectedModules.Select(moduleName =>
+            {
+                detailsByModule.TryGetValue(moduleName.Trim(), out var detail);
+                return string.Join(
+                    Environment.NewLine,
+                    $"{moduleName}:",
+                    $"No. of Users: {detail?.NoOfUsers?.ToString() ?? "—"}",
+                    $"No. of Installations: {detail?.NoOfInstallations?.ToString() ?? "—"}",
+                    $"No. of Sites: {detail?.NoOfSites?.ToString() ?? "—"}",
+                    $"Implementation Effort: {detail?.ImplementationEffortUnit ?? "—"}");
+            }));
+    }
+
+    private static string FormatModulePricing(
+        IEnumerable<string> selectedModules,
+        IEnumerable<QuotationModuleRequest>? moduleDetails,
+        IReadOnlyDictionary<string, ModuleItem> modulePrices,
+        decimal discountPercentage,
+        decimal quotationSubtotal)
+    {
+        var detailsByModule = (moduleDetails ?? Enumerable.Empty<QuotationModuleRequest>())
+            .ToDictionary(
+                detail => detail.ModuleName.Trim(),
+                StringComparer.OrdinalIgnoreCase);
+
+        return string.Join(
+            Environment.NewLine + Environment.NewLine,
+            selectedModules.Select(moduleName =>
+            {
+                modulePrices.TryGetValue(moduleName, out var module);
+                detailsByModule.TryGetValue(moduleName.Trim(), out var detail);
+
+                var modulePrice = module?.Price ?? 0m;
+                var implementationTotal = (module?.ImplementationEffortCost ?? 0m) *
+                    GetEffortMultiplier(detail?.ImplementationEffortUnit);
+                var moduleSubtotal = modulePrice + implementationTotal;
+                var moduleDiscount = quotationSubtotal == 0m
+                    ? 0m
+                    : moduleSubtotal * discountPercentage / 100m;
+                var moduleFinalPrice = moduleSubtotal - moduleDiscount;
+
+                return string.Join(
+                    Environment.NewLine,
+                    $"{moduleName}:",
+                    $"Module Price: {modulePrice:N2}",
+                    $"Implementation Total: {implementationTotal:N2}",
+                    $"Module Subtotal: {moduleSubtotal:N2}",
+                    $"Discount ({discountPercentage:N2}%): {moduleDiscount:N2}",
+                    $"Module Final Price: {moduleFinalPrice:N2}");
+            }));
+    }
+
+    private static string FormatOverallPricing(
+        decimal modulePriceTotal,
+        decimal implementationPriceTotal,
+        decimal subtotal,
+        decimal discountPercentage,
+        decimal discountAmount,
+        decimal finalPrice)
+    {
+        return string.Join(
+            Environment.NewLine,
+            "",
+            "",
+            "Overall Calculation:",
+            $"Module Price: {modulePriceTotal:N2}",
+            $"Implementation Total: {implementationPriceTotal:N2}",
+            $"Subtotal: {subtotal:N2}",
+            $"Discount ({discountPercentage:N2}%): {discountAmount:N2}",
+            $"Final Price: {finalPrice:N2}");
     }
 
     private static void PopulateScopeTable(

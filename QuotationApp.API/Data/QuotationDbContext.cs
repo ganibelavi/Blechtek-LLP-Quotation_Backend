@@ -31,6 +31,9 @@ public class QuotationDbContext : DbContext
     public DbSet<InvoiceEntity> Invoices { get; set; }
     public DbSet<InvoiceBankDetailEntity> InvoiceBankDetails { get; set; }
     public DbSet<InvoiceItemEntity> InvoiceItems { get; set; }
+    public DbSet<ModulePricingEntity> ModulePricing { get; set; }
+    public DbSet<CustomerModuleSubscriptionEntity> CustomerModuleSubscriptions { get; set; }
+    public DbSet<SubscriptionRenewalEntity> SubscriptionRenewals { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -351,6 +354,56 @@ public class QuotationDbContext : DbContext
             entity.HasOne(e => e.Invoice)
                 .WithOne(i => i.BankDetails)
                 .HasForeignKey<InvoiceBankDetailEntity>(e => e.InvoiceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ModulePricingEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ModuleId).HasColumnName("ModuleId");
+            entity.Property(e => e.InitialPurchasePrice).HasColumnType("decimal(12,2)");
+            entity.Property(e => e.RenewalPercentage).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.AnnualEscalationPercentage).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.PricingEffectiveFrom).HasColumnType("date");
+            entity.Property(e => e.PricingEffectiveTo).HasColumnType("date");
+            entity.ToTable("ModulePricing");
+            entity.HasOne(e => e.Module).WithMany().HasForeignKey(e => e.ModuleId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CustomerModuleSubscriptionEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.QuotationId).HasMaxLength(50);
+            entity.Property(e => e.PurchaseDate).HasColumnType("date");
+            entity.Property(e => e.SubscriptionStartDate).HasColumnType("date");
+            entity.Property(e => e.SubscriptionEndDate).HasColumnType("date");
+            entity.Property(e => e.InitialPurchasePrice).HasColumnType("decimal(12,2)");
+            entity.Property(e => e.RenewalPercentage).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.AnnualEscalationPercentage).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.Status).HasMaxLength(20);
+            entity.Property(e => e.NextRenewalDate).HasColumnType("date");
+            entity.ToTable("CustomerModuleSubscription");
+            entity.HasOne(e => e.Customer).WithMany().HasForeignKey(e => e.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Module).WithMany().HasForeignKey(e => e.ModuleId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SubscriptionRenewalEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PeriodStartDate).HasColumnType("date");
+            entity.Property(e => e.PeriodEndDate).HasColumnType("date");
+            entity.Property(e => e.PreviousAmount).HasColumnType("decimal(12,2)");
+            entity.Property(e => e.EscalationPercentage).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.RenewalAmount).HasColumnType("decimal(12,2)");
+            entity.Property(e => e.QuotationId).HasMaxLength(50);
+            entity.Property(e => e.Status).HasMaxLength(20);
+            entity.ToTable("SubscriptionRenewal");
+            entity.HasIndex(e => new { e.SubscriptionId, e.RenewalYear }).IsUnique();
+            entity.HasOne(e => e.Subscription).WithMany(s => s.Renewals)
+                .HasForeignKey(e => e.SubscriptionId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

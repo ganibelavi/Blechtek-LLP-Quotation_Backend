@@ -122,7 +122,7 @@ BEGIN
         ChangeType nvarchar(30) NOT NULL
     );
     CREATE INDEX IX_QuotationHistory_QuotationId ON dbo.QuotationHistory (QuotationId);
-    CREATE INDEX IX_QuotationHistory_Organization_Modules ON dbo.QuotationHistory (OrganizationName, ModulesJson);
+    CREATE INDEX IX_QuotationHistory_Organization ON dbo.QuotationHistory (OrganizationName);
 END";
     historyTableCommand.ExecuteNonQuery();
 
@@ -138,6 +138,74 @@ IF OBJECT_ID(N'dbo.terms_templates', N'U') IS NULL
 CREATE TABLE dbo.terms_templates (id int IDENTITY(1,1) PRIMARY KEY, type varchar(30) NOT NULL, label varchar(150) NOT NULL, content nvarchar(max) NOT NULL, is_default bit NOT NULL DEFAULT 0, is_active bit NOT NULL DEFAULT 1, created_at datetime2 NOT NULL DEFAULT SYSUTCDATETIME());
 ";
     masterTablesCommand.ExecuteNonQuery();
+
+    using var renewalTablesCommand = connection.CreateCommand();
+    renewalTablesCommand.CommandText = @"
+IF OBJECT_ID(N'dbo.ModulePricing', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.ModulePricing (
+        Id int IDENTITY(1,1) NOT NULL CONSTRAINT PK_ModulePricing PRIMARY KEY,
+        ModuleId int NOT NULL,
+        InitialPurchasePrice decimal(12,2) NOT NULL,
+        RenewalPercentage decimal(5,2) NOT NULL,
+        AnnualEscalationPercentage decimal(5,2) NOT NULL,
+        PricingEffectiveFrom date NOT NULL,
+        PricingEffectiveTo date NULL,
+        IsActive bit NOT NULL,
+        CreatedAt datetime2 NOT NULL,
+        CONSTRAINT FK_ModulePricing_Modules FOREIGN KEY (ModuleId) REFERENCES dbo.Modules(Id)
+    );
+    CREATE INDEX IX_ModulePricing_ModuleId ON dbo.ModulePricing(ModuleId);
+END;
+IF OBJECT_ID(N'dbo.CustomerModuleSubscription', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.CustomerModuleSubscription (
+        Id int IDENTITY(1,1) NOT NULL CONSTRAINT PK_CustomerModuleSubscription PRIMARY KEY,
+        CustomerId int NOT NULL,
+        ModuleId int NOT NULL,
+        QuotationId nvarchar(50) NULL,
+        PurchaseDate date NOT NULL,
+        SubscriptionStartDate date NOT NULL,
+        SubscriptionEndDate date NULL,
+        CurrentYear int NULL,
+        InitialPurchasePrice decimal(12,2) NOT NULL,
+        RenewalPercentage decimal(5,2) NOT NULL,
+        AnnualEscalationPercentage decimal(5,2) NOT NULL,
+        Status nvarchar(20) NOT NULL,
+        NextRenewalDate date NULL,
+        CreatedAt datetime2 NOT NULL,
+        CONSTRAINT FK_CustomerModuleSubscription_Customers FOREIGN KEY (CustomerId) REFERENCES dbo.customers(id),
+        CONSTRAINT FK_CustomerModuleSubscription_Modules FOREIGN KEY (ModuleId) REFERENCES dbo.Modules(Id),
+        CONSTRAINT FK_CustomerModuleSubscription_Quotations FOREIGN KEY (QuotationId) REFERENCES dbo.Quotations(Id)
+    );
+    CREATE INDEX IX_CustomerModuleSubscription_CustomerId ON dbo.CustomerModuleSubscription(CustomerId);
+    CREATE INDEX IX_CustomerModuleSubscription_ModuleId ON dbo.CustomerModuleSubscription(ModuleId);
+    CREATE INDEX IX_CustomerModuleSubscription_Status ON dbo.CustomerModuleSubscription(Status);
+END;
+IF OBJECT_ID(N'dbo.SubscriptionRenewal', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.SubscriptionRenewal (
+        Id int IDENTITY(1,1) NOT NULL CONSTRAINT PK_SubscriptionRenewal PRIMARY KEY,
+        SubscriptionId int NOT NULL,
+        RenewalYear int NOT NULL,
+        PeriodStartDate date NOT NULL,
+        PeriodEndDate date NOT NULL,
+        PreviousAmount decimal(12,2) NOT NULL,
+        EscalationPercentage decimal(5,2) NOT NULL,
+        RenewalAmount decimal(12,2) NOT NULL,
+        QuotationId nvarchar(50) NULL,
+        InvoiceId int NULL,
+        Status nvarchar(20) NOT NULL,
+        CreatedAt datetime2 NOT NULL,
+        CONSTRAINT FK_SubscriptionRenewal_Subscriptions FOREIGN KEY (SubscriptionId) REFERENCES dbo.CustomerModuleSubscription(Id) ON DELETE CASCADE,
+        CONSTRAINT FK_SubscriptionRenewal_Quotations FOREIGN KEY (QuotationId) REFERENCES dbo.Quotations(Id),
+        CONSTRAINT FK_SubscriptionRenewal_Invoices FOREIGN KEY (InvoiceId) REFERENCES dbo.invoices(id),
+        CONSTRAINT UQ_SubscriptionRenewal_Subscription_Year UNIQUE (SubscriptionId, RenewalYear)
+    );
+    CREATE INDEX IX_SubscriptionRenewal_SubscriptionId ON dbo.SubscriptionRenewal(SubscriptionId);
+    CREATE INDEX IX_SubscriptionRenewal_Status ON dbo.SubscriptionRenewal(Status);
+END";
+    renewalTablesCommand.ExecuteNonQuery();
 
     using var customerSchemaCommand = connection.CreateCommand();
     customerSchemaCommand.CommandText = @"
