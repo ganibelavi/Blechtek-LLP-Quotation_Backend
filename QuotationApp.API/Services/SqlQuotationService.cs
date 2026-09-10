@@ -210,7 +210,16 @@ public class SqlQuotationService : IQuotationService
                     .Select(moduleName => new QuotationModuleDetail
                     {
                         ModuleName = moduleName,
-                        Price = modulePrices.GetValueOrDefault(moduleName, 0m),
+                        Price = q.QuotationModules.First(m => m.ModuleName == moduleName).ModulePrice
+                            ?? modulePrices.GetValueOrDefault(moduleName, 0m),
+                        ModulePrice = q.QuotationModules.First(m => m.ModuleName == moduleName).ModulePrice,
+                        ImplementationUnitPrice = q.QuotationModules.First(m => m.ModuleName == moduleName).ImplementationUnitPrice,
+                        ImplementationMultiplier = q.QuotationModules.First(m => m.ModuleName == moduleName).ImplementationMultiplier,
+                        ImplementationPrice = q.QuotationModules.First(m => m.ModuleName == moduleName).ImplementationPrice,
+                        ModuleSubtotal = q.QuotationModules.First(m => m.ModuleName == moduleName).ModuleSubtotal,
+                        DiscountPercentage = q.QuotationModules.First(m => m.ModuleName == moduleName).DiscountPercentage,
+                        DiscountAmount = q.QuotationModules.First(m => m.ModuleName == moduleName).DiscountAmount,
+                        FinalPrice = q.QuotationModules.First(m => m.ModuleName == moduleName).FinalPrice,
                         NoOfUsers = q.QuotationModules
                             .First(m => m.ModuleName == moduleName).NoOfUsers,
                         NoOfInstallations = q.QuotationModules
@@ -266,7 +275,16 @@ public class SqlQuotationService : IQuotationService
                 .Select(moduleName => new QuotationModuleDetail
                 {
                     ModuleName = moduleName,
-                    Price = modulePrices.GetValueOrDefault(moduleName, 0m),
+                    Price = quotation.QuotationModules.First(m => m.ModuleName == moduleName).ModulePrice
+                        ?? modulePrices.GetValueOrDefault(moduleName, 0m),
+                    ModulePrice = quotation.QuotationModules.First(m => m.ModuleName == moduleName).ModulePrice,
+                    ImplementationUnitPrice = quotation.QuotationModules.First(m => m.ModuleName == moduleName).ImplementationUnitPrice,
+                    ImplementationMultiplier = quotation.QuotationModules.First(m => m.ModuleName == moduleName).ImplementationMultiplier,
+                    ImplementationPrice = quotation.QuotationModules.First(m => m.ModuleName == moduleName).ImplementationPrice,
+                    ModuleSubtotal = quotation.QuotationModules.First(m => m.ModuleName == moduleName).ModuleSubtotal,
+                    DiscountPercentage = quotation.QuotationModules.First(m => m.ModuleName == moduleName).DiscountPercentage,
+                    DiscountAmount = quotation.QuotationModules.First(m => m.ModuleName == moduleName).DiscountAmount,
+                    FinalPrice = quotation.QuotationModules.First(m => m.ModuleName == moduleName).FinalPrice,
                     NoOfUsers = quotation.QuotationModules
                         .First(m => m.ModuleName == moduleName).NoOfUsers,
                     NoOfInstallations = quotation.QuotationModules
@@ -454,6 +472,7 @@ public class SqlQuotationService : IQuotationService
     {
         var detailsByModule = request.ModuleDetails
             .ToDictionary(d => d.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
+        var pricing = await CalculatePricingAsync(request.SelectedModules, request.ModuleDetails, request.DiscountPercentage);
 
         var quotation = new QuotationEntity
         {
@@ -470,6 +489,11 @@ public class SqlQuotationService : IQuotationService
             QuotationToEmail = request.QuotationTo.Email,
             GeneratedAt = result.GeneratedAt,
             DiscountPercentage = request.DiscountPercentage > 0 ? request.DiscountPercentage : (decimal?)null,
+            ModulePriceTotal = pricing.Sum(p => p.ModulePrice),
+            ImplementationPriceTotal = pricing.Sum(p => p.ImplementationPrice),
+            Subtotal = pricing.Sum(p => p.ModuleSubtotal),
+            DiscountAmount = pricing.Sum(p => p.DiscountAmount),
+            FinalPrice = pricing.Sum(p => p.FinalPrice),
             QuotationModules = request.SelectedModules.Select(m => new QuotationModuleEntity
             {
                 QuotationId = result.QuotationId,
@@ -479,13 +503,72 @@ public class SqlQuotationService : IQuotationService
                 NoOfSites = detailsByModule.TryGetValue(m, out detail) ? detail.NoOfSites : null,
                 ImplementationEffortUnit = detailsByModule.TryGetValue(m, out detail)
                     ? detail.ImplementationEffortUnit
-                    : null
+                    : null,
+                ModulePrice = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).ModulePrice,
+                ImplementationUnitPrice = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).ImplementationUnitPrice,
+                ImplementationMultiplier = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).ImplementationMultiplier,
+                ImplementationPrice = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).ImplementationPrice,
+                ModuleSubtotal = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).ModuleSubtotal,
+                DiscountPercentage = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).DiscountPercentage,
+                DiscountAmount = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).DiscountAmount,
+                FinalPrice = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).FinalPrice
             }).ToList()
         };
 
         _dbContext.Quotations.Add(quotation);
         AddHistorySnapshot(quotation, "Created");
         await _dbContext.SaveChangesAsync();
+    }
+
+    private async Task<List<QuotationModulePricing>> CalculatePricingAsync(
+        IEnumerable<string> selectedModules,
+        IEnumerable<QuotationModuleRequest>? moduleDetails,
+        decimal discountPercentage)
+    {
+        var modules = await _moduleService.GetModulesAsync();
+        var modulePrices = modules.ToDictionary(m => m.Module, StringComparer.OrdinalIgnoreCase);
+        var detailsByModule = (moduleDetails ?? Enumerable.Empty<QuotationModuleRequest>())
+            .ToDictionary(d => d.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
+        var discount = Math.Clamp(discountPercentage, 0m, 100m);
+
+        return selectedModules.Select(moduleName =>
+        {
+            modulePrices.TryGetValue(moduleName.Trim(), out var module);
+            detailsByModule.TryGetValue(moduleName.Trim(), out var detail);
+
+            var modulePrice = module?.Price ?? 0m;
+            var implementationUnitPrice = module?.ImplementationEffortCost ?? 0m;
+            var implementationMultiplier = GetEffortMultiplier(detail?.ImplementationEffortUnit);
+            var implementationPrice = implementationUnitPrice * implementationMultiplier;
+            var moduleSubtotal = modulePrice + implementationPrice;
+            var discountAmount = moduleSubtotal * discount / 100m;
+
+            return new QuotationModulePricing
+            {
+                ModuleName = moduleName,
+                ModulePrice = modulePrice,
+                ImplementationUnitPrice = implementationUnitPrice,
+                ImplementationMultiplier = implementationMultiplier,
+                ImplementationPrice = implementationPrice,
+                ModuleSubtotal = moduleSubtotal,
+                DiscountPercentage = discount,
+                DiscountAmount = discountAmount,
+                FinalPrice = moduleSubtotal - discountAmount
+            };
+        }).ToList();
+    }
+
+    private sealed class QuotationModulePricing
+    {
+        public string ModuleName { get; init; } = string.Empty;
+        public decimal ModulePrice { get; init; }
+        public decimal ImplementationUnitPrice { get; init; }
+        public decimal ImplementationMultiplier { get; init; }
+        public decimal ImplementationPrice { get; init; }
+        public decimal ModuleSubtotal { get; init; }
+        public decimal DiscountPercentage { get; init; }
+        public decimal DiscountAmount { get; init; }
+        public decimal FinalPrice { get; init; }
     }
 
     private static string SerializeModules(IEnumerable<string> modules) =>
@@ -559,6 +642,7 @@ public class SqlQuotationService : IQuotationService
 
         // Update discount percentage
         quotation.DiscountPercentage = discountPercentage > 0 ? discountPercentage : (decimal?)null;
+        await ApplyPricingSnapshotAsync(quotation, quotation.QuotationModules, discountPercentage);
         AddHistorySnapshot(quotation, "DiscountUpdated");
 
         // Build request from stored data
@@ -624,13 +708,25 @@ public class SqlQuotationService : IQuotationService
         // Update validation date
         quotation.ValidationDate = validationDate;
 
+        // Preserve entered module details while replacing the selected module rows.
+        var existingDetails = quotation.QuotationModules.ToDictionary(
+            m => m.ModuleName,
+            StringComparer.OrdinalIgnoreCase);
+
         // Update modules - remove existing and add new
         _dbContext.QuotationModules.RemoveRange(quotation.QuotationModules);
         quotation.QuotationModules = selectedModules.Select(m => new QuotationModuleEntity
         {
             QuotationId = quotationId,
-            ModuleName = m
+            ModuleName = m,
+            NoOfUsers = existingDetails.TryGetValue(m, out var existing) ? existing.NoOfUsers : null,
+            NoOfInstallations = existingDetails.TryGetValue(m, out existing) ? existing.NoOfInstallations : null,
+            NoOfSites = existingDetails.TryGetValue(m, out existing) ? existing.NoOfSites : null,
+            ImplementationEffortUnit = existingDetails.TryGetValue(m, out existing)
+                ? existing.ImplementationEffortUnit
+                : null
         }).ToList();
+        await ApplyPricingSnapshotAsync(quotation, quotation.QuotationModules, quotation.DiscountPercentage ?? 0m);
         AddHistorySnapshot(quotation, "DetailsUpdated");
 
         // Build request from stored data with updated validation date and modules
@@ -678,6 +774,44 @@ public class SqlQuotationService : IQuotationService
             WordDownloadUrl = $"/api/quotation/{quotationId}/download/word",
             PdfDownloadUrl = $"/api/quotation/{quotationId}/download/pdf"
         };
+    }
+
+    private async Task ApplyPricingSnapshotAsync(
+        QuotationEntity quotation,
+        IEnumerable<QuotationModuleEntity> quotationModules,
+        decimal discountPercentage)
+    {
+        var requestDetails = quotationModules.Select(m => new QuotationModuleRequest
+        {
+            ModuleName = m.ModuleName,
+            NoOfUsers = m.NoOfUsers,
+            NoOfInstallations = m.NoOfInstallations,
+            NoOfSites = m.NoOfSites,
+            ImplementationEffortUnit = m.ImplementationEffortUnit
+        }).ToList();
+        var pricing = await CalculatePricingAsync(
+            quotationModules.Select(m => m.ModuleName),
+            requestDetails,
+            discountPercentage);
+
+        foreach (var item in quotationModules)
+        {
+            var values = pricing.First(p => string.Equals(p.ModuleName, item.ModuleName, StringComparison.OrdinalIgnoreCase));
+            item.ModulePrice = values.ModulePrice;
+            item.ImplementationUnitPrice = values.ImplementationUnitPrice;
+            item.ImplementationMultiplier = values.ImplementationMultiplier;
+            item.ImplementationPrice = values.ImplementationPrice;
+            item.ModuleSubtotal = values.ModuleSubtotal;
+            item.DiscountPercentage = values.DiscountPercentage;
+            item.DiscountAmount = values.DiscountAmount;
+            item.FinalPrice = values.FinalPrice;
+        }
+
+        quotation.ModulePriceTotal = pricing.Sum(p => p.ModulePrice);
+        quotation.ImplementationPriceTotal = pricing.Sum(p => p.ImplementationPrice);
+        quotation.Subtotal = pricing.Sum(p => p.ModuleSubtotal);
+        quotation.DiscountAmount = pricing.Sum(p => p.DiscountAmount);
+        quotation.FinalPrice = pricing.Sum(p => p.FinalPrice);
     }
 
     private async Task<string> GenerateWordDocumentAsync(QuotationRequest request, string quotationId)

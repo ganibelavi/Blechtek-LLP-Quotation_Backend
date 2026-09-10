@@ -116,6 +116,11 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.QuotationToEmail).IsRequired().HasMaxLength(150);
             entity.Property(e => e.GeneratedAt).IsRequired();
             entity.Property(e => e.DiscountPercentage).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.ModulePriceTotal).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ImplementationPriceTotal).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Subtotal).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.FinalPrice).HasColumnType("decimal(18,2)");
             entity.ToTable("Quotations");
         });
 
@@ -126,6 +131,14 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.QuotationId).HasMaxLength(50);
             entity.Property(e => e.ModuleName).HasMaxLength(200);
             entity.Property(e => e.ImplementationEffortUnit).HasMaxLength(30);
+            entity.Property(e => e.ModulePrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ImplementationUnitPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ImplementationMultiplier).HasColumnType("decimal(10,2)");
+            entity.Property(e => e.ImplementationPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ModuleSubtotal).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.DiscountPercentage).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.FinalPrice).HasColumnType("decimal(18,2)");
             entity.ToTable("QuotationModules");
 
             entity.HasOne<QuotationEntity>()
@@ -460,6 +473,11 @@ public class QuotationEntity
     public string QuotationToEmail { get; set; } = string.Empty;
     public DateTime GeneratedAt { get; set; }
     public decimal? DiscountPercentage { get; set; }
+    public decimal? ModulePriceTotal { get; set; }
+    public decimal? ImplementationPriceTotal { get; set; }
+    public decimal? Subtotal { get; set; }
+    public decimal? DiscountAmount { get; set; }
+    public decimal? FinalPrice { get; set; }
 
     public List<QuotationModuleEntity> QuotationModules { get; set; } = new();
 }
@@ -475,6 +493,14 @@ public class QuotationModuleEntity
     public int? NoOfInstallations { get; set; }
     public int? NoOfSites { get; set; }
     public string? ImplementationEffortUnit { get; set; }
+    public decimal? ModulePrice { get; set; }
+    public decimal? ImplementationUnitPrice { get; set; }
+    public decimal? ImplementationMultiplier { get; set; }
+    public decimal? ImplementationPrice { get; set; }
+    public decimal? ModuleSubtotal { get; set; }
+    public decimal? DiscountPercentage { get; set; }
+    public decimal? DiscountAmount { get; set; }
+    public decimal? FinalPrice { get; set; }
 }
 
 /// <summary>

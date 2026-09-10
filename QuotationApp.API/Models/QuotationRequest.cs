@@ -87,6 +87,14 @@ public class QuotationModuleDetail
 {
     public string ModuleName { get; set; } = string.Empty;
     public decimal Price { get; set; }
+    public decimal? ModulePrice { get; set; }
+    public decimal? ImplementationUnitPrice { get; set; }
+    public decimal? ImplementationMultiplier { get; set; }
+    public decimal? ImplementationPrice { get; set; }
+    public decimal? ModuleSubtotal { get; set; }
+    public decimal? DiscountPercentage { get; set; }
+    public decimal? DiscountAmount { get; set; }
+    public decimal? FinalPrice { get; set; }
     public int? NoOfUsers { get; set; }
     public int? NoOfInstallations { get; set; }
     public int? NoOfSites { get; set; }

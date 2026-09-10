@@ -47,21 +47,38 @@ CREATE TABLE Quotations (
     QuotationToContactNo NVARCHAR(30) NOT NULL,
     QuotationToEmail    NVARCHAR(150) NOT NULL,
     GeneratedAt         DATETIME2 NOT NULL,
-    DiscountPercentage  DECIMAL(5,2) NULL
+    DiscountPercentage  DECIMAL(5,2) NULL,
+    ModulePriceTotal DECIMAL(18,2) NULL,
+    ImplementationPriceTotal DECIMAL(18,2) NULL,
+    Subtotal DECIMAL(18,2) NULL,
+    DiscountAmount DECIMAL(18,2) NULL,
+    FinalPrice DECIMAL(18,2) NULL
 );
 
 CREATE TABLE QuotationModules (
-    QuotationId                 NVARCHAR(50) NOT NULL,
-    ModuleName                  NVARCHAR(200) NOT NULL,
-    NoOfUsers                   INT NULL,
-    NoOfInstallations           INT NULL,
-    NoOfSites                   INT NULL,
-    ImplementationEffortUnit    NVARCHAR(30) NULL,
-    CONSTRAINT PK_QuotationModules PRIMARY KEY (QuotationId, ModuleName),
+    QuotationId                NVARCHAR(50) NOT NULL,
+    ModuleName                 NVARCHAR(200) NOT NULL,
+    NoOfUsers                  INT NULL,
+    NoOfInstallations          INT NULL,
+    NoOfSites                  INT NULL,
+    ImplementationEffortUnit   NVARCHAR(30) NULL,
+
+    ModulePrice                DECIMAL(18,2) NULL,
+    ImplementationUnitPrice    DECIMAL(18,2) NULL,
+    ImplementationMultiplier   DECIMAL(10,2) NULL,
+    ImplementationPrice        DECIMAL(18,2) NULL,
+    ModuleSubtotal             DECIMAL(18,2) NULL,
+    DiscountPercentage         DECIMAL(5,2) NULL,
+    DiscountAmount             DECIMAL(18,2) NULL,
+    FinalPrice                 DECIMAL(18,2) NULL,
+
+    CONSTRAINT PK_QuotationModules
+        PRIMARY KEY (QuotationId, ModuleName),
+
     CONSTRAINT FK_QuotationModules_Quotations
-        FOREIGN KEY (QuotationId) REFERENCES Quotations(Id) ON DELETE CASCADE,
-    CONSTRAINT FK_QuotationModules_Modules
-        FOREIGN KEY (ModuleName) REFERENCES Modules(ModuleName)
+        FOREIGN KEY (QuotationId)
+        REFERENCES Quotations(Id)
+        ON DELETE CASCADE
 );
 
 CREATE INDEX IX_QuotationModules_ModuleName
