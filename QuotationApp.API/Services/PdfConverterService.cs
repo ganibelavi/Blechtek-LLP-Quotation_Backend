@@ -1175,7 +1175,8 @@ public class PdfConverterService : IPdfConverterService
         var isPricingTable = table.Rows.Count > 0 && table.Rows[0].Count == 3 &&
             table.Rows[0][0].Text.Trim().Equals("Sr. No.", StringComparison.OrdinalIgnoreCase) &&
             table.Rows[0][1].Text.Trim().Equals("Particulars", StringComparison.OrdinalIgnoreCase) &&
-            table.Rows[0][2].Text.Trim().Equals("Price in INR", StringComparison.OrdinalIgnoreCase);
+            (table.Rows[0][2].Text.Trim().Equals("Price in INR", StringComparison.OrdinalIgnoreCase) ||
+             table.Rows[0][2].Text.Trim().Equals("Price (INR)", StringComparison.OrdinalIgnoreCase));
 
         if (isPricingTable && table.Rows.Count > 1 && table.Rows[1].Count >= 3)
         {
@@ -1191,6 +1192,15 @@ public class PdfConverterService : IPdfConverterService
              table.Rows[0][1].Text.Trim().Equals("Description", StringComparison.OrdinalIgnoreCase) ||
              table.Rows[0][1].Text.Trim().Equals("Scope", StringComparison.OrdinalIgnoreCase));
 
+        // The module-selection table is stored with a wide template grid for
+        // Word layout. Use compact PDF proportions so Pillar does not consume
+        // the space needed by Module and Selected.
+        var isModuleSelectionTable = table.Rows.Count > 0 &&
+            table.Rows[0].Count == 3 &&
+            table.Rows[0][0].Text.Trim().Equals("Pillar", StringComparison.OrdinalIgnoreCase) &&
+            table.Rows[0][1].Text.Trim().Equals("Module", StringComparison.OrdinalIgnoreCase) &&
+            table.Rows[0][2].Text.Trim().Equals("Selected", StringComparison.OrdinalIgnoreCase);
+
         column.Item().Table(tableDef =>
                     {
                         // Define columns based on column widths or table type
@@ -1198,9 +1208,18 @@ public class PdfConverterService : IPdfConverterService
                         {
                             tableDef.ColumnsDefinition(c =>
                             {
-                                c.RelativeColumn(0.08f); // Sr. No. - 8%
-                                c.RelativeColumn(0.72f); // Particulars - 72%
+                                c.RelativeColumn(0.07f); // Sr. No. - 7%
+                                c.RelativeColumn(0.73f); // Particulars - 73%
                                 c.RelativeColumn(0.20f); // Price in INR - 20%
+                            });
+                        }
+                        else if (isModuleSelectionTable)
+                        {
+                            tableDef.ColumnsDefinition(c =>
+                            {
+                                c.RelativeColumn(0.17f); // Pillar - 17%
+                                c.RelativeColumn(0.63f); // Module - 63%
+                                c.RelativeColumn(0.20f); // Selected - 20%
                             });
                         }
                         else if (isScopeTable && table.ColumnWidths.Count > 0)
