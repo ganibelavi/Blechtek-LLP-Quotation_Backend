@@ -36,6 +36,18 @@ public class InvoiceController : ControllerBase
             return BadRequest(new { error = "Company name is required." });
         }
 
+        QuotationEntity? quotation = null;
+        if (!string.IsNullOrWhiteSpace(request.QuotationId))
+        {
+            quotation = await _db.Quotations
+                .AsNoTracking()
+                .FirstOrDefaultAsync(q => q.Id == request.QuotationId);
+            if (quotation is null)
+            {
+                return BadRequest(new { error = "The referenced quotation does not exist." });
+            }
+        }
+
         if (request.PoId.HasValue)
         {
             var purchaseOrder = await _db.PurchaseOrders
@@ -75,6 +87,7 @@ public class InvoiceController : ControllerBase
         {
             CustomerId = customer.Id,
             PoId = request.PoId,
+            QuotationId = request.QuotationId,
             InvoiceNo = invoiceNo,
             InvoiceDate = ParseDate(request.DateOfIssue, DateTime.UtcNow),
             PlaceOfSupply = request.PlaceOfService,
@@ -148,6 +161,8 @@ public class InvoiceController : ControllerBase
         {
             id = invoice.Id,
             poId = invoice.PoId,
+            quotationId = invoice.QuotationId,
+            quotationNo = quotation?.QuotationNo ?? request.QuotationNo,
             invoiceNo = invoice.InvoiceNo,
             dateOfIssue = invoice.InvoiceDate,
             companyName = customerName,
@@ -220,10 +235,13 @@ public class InvoiceController : ControllerBase
         }
 
         var customer = await _db.Customers.FirstOrDefaultAsync(c => c.Id == record.CustomerId);
+        var quotation = string.IsNullOrWhiteSpace(record.QuotationId)
+            ? null
+            : await _db.Quotations.AsNoTracking().FirstOrDefaultAsync(q => q.Id == record.QuotationId);
         var bankDetails = await _db.InvoiceBankDetails.FirstOrDefaultAsync(b => b.InvoiceId == record.Id);
         var totalAmount = record.Items.Sum(item => item.Qty * item.Rate);
 
-        return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails));
+        return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotation?.QuotationNo));
     }
 
     [HttpGet]
@@ -246,6 +264,15 @@ public class InvoiceController : ControllerBase
         var bankDetailsByInvoiceId = await _db.InvoiceBankDetails
             .Where(b => records.Select(r => r.Id).Contains(b.InvoiceId))
             .ToDictionaryAsync(b => b.InvoiceId, b => b);
+        var quotationIds = records
+            .Where(r => !string.IsNullOrWhiteSpace(r.QuotationId))
+            .Select(r => r.QuotationId!)
+            .Distinct()
+            .ToList();
+        var quotationNumbers = await _db.Quotations
+            .AsNoTracking()
+            .Where(q => quotationIds.Contains(q.Id))
+            .ToDictionaryAsync(q => q.Id, q => q.QuotationNo);
 
         var response = records
             .Select(record =>
@@ -253,7 +280,11 @@ public class InvoiceController : ControllerBase
                 var customer = customers.TryGetValue(record.CustomerId, out var matchedCustomer) ? matchedCustomer : null;
                 var totalAmount = record.Items.Sum(item => item.Qty * item.Rate);
                 var bankDetails = bankDetailsByInvoiceId.TryGetValue(record.Id, out var matchedBank) ? matchedBank : null;
-                return BuildInvoiceResponse(record, customer, totalAmount, bankDetails);
+                var quotationNo = record.QuotationId != null &&
+                    quotationNumbers.TryGetValue(record.QuotationId, out var number)
+                    ? number
+                    : null;
+                return BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotationNo);
             })
             .ToList();
 
@@ -299,6 +330,18 @@ public class InvoiceController : ControllerBase
             return BadRequest(new { error = "Company name is required." });
         }
 
+        QuotationEntity? quotation = null;
+        if (!string.IsNullOrWhiteSpace(request.QuotationId))
+        {
+            quotation = await _db.Quotations
+                .AsNoTracking()
+                .FirstOrDefaultAsync(q => q.Id == request.QuotationId);
+            if (quotation is null)
+            {
+                return BadRequest(new { error = "The referenced quotation does not exist." });
+            }
+        }
+
         if (request.PoId.HasValue)
         {
             var purchaseOrder = await _db.PurchaseOrders
@@ -334,6 +377,7 @@ public class InvoiceController : ControllerBase
 
         record.CustomerId = customer.Id;
         record.PoId = request.PoId;
+        record.QuotationId = request.QuotationId;
         record.InvoiceNo = await ResolveRequestedOrGeneratedInvoiceNoAsync(request.InvoiceNo);
         record.InvoiceDate = ParseDate(request.DateOfIssue, DateTime.UtcNow);
         record.PlaceOfSupply = request.PlaceOfService;
@@ -414,7 +458,7 @@ public class InvoiceController : ControllerBase
         var updatedBankDetails = updatedRecord.BankDetails;
         var updatedTotalAmount = updatedRecord.Items.Sum(item => item.Qty * item.Rate);
 
-        return Ok(BuildInvoiceResponse(updatedRecord, updatedCustomer, updatedTotalAmount, updatedBankDetails));
+        return Ok(BuildInvoiceResponse(updatedRecord, updatedCustomer, updatedTotalAmount, updatedBankDetails, quotation?.QuotationNo));
     }
 
     [HttpPatch("{id:int}/status")]
@@ -452,12 +496,15 @@ public class InvoiceController : ControllerBase
 
         var customer = await _db.Customers.FirstOrDefaultAsync(c => c.Id == record.CustomerId);
         var bankDetails = await _db.InvoiceBankDetails.FirstOrDefaultAsync(b => b.InvoiceId == record.Id);
+        var quotation = string.IsNullOrWhiteSpace(record.QuotationId)
+            ? null
+            : await _db.Quotations.AsNoTracking().FirstOrDefaultAsync(q => q.Id == record.QuotationId);
         var totalAmount = record.Items.Sum(item => item.Qty * item.Rate);
 
-        return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails));
+        return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotation?.QuotationNo));
     }
 
-    private static object BuildInvoiceResponse(InvoiceEntity record, CustomerEntity? customer, decimal totalAmount, InvoiceBankDetailEntity? bankDetails)
+    private static object BuildInvoiceResponse(InvoiceEntity record, CustomerEntity? customer, decimal totalAmount, InvoiceBankDetailEntity? bankDetails, string? quotationNo)
     {
         var customerName = record.BuyerName ?? customer?.Name ?? "";
         var customerAddress = record.BuyerAddress ?? customer?.Address ?? "";
@@ -483,6 +530,8 @@ public class InvoiceController : ControllerBase
         {
             id = record.Id,
             poId = record.PoId,
+            quotationId = record.QuotationId,
+            quotationNo = quotationNo,
             invoiceNo = record.InvoiceNo,
             companyName = customerName,
             receiverName = customerName,

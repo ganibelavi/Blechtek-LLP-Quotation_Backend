@@ -132,6 +132,7 @@ public class InvoiceEntity
     public int Id { get; set; }
     public int CustomerId { get; set; }
     public int? PoId { get; set; }
+    public string? QuotationId { get; set; }
     public string InvoiceNo { get; set; } = string.Empty;
     public DateTime InvoiceDate { get; set; } = DateTime.UtcNow;
     public string? PlaceOfSupply { get; set; }
@@ -296,7 +297,8 @@ public class CreateInvoiceRequest
     public string? AmountInWords { get; set; }
     public string? TermsOfSale { get; set; }
     public int? PoId { get; set; }
-    public int? QuotationId { get; set; }
+    public string? QuotationId { get; set; }
+    public string? QuotationNo { get; set; }
     public decimal SgstPct { get; set; }
     public decimal CgstPct { get; set; }
     public decimal IgstPct { get; set; }

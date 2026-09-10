@@ -234,6 +234,7 @@ CREATE TABLE invoices (
     id                  INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_invoices PRIMARY KEY,
     customer_id         INT NOT NULL,
     po_id               INT NULL,
+    quotation_id        NVARCHAR(50) NULL,
     invoice_no          NVARCHAR(50) NOT NULL,
     invoice_date        DATETIME2 NOT NULL,
     place_of_supply     NVARCHAR(100) NULL,
@@ -266,10 +267,14 @@ CREATE TABLE invoices (
     CONSTRAINT UQ_invoices_InvoiceNo UNIQUE (invoice_no),
     CONSTRAINT FK_invoices_customers
         FOREIGN KEY (customer_id) REFERENCES customers(id)
+    ,
+    CONSTRAINT FK_invoices_quotations
+        FOREIGN KEY (quotation_id) REFERENCES Quotations(Id)
 );
 
 CREATE INDEX IX_invoices_customer_id ON invoices(customer_id);
 CREATE INDEX IX_invoices_po_id ON invoices(po_id);
+CREATE INDEX IX_invoices_quotation_id ON invoices(quotation_id);
 
 CREATE TABLE invoice_items (
     id          INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_invoice_items PRIMARY KEY,

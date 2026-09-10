@@ -282,6 +282,7 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.CustomerId).IsRequired().HasColumnName("customer_id");
             entity.Property(e => e.PoId).HasColumnName("po_id");
+            entity.Property(e => e.QuotationId).HasMaxLength(50).HasColumnType("nvarchar(50)").HasColumnName("quotation_id");
             entity.Property(e => e.InvoiceNo).IsRequired().HasMaxLength(50).HasColumnName("invoice_no");
             entity.Property(e => e.InvoiceDate).IsRequired().HasColumnName("invoice_date");
             entity.Property(e => e.PlaceOfSupply).HasMaxLength(100).HasColumnName("place_of_supply");
@@ -317,6 +318,11 @@ public class QuotationDbContext : DbContext
             entity.HasOne<CustomerEntity>()
                 .WithMany(c => c.Invoices)
                 .HasForeignKey(e => e.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<QuotationEntity>()
+                .WithMany()
+                .HasForeignKey(e => e.QuotationId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
