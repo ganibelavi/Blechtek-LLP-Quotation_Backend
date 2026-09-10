@@ -101,7 +101,9 @@ public class InvoiceController : ControllerBase
             ReverseCharge = !string.IsNullOrWhiteSpace(request.ReverseCharge) && request.ReverseCharge.Equals("Yes", StringComparison.OrdinalIgnoreCase),
             Subtotal = request.TotalAmount,
             GrandTotal = request.TotalAmount,
-            Status = "unpaid",
+            // Keep the initial value within CK_invoices_status. Payment state is
+            // changed later through the invoice status endpoint.
+            Status = "draft",
             AmountInWords = request.AmountInWords,
             CreatedAt = DateTime.UtcNow,
             CompanyProfileId = request.CompanyProfileId,

@@ -286,7 +286,10 @@ CREATE TABLE invoices (
         FOREIGN KEY (customer_id) REFERENCES customers(id)
     ,
     CONSTRAINT FK_invoices_quotations
-        FOREIGN KEY (quotation_id) REFERENCES Quotations(Id)
+        FOREIGN KEY (quotation_id) REFERENCES Quotations(Id),
+    CONSTRAINT CK_invoices_status CHECK (
+        status IN ('draft', 'advance_received', 'partially_paid', 'paid', 'overdue')
+    )
 );
 
 CREATE INDEX IX_invoices_customer_id ON invoices(customer_id);

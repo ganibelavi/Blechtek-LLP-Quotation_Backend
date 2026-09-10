@@ -146,7 +146,7 @@ public class InvoiceEntity
     public bool ReverseCharge { get; set; }
     public decimal Subtotal { get; set; }
     public decimal GrandTotal { get; set; }
-    public string Status { get; set; } = "unpaid";
+    public string Status { get; set; } = "draft";
     public string? AmountInWords { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public int? CompanyProfileId { get; set; }
