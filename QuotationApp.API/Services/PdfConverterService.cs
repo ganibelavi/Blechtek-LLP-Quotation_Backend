@@ -570,8 +570,7 @@ public class PdfConverterService : IPdfConverterService
 
                 page.Footer().Height(80).Column(col =>
                 {
-                    col.Item().PaddingTop(16).BorderTop(1).BorderColor(TextBlack)
-                        .Column(footerCol =>
+                    col.Item().PaddingTop(16).Column(footerCol =>
                         {
                             footerCol.Item().AlignCenter().Text("BlechTek Software Solutions LLP")
                                 .FontSize(10).FontFamily("Calibri").FontColor(TextBlack).Bold();
@@ -579,6 +578,15 @@ public class PdfConverterService : IPdfConverterService
                                 .FontSize(9).FontFamily("Calibri").FontColor(TextBlack);
                             footerCol.Item().AlignCenter().Text("LLP No.: ACD-6620 | GST NO.: 27ABCFB0283B1Z0 | MSME Certificate No.: UDYAM-MH-26-0746115")
                                 .FontSize(9).FontFamily("Calibri").FontColor(TextBlack);
+                            footerCol.Item().PaddingTop(6).Height(6).Row(gradientRow =>
+                            {
+                                const int segmentCount = 100;
+                                for (var segment = 0; segment < segmentCount; segment++)
+                                {
+                                    gradientRow.RelativeItem()
+                                        .Background(GetFooterGradientColor(segment, segmentCount - 1));
+                                }
+                            });
                         });
                 });
             });
@@ -586,6 +594,15 @@ public class PdfConverterService : IPdfConverterService
 
         questDocument.GeneratePdf(outputPath);
         await Task.CompletedTask;
+    }
+
+    private static QuestPDFColor GetFooterGradientColor(int position, int lastPosition)
+    {
+        var ratio = lastPosition <= 0 ? 0 : (double)position / lastPosition;
+        var red = (int)Math.Round(0x30 + ((0x48 - 0x30) * ratio));
+        var green = (int)Math.Round(0x8A + ((0xCA - 0x8A) * ratio));
+        var blue = (int)Math.Round(0xEA + ((0xE4 - 0xEA) * ratio));
+        return QuestPDFColor.FromHex($"#{red:X2}{green:X2}{blue:X2}");
     }
 
     private void RenderParagraph(ColumnDescriptor column, ParagraphContent para, int index, List<IDocumentElement> allElements)
