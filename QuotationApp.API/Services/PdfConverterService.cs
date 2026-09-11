@@ -51,7 +51,26 @@ public class PdfConverterService : IPdfConverterService
         "Definition:",
         "Installation pre-requisites (in case of on-premise Server):",
         "For BlechTek Software Solutions LLP",
-        "Sushama Inamdar"
+        "Sushama Inamdar",
+        "Customization -",
+        "Customization –",
+        "Annual License Renewal -",
+        "Annual License Renewal –",
+        "Support Services -",
+        "Support Services –",
+        "Payment Terms -",
+        "Payment Terms –",
+        "Support Level",
+        "L1: Telephone Support -",
+        "L1: Telephone Support –",
+        "L2: Bugs -",
+        "L2: Bugs –",
+        "L3: Customer Specific Enhancements -",
+        "L3: Customer Specific Enhancements –",
+        "L4: Product Upgrade -",
+        "L4: Product Upgrade –",
+        "L5: Implementation -",
+        "L5: Implementation –"
     };
 
     /// <summary>
@@ -572,6 +591,18 @@ public class PdfConverterService : IPdfConverterService
     private void RenderParagraph(ColumnDescriptor column, ParagraphContent para, int index, List<IDocumentElement> allElements)
     {
         if (string.IsNullOrWhiteSpace(para.Text)) return;
+
+        // Keep a small signing gap between the company signature line and the
+        // signatory name without changing spacing in the rest of the closing.
+        if (para.Text.Trim().Equals("Sushama Inamdar", StringComparison.OrdinalIgnoreCase) &&
+            index > 0 &&
+            allElements[index - 1] is ParagraphContent previousParagraph &&
+            previousParagraph.Text.Trim().Equals(
+                "For BlechTek Software Solutions LLP",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            column.Item().Height(75, Unit.Point);
+        }
 
         // Check for section headings (uppercase headings like "QUOTATION TO", "SCOPE OF WORK", etc.)
         var isSectionHeading = IsSectionHeading(para.Text);
@@ -1184,13 +1215,20 @@ public class PdfConverterService : IPdfConverterService
         }
 
         // Check if this is a scope table (has specific headers for scope)
-        var isScopeTable = table.Rows.Count > 0 && table.Rows[0].Count >= 2 &&
-            (table.Rows[0][0].Text.Trim().Equals("Sr. No.", StringComparison.OrdinalIgnoreCase) ||
-             table.Rows[0][0].Text.Trim().Equals("S.No.", StringComparison.OrdinalIgnoreCase) ||
-             table.Rows[0][0].Text.Trim().Equals("S.No", StringComparison.OrdinalIgnoreCase)) &&
-            (table.Rows[0][1].Text.Trim().Equals("Particulars", StringComparison.OrdinalIgnoreCase) ||
-             table.Rows[0][1].Text.Trim().Equals("Description", StringComparison.OrdinalIgnoreCase) ||
-             table.Rows[0][1].Text.Trim().Equals("Scope", StringComparison.OrdinalIgnoreCase));
+        var scopeFirstHeader = table.Rows.Count > 0 && table.Rows[0].Count >= 2
+            ? NormalizeTableHeader(table.Rows[0][0].Text)
+            : string.Empty;
+        var scopeSecondHeader = table.Rows.Count > 0 && table.Rows[0].Count >= 2
+            ? NormalizeTableHeader(table.Rows[0][1].Text)
+            : string.Empty;
+        // The Word scope table is a bordered two-column table. Some template
+        // revisions use merged or blank header text, so rely on its stable
+        // two-column shape as a fallback for applying the scope grid styling.
+        var isScopeTable = ((scopeFirstHeader == "srno" || scopeFirstHeader == "sno") &&
+            (scopeSecondHeader == "particulars" ||
+             scopeSecondHeader == "description" ||
+             scopeSecondHeader == "scope")) ||
+            (table.Rows[0].Count == 2 && table.Rows[0].Any(c => c.IsHeader));
 
         // The module-selection table is stored with a wide template grid for
         // Word layout. Use compact PDF proportions so Pillar does not consume
@@ -1273,7 +1311,13 @@ public class PdfConverterService : IPdfConverterService
                             });
                         }
 
-                        // Data rows - CSS style: padding 4px 8px, border 1px solid #CCCCCC, alternating #F2F4F7
+                        // Keep the Scope and Price for Implementation grids consistent:
+                        // their header and data borders should both render in black.
+                        var dataBorderColor = isScopeTable || isPricingTable || isModuleSelectionTable
+                            ? TextBlack
+                            : TableBorder;
+
+                        // Data rows - padding 2px 4px with optional alternating background.
                         for (int rowIndex = (table.Rows[0].Any(c => c.IsHeader) ? 1 : 0); rowIndex < table.Rows.Count; rowIndex++)
                         {
                             var row = table.Rows[rowIndex];
@@ -1290,7 +1334,7 @@ public class PdfConverterService : IPdfConverterService
                                 var cellTextColor = cell.TextColor ?? TextBlack;
 
                                 var cellBuilder = tableDef.Cell()
-                                        .Border(1).BorderColor(TableBorder) // #CCCCCC
+                                        .Border(1).BorderColor(dataBorderColor)
                                         .PaddingVertical(2, Unit.Point).PaddingHorizontal(4, Unit.Point); // Reduced padding: 2px vertical, 4px horizontal
 
                                 if (cellBackground.HasValue)
@@ -1298,26 +1342,53 @@ public class PdfConverterService : IPdfConverterService
                                     cellBuilder = cellBuilder.Background(cellBackground.Value);
                                 }
 
-                                // For pricing table, right-align the price column (last column).
-                                var textElement = cellBuilder.Text(cell.Text)
-                                        .FontSize(10).FontFamily("Calibri").FontColor(cellTextColor).LineHeight(1.4f);
-
-                                if (isPricingTable && cell == row.Last())
-                                {
-                                    textElement.AlignRight();
-                                }
-                                // For scope table, also right-align last column if it's a price/amount column
-                                else if (isScopeTable && cell == row.Last() && IsPriceColumn(cell.Text))
-                                {
-                                    textElement.AlignRight();
-                                }
-
+                                // Pricing-table particulars contain labels such as
+                                // "Customization" and "L1: Telephone Support -" that
+                                // must retain their bold emphasis in the PDF.
+                                string pricingLabel = null;
+                                string pricingLabelRest = null;
+                                var hasBoldPricingLabel = isPricingTable &&
+                                    TryGetBoldLabelPrefix(cell.Text.Trim(), out pricingLabel, out pricingLabelRest);
                                 var shouldBoldPricingCell = !isPricingTable ||
                                     IsPricingCellBold(cell.Text);
-                                if (cell.IsBold && shouldBoldPricingCell)
+                                var shouldAlignRight = (isPricingTable && cell == row.Last()) ||
+                                    (isScopeTable && cell == row.Last() && IsPriceColumn(cell.Text));
+                                var textCell = shouldAlignRight
+                                    ? cellBuilder.AlignRight()
+                                    : cellBuilder;
+                                textCell.Text(text =>
                                 {
-                                    textElement.Bold();
-                                }
+                                    text.DefaultTextStyle(TextStyle.Default
+                                        .FontSize(10)
+                                        .FontFamily("Calibri")
+                                        .FontColor(cellTextColor)
+                                        .LineHeight(1.4f));
+
+                                    if (hasBoldPricingLabel)
+                                    {
+                                        var labelSpan = text.Span(pricingLabel);
+                                        if (cell.IsBold || isPricingTable)
+                                        {
+                                            labelSpan.Bold();
+                                        }
+                                        if (!string.IsNullOrEmpty(pricingLabelRest))
+                                        {
+                                            var restSpan = text.Span(pricingLabelRest);
+                                            if (cell.IsBold && shouldBoldPricingCell)
+                                            {
+                                                restSpan.Bold();
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        var cellSpan = text.Span(cell.Text);
+                                        if (cell.IsBold && shouldBoldPricingCell)
+                                        {
+                                            cellSpan.Bold();
+                                        }
+                                    }
+                                });
                             }
                         }
                     });
@@ -1347,6 +1418,12 @@ public class PdfConverterService : IPdfConverterService
              !trimmed.StartsWith("Implementation Total:", StringComparison.OrdinalIgnoreCase) &&
              !trimmed.StartsWith("Module Subtotal:", StringComparison.OrdinalIgnoreCase) &&
              !trimmed.StartsWith("Discount (", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string NormalizeTableHeader(string text)
+    {
+        return System.Text.RegularExpressions.Regex.Replace(text ?? string.Empty, "[^A-Za-z0-9]", string.Empty)
+            .ToLowerInvariant();
     }
 
     private void RenderQuotationToGrid(ColumnDescriptor column, TableContent table)
