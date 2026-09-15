@@ -187,7 +187,8 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
                 .FirstOrDefault(),
             CustomerName = x.Customer?.Name,
             ModuleName = x.Module?.ModuleName,
-            x.SubscriptionEndDate, x.NextRenewalDate,
+            x.SubscriptionEndDate,
+            x.NextRenewalDate,
             DaysToRenewal = x.NextRenewalDate.HasValue ? (x.NextRenewalDate.Value.Date - today).Days : (int?)null,
             Status = filter == "renewed"
                 ? "Renewed"
@@ -290,19 +291,52 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(request.QuotationId))
             return BadRequest(new { error = "QuotationId is required." });
 
-        var renewal = await db.SubscriptionRenewals.FindAsync([id], ct);
+        var quotationId = request.QuotationId.Trim();
+        var renewal = await db.SubscriptionRenewals
+            .Include(x => x.Subscription!).ThenInclude(x => x.Customer)
+            .Include(x => x.Subscription!).ThenInclude(x => x.Module)
+            .SingleOrDefaultAsync(x => x.Id == id, ct);
         if (renewal is null) return NotFound(new { error = "Renewal not found." });
 
-        var quotationExists = await db.Quotations.AnyAsync(
-            x => x.Id == request.QuotationId, ct);
-        if (!quotationExists)
+        var quotation = await db.Quotations.AsNoTracking()
+            .Include(x => x.QuotationModules)
+            .SingleOrDefaultAsync(x => x.Id == quotationId, ct);
+        if (quotation is null)
             return BadRequest(new { error = "The selected quotation was not found." });
 
         if (renewal.QuotationId is not null &&
-            !string.Equals(renewal.QuotationId, request.QuotationId, StringComparison.Ordinal))
+            !string.Equals(renewal.QuotationId, quotationId, StringComparison.Ordinal))
             return Conflict(new { error = "A different quotation is already linked to this renewal." });
 
-        renewal.QuotationId = request.QuotationId.Trim();
+        var subscription = renewal.Subscription;
+        if (subscription?.Customer is null || subscription.Module is null)
+            return BadRequest(new { error = "The renewal subscription is missing customer or module details." });
+
+        if (!string.Equals(
+                quotation.QuotationToName.Trim(),
+                subscription.Customer.Name.Trim(),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new
+            {
+                error = "The quotation customer does not match the renewal subscription customer."
+            });
+        }
+
+        var hasSubscriptionModule = quotation.QuotationModules.Any(module =>
+            string.Equals(
+                module.ModuleName.Trim(),
+                subscription.Module.ModuleName.Trim(),
+                StringComparison.OrdinalIgnoreCase));
+        if (!hasSubscriptionModule)
+        {
+            return BadRequest(new
+            {
+                error = "The quotation does not contain the renewal subscription module."
+            });
+        }
+
+        renewal.QuotationId = quotationId;
         if (renewal.Status == "pending")
             renewal.Status = "quoted";
         await db.SaveChangesAsync(ct);
@@ -328,7 +362,9 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
         if (!request.InvoiceId.HasValue)
             return BadRequest(new { error = "InvoiceId is required." });
 
-        var renewal = await db.SubscriptionRenewals.FindAsync([id], ct);
+        var renewal = await db.SubscriptionRenewals
+            .Include(x => x.Subscription)
+            .SingleOrDefaultAsync(x => x.Id == id, ct);
         if (renewal is null) return NotFound(new { error = "Renewal not found." });
 
         var invoice = await db.Invoices.AsNoTracking()
@@ -336,12 +372,28 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
         if (invoice is null)
             return BadRequest(new { error = "The selected invoice was not found." });
 
-        if (!string.IsNullOrWhiteSpace(renewal.QuotationId) &&
-            !string.Equals(renewal.QuotationId, invoice.QuotationId, StringComparison.Ordinal))
+        if (string.IsNullOrWhiteSpace(renewal.QuotationId))
+            return BadRequest(new { error = "A renewal quotation must be linked before linking an invoice." });
+
+        if (!string.Equals(renewal.QuotationId, invoice.QuotationId, StringComparison.Ordinal))
             return BadRequest(new { error = "The invoice is not linked to this renewal quotation." });
+
+        if (renewal.Subscription is null)
+            return BadRequest(new { error = "The renewal subscription was not found." });
+
+        if (invoice.CustomerId != renewal.Subscription.CustomerId)
+            return BadRequest(new
+            {
+                error = "The invoice customer does not match the renewal subscription customer."
+            });
 
         if (renewal.InvoiceId.HasValue && renewal.InvoiceId != request.InvoiceId.Value)
             return Conflict(new { error = "A different invoice is already linked to this renewal." });
+
+        var linkedToAnotherRenewal = await db.SubscriptionRenewals
+            .AnyAsync(x => x.Id != renewal.Id && x.InvoiceId == request.InvoiceId.Value, ct);
+        if (linkedToAnotherRenewal)
+            return Conflict(new { error = "The selected invoice is already linked to another renewal." });
 
         renewal.InvoiceId = request.InvoiceId.Value;
         renewal.Status = "invoiced";
@@ -365,6 +417,14 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
         if (subscription is null) return NotFound(new { error = "Subscription not found." });
         var pricing = await db.ModulePricing.AsNoTracking()
             .Where(x => x.ModuleId == subscription.ModuleId).OrderBy(x => x.PricingEffectiveFrom).ToListAsync(ct);
+        var invoiceIds = subscription.Renewals
+            .Where(x => x.InvoiceId.HasValue)
+            .Select(x => x.InvoiceId!.Value)
+            .Distinct()
+            .ToList();
+        var invoicesById = await db.Invoices.AsNoTracking()
+            .Where(x => invoiceIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, ct);
         return Ok(new
         {
             CustomerName = subscription.Customer?.Name,
@@ -372,12 +432,52 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
             InitialPurchaseAmount = subscription.InitialPurchasePrice,
             RenewalPercentage = subscription.RenewalPercentage,
             EscalationPercentage = subscription.AnnualEscalationPercentage,
-            subscription.Status, subscription.SubscriptionStartDate,
+            subscription.Status,
+            subscription.SubscriptionStartDate,
             CurrentSubscriptionYear = subscription.CurrentYear,
             YearWisePricing = pricing.Select((x, i) => new { Id = x.Id, Year = i + 1, Price = x.InitialPurchasePrice, EffectiveDate = x.PricingEffectiveFrom }),
             RenewalQuotations = subscription.Renewals.Where(x => x.Status != "pending").Select(ToRenewalResponse),
-            RenewalInvoices = Array.Empty<object>(),
-            PaymentHistory = subscription.Renewals.Select(x => new { x.Id, Date = x.CreatedAt, Status = x.Status, Amount = x.RenewalAmount, Notes = (string?)null })
+            RenewalInvoices = subscription.Renewals
+                .Where(x => x.InvoiceId.HasValue && invoicesById.ContainsKey(x.InvoiceId.Value))
+                .Select(x =>
+                {
+                    var invoice = invoicesById[x.InvoiceId!.Value];
+                    return new
+                    {
+                        Id = invoice.Id,
+                        InvoiceNumber = invoice.InvoiceNo,
+                        Year = x.RenewalYear,
+                        Amount = invoice.GrandTotal,
+                        Date = invoice.InvoiceDate,
+                        Status = invoice.Status
+                    };
+                }),
+            PaymentHistory = subscription.Renewals
+                .Select(x => new
+                {
+                    x.Id,
+                    Date = x.CreatedAt,
+                    x.Status,
+                    Amount = (decimal?)x.RenewalAmount,
+                    Notes = (string?)null,
+                    PaymentMode = (string?)null,
+                    TransactionReference = (string?)null
+                })
+                .Cast<object>()
+                .Concat(db.SubscriptionPaymentHistory.AsNoTracking()
+                    .Where(x => x.SubscriptionId == id)
+                    .OrderBy(x => x.PaymentDate)
+                    .Select(x => new
+                    {
+                        x.Id,
+                        Date = x.PaymentDate,
+                        x.Status,
+                        x.Amount,
+                        x.Notes,
+                        x.PaymentMode,
+                        x.TransactionReference
+                    })
+                    .Cast<object>()),
         });
     }
 
@@ -386,17 +486,48 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
     {
         var subscription = await db.CustomerModuleSubscriptions.FindAsync([id], ct);
         if (subscription is null) return NotFound(new { error = "Subscription not found." });
-        var year = (await db.SubscriptionRenewals.Where(x => x.SubscriptionId == id).MaxAsync(x => (int?)x.RenewalYear, ct) ?? subscription.CurrentYear ?? 1) + 1;
-        var entity = new SubscriptionRenewalEntity
+
+        if (request.Date == default)
+            return BadRequest(new { error = "Payment date is required." });
+        if (request.Amount < 0)
+            return BadRequest(new { error = "Payment amount cannot be negative." });
+        var status = (request.Status ?? "pending").Trim().ToLowerInvariant();
+        var validHistoryStatuses = new[] { "paid", "pending", "overdue", "refunded" };
+        if (!validHistoryStatuses.Contains(status))
+            return BadRequest(new { error = "Invalid payment history status." });
+
+        if (request.InvoiceId.HasValue)
         {
-            SubscriptionId = id, RenewalYear = year, PeriodStartDate = request.Date.Date,
-            PeriodEndDate = request.Date.Date, PreviousAmount = request.Amount ?? 0,
-            RenewalAmount = request.Amount ?? 0, Status = (request.Status ?? "pending").ToLowerInvariant(),
+            var invoiceBelongsToSubscription = await db.SubscriptionRenewals
+                .AnyAsync(x => x.SubscriptionId == id && x.InvoiceId == request.InvoiceId.Value, ct);
+            if (!invoiceBelongsToSubscription)
+                return BadRequest(new { error = "The selected invoice is not linked to this subscription." });
+        }
+
+        var entity = new SubscriptionPaymentHistoryEntity
+        {
+            SubscriptionId = id,
+            InvoiceId = request.InvoiceId,
+            PaymentDate = request.Date.Date,
+            Amount = request.Amount,
+            Status = status,
+            PaymentMode = string.IsNullOrWhiteSpace(request.PaymentMode) ? null : request.PaymentMode.Trim(),
+            TransactionReference = string.IsNullOrWhiteSpace(request.TransactionReference) ? null : request.TransactionReference.Trim(),
+            Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
             CreatedAt = DateTime.UtcNow
         };
-        db.SubscriptionRenewals.Add(entity);
+        db.SubscriptionPaymentHistory.Add(entity);
         await db.SaveChangesAsync(ct);
-        return Ok(new { entity.Id, Date = entity.CreatedAt, entity.Status, Amount = entity.RenewalAmount, Notes = request.Notes });
+        return Ok(new
+        {
+            entity.Id,
+            Date = entity.PaymentDate,
+            entity.Status,
+            entity.Amount,
+            entity.Notes,
+            entity.PaymentMode,
+            entity.TransactionReference
+        });
     }
 
     private async Task<(CustomerModuleSubscriptionEntity? Entity, string? Error)> ResolveSubscription(
@@ -406,9 +537,27 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
         var module = await db.Modules.FirstOrDefaultAsync(x => x.ModuleName == request.ModuleName, ct);
         if (customer is null) return (null, "The selected customer was not found.");
         if (module is null) return (null, "The selected module was not found.");
+
+        string? quotationId = null;
+        if (!string.IsNullOrWhiteSpace(request.QuotationId))
+        {
+            quotationId = request.QuotationId.Trim();
+            var quotation = await db.Quotations.AsNoTracking()
+                .Include(x => x.QuotationModules)
+                .SingleOrDefaultAsync(x => x.Id == quotationId, ct);
+            if (quotation is null)
+                return (null, "The selected quotation was not found.");
+            if (!string.Equals(quotation.QuotationToName.Trim(), customer.Name.Trim(), StringComparison.OrdinalIgnoreCase))
+                return (null, "The selected quotation does not belong to the selected customer.");
+            if (!quotation.QuotationModules.Any(x =>
+                    string.Equals(x.ModuleName.Trim(), module.ModuleName.Trim(), StringComparison.OrdinalIgnoreCase)))
+                return (null, "The selected quotation does not contain the selected module.");
+        }
+
         var entity = existing ?? new CustomerModuleSubscriptionEntity { CreatedAt = DateTime.UtcNow };
         entity.CustomerId = customer.Id;
         entity.ModuleId = module.Id;
+        entity.QuotationId = quotationId ?? existing?.QuotationId;
         entity.PurchaseDate = ParseDate(request.PurchaseDate) ?? DateTime.UtcNow.Date;
         entity.SubscriptionStartDate = ParseDate(request.SubscriptionStartDate) ?? entity.PurchaseDate;
         entity.SubscriptionEndDate = ParseDate(request.SubscriptionEndDate);
@@ -449,10 +598,18 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
 
     private static object ToSubscriptionResponse(CustomerModuleSubscriptionEntity x) => new
     {
-        x.Id, CustomerName = x.Customer?.Name, ModuleName = x.Module?.ModuleName,
-        x.PurchaseDate, SubscriptionStartDate = x.SubscriptionStartDate,
-        x.SubscriptionEndDate, CurrentSubscriptionYear = x.CurrentYear,
-        x.NextRenewalDate, Status = x.Status
+        x.Id,
+        CustomerName = x.Customer?.Name,
+        ModuleName = x.Module?.ModuleName,
+        QuotationId = x.QuotationId,
+        RenewalPercentage = x.RenewalPercentage,
+        EscalationPercentage = x.AnnualEscalationPercentage,
+        x.PurchaseDate,
+        SubscriptionStartDate = x.SubscriptionStartDate,
+        x.SubscriptionEndDate,
+        CurrentSubscriptionYear = x.CurrentYear,
+        x.NextRenewalDate,
+        Status = x.Status
     };
 
     private static object ToRenewalResponse(SubscriptionRenewalEntity x) => new
@@ -467,8 +624,10 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
         CustomerContactNumber = x.Subscription?.Customer?.ContactNumber,
         CustomerEmail = x.Subscription?.Customer?.Email,
         ModuleName = x.Subscription?.Module?.ModuleName,
-        Year = x.RenewalYear, Amount = x.RenewalAmount,
-        Date = x.CreatedAt, Status = x.Status
+        Year = x.RenewalYear,
+        Amount = x.RenewalAmount,
+        Date = x.CreatedAt,
+        Status = x.Status
     };
 
     private async Task<IActionResult> SetRenewalStatus(int id, string status, CancellationToken ct)

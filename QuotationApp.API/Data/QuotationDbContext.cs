@@ -34,6 +34,7 @@ public class QuotationDbContext : DbContext
     public DbSet<ModulePricingEntity> ModulePricing { get; set; }
     public DbSet<CustomerModuleSubscriptionEntity> CustomerModuleSubscriptions { get; set; }
     public DbSet<SubscriptionRenewalEntity> SubscriptionRenewals { get; set; }
+    public DbSet<SubscriptionPaymentHistoryEntity> SubscriptionPaymentHistory { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -424,6 +425,27 @@ public class QuotationDbContext : DbContext
             entity.HasOne(e => e.Subscription).WithMany(s => s.Renewals)
                 .HasForeignKey(e => e.SubscriptionId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SubscriptionPaymentHistoryEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PaymentDate).IsRequired().HasColumnType("date");
+            entity.Property(e => e.Amount).HasColumnType("decimal(12,2)");
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.PaymentMode).HasMaxLength(30);
+            entity.Property(e => e.TransactionReference).HasMaxLength(100);
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.ToTable("SubscriptionPaymentHistory");
+            entity.HasIndex(e => e.SubscriptionId);
+            entity.HasIndex(e => e.InvoiceId);
+            entity.HasOne(e => e.Subscription).WithMany()
+                .HasForeignKey(e => e.SubscriptionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Invoice).WithMany()
+                .HasForeignKey(e => e.InvoiceId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

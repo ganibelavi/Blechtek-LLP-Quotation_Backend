@@ -494,12 +494,25 @@ public class InvoiceController : ControllerBase
         }
 
         var nextStatus = request.Status.ToLowerInvariant();
+        var renewal = await _db.SubscriptionRenewals
+            .SingleOrDefaultAsync(x => x.InvoiceId == record.Id);
+        if (renewal is not null &&
+            (record.Status.Equals("paid", StringComparison.OrdinalIgnoreCase) ||
+             renewal.Status.Equals("paid", StringComparison.OrdinalIgnoreCase)) &&
+            nextStatus != "paid")
+        {
+            return Conflict(new
+            {
+                error = "A paid renewal invoice cannot be moved back to draft, advance received, partially paid, or overdue."
+            });
+        }
+
         await using var transaction = await _db.Database.BeginTransactionAsync();
         record.Status = nextStatus;
 
         if (nextStatus == "paid")
         {
-            var renewal = await _db.SubscriptionRenewals
+            renewal = await _db.SubscriptionRenewals
                 .Include(x => x.Subscription)
                 .SingleOrDefaultAsync(x => x.InvoiceId == record.Id);
 

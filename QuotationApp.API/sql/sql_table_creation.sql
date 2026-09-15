@@ -449,6 +449,34 @@ CREATE INDEX IX_SubscriptionRenewal_Status
 CREATE INDEX IX_SubscriptionRenewal_InvoiceId
     ON SubscriptionRenewal(InvoiceId);
 
+-- Manual payment and status history for a subscription.
+CREATE TABLE SubscriptionPaymentHistory (
+    Id                    INT IDENTITY(1,1) NOT NULL
+        CONSTRAINT PK_SubscriptionPaymentHistory PRIMARY KEY,
+    SubscriptionId        INT NOT NULL,
+    InvoiceId             INT NULL,
+    PaymentDate           DATE NOT NULL,
+    Amount                DECIMAL(12,2) NULL,
+    Status                NVARCHAR(20) NOT NULL,
+    PaymentMode           NVARCHAR(30) NULL,
+    TransactionReference  NVARCHAR(100) NULL,
+    Notes                 NVARCHAR(1000) NULL,
+    CreatedAt             DATETIME2 NOT NULL,
+    CONSTRAINT FK_SubscriptionPaymentHistory_Subscription
+        FOREIGN KEY (SubscriptionId) REFERENCES CustomerModuleSubscription(Id),
+    CONSTRAINT FK_SubscriptionPaymentHistory_Invoice
+        FOREIGN KEY (InvoiceId) REFERENCES invoices(id),
+    CONSTRAINT CK_SubscriptionPaymentHistory_Amount
+        CHECK (Amount IS NULL OR Amount >= 0),
+    CONSTRAINT CK_SubscriptionPaymentHistory_Status
+        CHECK (Status IN ('paid', 'pending', 'overdue', 'refunded'))
+);
+
+CREATE INDEX IX_SubscriptionPaymentHistory_SubscriptionId
+    ON SubscriptionPaymentHistory(SubscriptionId);
+CREATE INDEX IX_SubscriptionPaymentHistory_InvoiceId
+    ON SubscriptionPaymentHistory(InvoiceId);
+
 -- The EF model declares these triggers on purchase_orders and invoices.
 GO
 CREATE TRIGGER trg_po_verification_history

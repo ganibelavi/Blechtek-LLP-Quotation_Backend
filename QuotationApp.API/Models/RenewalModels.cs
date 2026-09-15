@@ -54,10 +54,27 @@ public sealed class SubscriptionRenewalEntity
     public CustomerModuleSubscriptionEntity? Subscription { get; set; }
 }
 
+public sealed class SubscriptionPaymentHistoryEntity
+{
+    public int Id { get; set; }
+    public int SubscriptionId { get; set; }
+    public int? InvoiceId { get; set; }
+    public DateTime PaymentDate { get; set; }
+    public decimal? Amount { get; set; }
+    public string Status { get; set; } = "pending";
+    public string? PaymentMode { get; set; }
+    public string? TransactionReference { get; set; }
+    public string? Notes { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public CustomerModuleSubscriptionEntity? Subscription { get; set; }
+    public InvoiceEntity? Invoice { get; set; }
+}
+
 public sealed class SubscriptionRequest
 {
     public string? CustomerName { get; set; }
     public string? ModuleName { get; set; }
+    public string? QuotationId { get; set; }
     public string? PurchaseDate { get; set; }
     public string? SubscriptionStartDate { get; set; }
     public string? SubscriptionEndDate { get; set; }
@@ -103,5 +120,8 @@ public sealed class PaymentHistoryRequest
     public DateTime Date { get; set; }
     public string? Status { get; set; }
     public decimal? Amount { get; set; }
+    public int? InvoiceId { get; set; }
+    public string? PaymentMode { get; set; }
+    public string? TransactionReference { get; set; }
     public string? Notes { get; set; }
 }
