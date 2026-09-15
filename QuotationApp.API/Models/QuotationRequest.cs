@@ -53,6 +53,8 @@ public class QuotationModuleRequest
 
     [StringLength(30)]
     public string? ImplementationEffortUnit { get; set; }
+
+    public decimal? ModulePriceOverride { get; set; }
 }
 
 public class QuotationToInfo

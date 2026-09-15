@@ -536,7 +536,9 @@ public class SqlQuotationService : IQuotationService
             modulePrices.TryGetValue(moduleName.Trim(), out var module);
             detailsByModule.TryGetValue(moduleName.Trim(), out var detail);
 
-            var modulePrice = module?.Price ?? 0m;
+            var modulePrice = detail?.ModulePriceOverride ?? module?.Price ?? 0m;
+            if (modulePrice < 0)
+                throw new ArgumentException($"Module price cannot be negative for '{moduleName}'.");
             var implementationUnitPrice = module?.ImplementationEffortCost ?? 0m;
             var implementationMultiplier = GetEffortMultiplier(detail?.ImplementationEffortUnit);
             var implementationPrice = implementationUnitPrice * implementationMultiplier;

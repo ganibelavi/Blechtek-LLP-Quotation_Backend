@@ -88,6 +88,16 @@ public sealed class RenewalQuotationRequest
     public DateTime? PeriodEnd { get; set; }
 }
 
+public sealed class LinkRenewalQuotationRequest
+{
+    public string? QuotationId { get; set; }
+}
+
+public sealed class LinkRenewalInvoiceRequest
+{
+    public int? InvoiceId { get; set; }
+}
+
 public sealed class PaymentHistoryRequest
 {
     public DateTime Date { get; set; }

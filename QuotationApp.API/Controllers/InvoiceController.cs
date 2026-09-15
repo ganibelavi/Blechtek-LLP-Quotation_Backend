@@ -493,8 +493,40 @@ public class InvoiceController : ControllerBase
             return NotFound(new { error = "Invoice not found." });
         }
 
-        record.Status = request.Status.ToLowerInvariant();
+        var nextStatus = request.Status.ToLowerInvariant();
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        record.Status = nextStatus;
+
+        if (nextStatus == "paid")
+        {
+            var renewal = await _db.SubscriptionRenewals
+                .Include(x => x.Subscription)
+                .SingleOrDefaultAsync(x => x.InvoiceId == record.Id);
+
+            if (renewal is not null)
+            {
+                if (!string.IsNullOrWhiteSpace(renewal.QuotationId) &&
+                    !string.Equals(renewal.QuotationId, record.QuotationId, StringComparison.Ordinal))
+                {
+                    return BadRequest(new
+                    {
+                        error = "The paid invoice is not linked to the renewal quotation."
+                    });
+                }
+
+                renewal.Status = "paid";
+                var subscription = renewal.Subscription
+                    ?? await _db.CustomerModuleSubscriptions
+                        .SingleAsync(x => x.Id == renewal.SubscriptionId);
+                subscription.CurrentYear = renewal.RenewalYear;
+                subscription.SubscriptionEndDate = renewal.PeriodEndDate.Date;
+                subscription.NextRenewalDate = renewal.PeriodEndDate.Date.AddDays(1);
+                subscription.Status = "active";
+            }
+        }
+
         await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         var customer = await _db.Customers.FirstOrDefaultAsync(c => c.Id == record.CustomerId);
         var bankDetails = await _db.InvoiceBankDetails.FirstOrDefaultAsync(b => b.InvoiceId == record.Id);
