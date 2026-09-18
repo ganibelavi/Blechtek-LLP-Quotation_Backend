@@ -140,11 +140,16 @@ public class InvoiceController : ControllerBase
 
         if (request.Items is { Count: > 0 })
         {
+            var modules = await _db.Modules.AsNoTracking().ToListAsync();
             var lineItems = request.Items
                 .Where(item => !string.IsNullOrWhiteSpace(item.Description))
                 .Select(item => new InvoiceItemEntity
                 {
                     InvoiceId = invoice.Id,
+                    ModuleId = item.ModuleId ?? modules
+                        .FirstOrDefault(module =>
+                            string.Equals(module.ModuleName.Trim(), item.Description!.Trim(), StringComparison.OrdinalIgnoreCase))
+                        ?.Id,
                     Description = item.Description ?? "",
                     Qty = item.Qty <= 0 ? 1 : item.Qty,
                     Uom = string.IsNullOrWhiteSpace(item.Uom) ? "Nos." : item.Uom,
@@ -430,11 +435,16 @@ public class InvoiceController : ControllerBase
 
         if (request.Items is { Count: > 0 })
         {
+            var modules = await _db.Modules.AsNoTracking().ToListAsync();
             var lineItems = request.Items
                 .Where(item => !string.IsNullOrWhiteSpace(item.Description))
                 .Select(item => new InvoiceItemEntity
                 {
                     InvoiceId = record.Id,
+                    ModuleId = item.ModuleId ?? modules
+                        .FirstOrDefault(module =>
+                            string.Equals(module.ModuleName.Trim(), item.Description!.Trim(), StringComparison.OrdinalIgnoreCase))
+                        ?.Id,
                     Description = item.Description ?? "",
                     Qty = item.Qty <= 0 ? 1 : item.Qty,
                     Uom = string.IsNullOrWhiteSpace(item.Uom) ? "Nos." : item.Uom,
@@ -518,15 +528,6 @@ public class InvoiceController : ControllerBase
 
             if (renewal is not null)
             {
-                if (!string.IsNullOrWhiteSpace(renewal.QuotationId) &&
-                    !string.Equals(renewal.QuotationId, record.QuotationId, StringComparison.Ordinal))
-                {
-                    return BadRequest(new
-                    {
-                        error = "The paid invoice is not linked to the renewal quotation."
-                    });
-                }
-
                 renewal.Status = "paid";
                 var subscription = renewal.Subscription
                     ?? await _db.CustomerModuleSubscriptions
@@ -535,6 +536,10 @@ public class InvoiceController : ControllerBase
                 subscription.SubscriptionEndDate = renewal.PeriodEndDate.Date;
                 subscription.NextRenewalDate = renewal.PeriodEndDate.Date.AddDays(1);
                 subscription.Status = "active";
+            }
+            else
+            {
+                await CreateSubscriptionsFromPaidInvoiceAsync(record);
             }
         }
 
@@ -551,6 +556,62 @@ public class InvoiceController : ControllerBase
         return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotation?.QuotationNo));
     }
 
+    private async Task CreateSubscriptionsFromPaidInvoiceAsync(InvoiceEntity invoice)
+    {
+        var invoiceWithItems = await _db.Invoices
+            .Include(x => x.Items)
+            .SingleAsync(x => x.Id == invoice.Id);
+
+        var moduleLines = invoiceWithItems.Items
+            .Where(x => x.ModuleId.HasValue && x.Qty > 0 && x.Rate >= 0)
+            .GroupBy(x => x.ModuleId!.Value)
+            .Select(group => new
+            {
+                ModuleId = group.Key,
+                Amount = group.Sum(x => x.Qty * x.Rate),
+            })
+            .ToList();
+
+        foreach (var moduleLine in moduleLines)
+        {
+            var module = await _db.Modules
+                .SingleOrDefaultAsync(x => x.Id == moduleLine.ModuleId);
+            if (module is null)
+                continue;
+
+            var alreadyCreated = await _db.CustomerModuleSubscriptions
+                .AnyAsync(x => x.InvoiceId == invoice.Id && x.ModuleId == module.Id);
+            if (alreadyCreated)
+                continue;
+
+            var pricing = await _db.ModulePricing
+                .Where(x => x.ModuleId == module.Id &&
+                    x.PricingEffectiveFrom <= invoice.InvoiceDate.Date &&
+                    (x.PricingEffectiveTo == null || x.PricingEffectiveTo >= invoice.InvoiceDate.Date))
+                .OrderByDescending(x => x.PricingEffectiveFrom)
+                .FirstOrDefaultAsync();
+
+            var endDate = invoice.InvoiceDate.Date.AddYears(1).AddDays(-1);
+            _db.CustomerModuleSubscriptions.Add(new CustomerModuleSubscriptionEntity
+            {
+                CustomerId = invoice.CustomerId,
+                ModuleId = module.Id,
+                InvoiceId = invoice.Id,
+                QuotationId = invoice.QuotationId,
+                PurchaseDate = invoice.InvoiceDate.Date,
+                SubscriptionStartDate = invoice.InvoiceDate.Date,
+                SubscriptionEndDate = endDate,
+                CurrentYear = 1,
+                InitialPurchasePrice = moduleLine.Amount,
+                RenewalPercentage = pricing?.RenewalPercentage ?? 0,
+                AnnualEscalationPercentage = pricing?.AnnualEscalationPercentage ?? 0,
+                Status = "active",
+                NextRenewalDate = endDate.AddDays(1),
+                CreatedAt = DateTime.UtcNow,
+            });
+        }
+    }
+
     private static object BuildInvoiceResponse(InvoiceEntity record, CustomerEntity? customer, decimal totalAmount, InvoiceBankDetailEntity? bankDetails, string? quotationNo)
     {
         var customerName = record.BuyerName ?? customer?.Name ?? "";
@@ -561,6 +622,7 @@ public class InvoiceController : ControllerBase
         var items = record.Items.Select(item => new
         {
             id = item.Id,
+            moduleId = item.ModuleId,
             description = item.Description,
             qty = item.Qty,
             uom = item.Uom,

@@ -22,6 +22,7 @@ public sealed class CustomerModuleSubscriptionEntity
     public int CustomerId { get; set; }
     public int ModuleId { get; set; }
     public string? QuotationId { get; set; }
+    public int? InvoiceId { get; set; }
     public DateTime PurchaseDate { get; set; }
     public DateTime SubscriptionStartDate { get; set; }
     public DateTime? SubscriptionEndDate { get; set; }
@@ -75,6 +76,8 @@ public sealed class SubscriptionRequest
     public string? CustomerName { get; set; }
     public string? ModuleName { get; set; }
     public string? QuotationId { get; set; }
+    public int? InvoiceId { get; set; }
+    public int? InvoiceLineItemId { get; set; }
     public string? PurchaseDate { get; set; }
     public string? SubscriptionStartDate { get; set; }
     public string? SubscriptionEndDate { get; set; }

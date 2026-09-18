@@ -345,6 +345,7 @@ public class QuotationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.InvoiceId).IsRequired().HasColumnName("invoice_id");
+            entity.Property(e => e.ModuleId).HasColumnName("module_id");
             entity.Property(e => e.ProductId).HasColumnName("product_id");
             entity.Property(e => e.Description).IsRequired().HasColumnName("description");
             entity.Property(e => e.Qty).HasColumnType("decimal(12,2)").HasColumnName("qty");
@@ -356,6 +357,11 @@ public class QuotationDbContext : DbContext
                 .WithMany(i => i.Items)
                 .HasForeignKey(e => e.InvoiceId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne<ModuleEntity>()
+                .WithMany()
+                .HasForeignKey(e => e.ModuleId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<InvoiceBankDetailEntity>(entity =>
@@ -395,6 +401,7 @@ public class QuotationDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.QuotationId).HasMaxLength(50);
+            entity.Property(e => e.InvoiceId).HasColumnName("InvoiceId");
             entity.Property(e => e.PurchaseDate).HasColumnType("date");
             entity.Property(e => e.SubscriptionStartDate).HasColumnType("date");
             entity.Property(e => e.SubscriptionEndDate).HasColumnType("date");
@@ -407,6 +414,8 @@ public class QuotationDbContext : DbContext
             entity.HasOne(e => e.Customer).WithMany().HasForeignKey(e => e.CustomerId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Module).WithMany().HasForeignKey(e => e.ModuleId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<InvoiceEntity>().WithMany().HasForeignKey(e => e.InvoiceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

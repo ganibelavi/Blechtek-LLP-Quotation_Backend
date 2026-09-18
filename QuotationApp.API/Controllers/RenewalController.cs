@@ -77,9 +77,78 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
         return Ok(rows.Select(ToSubscriptionResponse));
     }
 
+    [HttpGet("customer-subscriptions/invoices")]
+    public async Task<IActionResult> SubscriptionInvoices(
+        [FromQuery] string? customerName,
+        CancellationToken ct)
+    {
+        var customerIds = string.IsNullOrWhiteSpace(customerName)
+            ? null
+            : await db.Customers
+                .Where(x => x.Name == customerName.Trim())
+                .Select(x => (int?)x.Id)
+                .ToListAsync(ct);
+        var query = db.Invoices.AsNoTracking()
+            .Include(x => x.Items)
+            .Where(x => x.Status != "draft" &&
+                x.Status != "cancelled" &&
+                x.Status != "void");
+
+        if (customerIds is not null)
+            query = query.Where(x => customerIds.Contains(x.CustomerId));
+
+        var invoices = await query
+            .OrderByDescending(x => x.InvoiceDate)
+            .ThenByDescending(x => x.Id)
+            .Select(x => new
+            {
+                x.Id,
+                x.InvoiceNo,
+                x.InvoiceDate,
+                x.Status,
+                x.CustomerId,
+                TotalAmount = x.GrandTotal,
+                Items = x.Items.Select(item => new
+                {
+                    item.Id,
+                    item.ModuleId,
+                    item.Description,
+                    item.Qty,
+                    item.Uom,
+                    item.Rate,
+                    LineTotal = item.Qty * item.Rate
+                })
+            })
+            .ToListAsync(ct);
+
+        // TODO(SQL migration): add a persisted invoice-line-item reference to
+        // CustomerModuleSubscription so two lines using the same module on one
+        // invoice can be tracked independently. Until then, invoice + module
+        // is the duplicate key used by the existing schema.
+        return Ok(invoices);
+    }
+
+    // Deprecated compatibility route. New subscriptions must use
+    // POST /api/customer-subscriptions/from-invoice.
     [HttpPost("customer-subscriptions")]
     public async Task<IActionResult> CreateSubscription(SubscriptionRequest request, CancellationToken ct)
     {
+        var resolved = await ResolveSubscription(request, ct);
+        if (resolved.Error is not null) return BadRequest(new { error = resolved.Error });
+        var entity = resolved.Entity!;
+        db.CustomerModuleSubscriptions.Add(entity);
+        await db.SaveChangesAsync(ct);
+        return CreatedAtAction(nameof(GetSubscriptionDetails), new { id = entity.Id }, ToSubscriptionResponse(entity));
+    }
+
+    [HttpPost("customer-subscriptions/from-invoice")]
+    public async Task<IActionResult> CreateSubscriptionFromInvoice(
+        SubscriptionRequest request,
+        CancellationToken ct)
+    {
+        if (!request.InvoiceId.HasValue)
+            return BadRequest(new { error = "InvoiceId is required." });
+
         var resolved = await ResolveSubscription(request, ct);
         if (resolved.Error is not null) return BadRequest(new { error = resolved.Error });
         var entity = resolved.Entity!;
@@ -278,10 +347,12 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
         return CreatedAtAction(nameof(RenewalQuotations), null, ToRenewalResponse(renewal));
     }
 
+    // Deprecated: renewals now proceed directly to invoice creation/linking.
     [HttpPost("renewals/{id:int}/generate-quotation")]
     public async Task<IActionResult> GenerateQuotation(int id, CancellationToken ct) =>
         await SetRenewalStatus(id, "quoted", ct);
 
+    // Deprecated: retained for historical renewals that still have quotation links.
     [HttpPost("renewals/{id:int}/link-quotation")]
     public async Task<IActionResult> LinkQuotation(
         int id,
@@ -368,15 +439,10 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
         if (renewal is null) return NotFound(new { error = "Renewal not found." });
 
         var invoice = await db.Invoices.AsNoTracking()
+            .Include(x => x.Items)
             .SingleOrDefaultAsync(x => x.Id == request.InvoiceId.Value, ct);
         if (invoice is null)
             return BadRequest(new { error = "The selected invoice was not found." });
-
-        if (string.IsNullOrWhiteSpace(renewal.QuotationId))
-            return BadRequest(new { error = "A renewal quotation must be linked before linking an invoice." });
-
-        if (!string.Equals(renewal.QuotationId, invoice.QuotationId, StringComparison.Ordinal))
-            return BadRequest(new { error = "The invoice is not linked to this renewal quotation." });
 
         if (renewal.Subscription is null)
             return BadRequest(new { error = "The renewal subscription was not found." });
@@ -386,6 +452,13 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
             {
                 error = "The invoice customer does not match the renewal subscription customer."
             });
+
+        var module = await db.Modules.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == renewal.Subscription.ModuleId, ct);
+        if (module is null || !invoice.Items.Any(x =>
+                x.ModuleId == module.Id ||
+                string.Equals(x.Description.Trim(), module.ModuleName.Trim(), StringComparison.OrdinalIgnoreCase)))
+            return BadRequest(new { error = "The invoice does not contain this subscription module." });
 
         if (renewal.InvoiceId.HasValue && renewal.InvoiceId != request.InvoiceId.Value)
             return Conflict(new { error = "A different invoice is already linked to this renewal." });
@@ -534,7 +607,54 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
         SubscriptionRequest request, CancellationToken ct, CustomerModuleSubscriptionEntity? existing = null)
     {
         var customer = await db.Customers.FirstOrDefaultAsync(x => x.Name == request.CustomerName, ct);
-        var module = await db.Modules.FirstOrDefaultAsync(x => x.ModuleName == request.ModuleName, ct);
+        ModuleEntity? module = await db.Modules.FirstOrDefaultAsync(x => x.ModuleName == request.ModuleName, ct);
+
+        InvoiceEntity? invoice = null;
+        InvoiceItemEntity? invoiceLineItem = null;
+        if (request.InvoiceId.HasValue)
+        {
+            invoice = await db.Invoices
+                .Include(x => x.Items)
+                .SingleOrDefaultAsync(x => x.Id == request.InvoiceId.Value, ct);
+            if (invoice is null) return (null, "The selected invoice was not found.");
+            if (invoice.Status.Equals("draft", StringComparison.OrdinalIgnoreCase) ||
+                invoice.Status.Equals("cancelled", StringComparison.OrdinalIgnoreCase) ||
+                invoice.Status.Equals("void", StringComparison.OrdinalIgnoreCase))
+                return (null, "Only finalized invoices can create subscriptions.");
+
+            if (customer is null)
+                customer = await db.Customers.FindAsync([invoice.CustomerId], ct);
+            if (customer is null || customer.Id != invoice.CustomerId)
+                return (null, "The selected invoice does not belong to the selected customer.");
+
+            invoiceLineItem = request.InvoiceLineItemId.HasValue
+                ? invoice.Items.SingleOrDefault(x => x.Id == request.InvoiceLineItemId.Value)
+                : null;
+            if (request.InvoiceLineItemId.HasValue && invoiceLineItem is null)
+                return (null, "The selected invoice line item was not found on the invoice.");
+
+            var eligibleItems = invoice.Items
+                .Where(x => x.Qty > 0 && x.Rate >= 0 &&
+                    (x.ModuleId.HasValue || !string.IsNullOrWhiteSpace(x.Description)))
+                .ToList();
+            if (invoiceLineItem is null && eligibleItems.Count != 1)
+                return (null, "Select the specific invoice line item to create a subscription.");
+            invoiceLineItem ??= eligibleItems[0];
+
+            module = invoiceLineItem.ModuleId.HasValue
+                ? await db.Modules.FirstOrDefaultAsync(x => x.Id == invoiceLineItem.ModuleId.Value, ct)
+                : await db.Modules.FirstOrDefaultAsync(
+                    x => x.ModuleName == invoiceLineItem.Description, ct);
+            if (module is null)
+                return (null, "The selected invoice line item is not linked to a module.");
+
+            if (await db.CustomerModuleSubscriptions.AnyAsync(
+                    x => x.InvoiceId == invoice.Id &&
+                        x.ModuleId == module.Id &&
+                        (existing == null || x.Id != existing.Id), ct))
+                return (null, "A subscription already exists for this invoice and module.");
+        }
+
         if (customer is null) return (null, "The selected customer was not found.");
         if (module is null) return (null, "The selected module was not found.");
 
@@ -554,17 +674,29 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
                 return (null, "The selected quotation does not contain the selected module.");
         }
 
+        int? invoiceId = null;
+        if (invoice is not null && invoiceLineItem is not null)
+        {
+            invoiceId = invoice.Id;
+        }
+
         var entity = existing ?? new CustomerModuleSubscriptionEntity { CreatedAt = DateTime.UtcNow };
         entity.CustomerId = customer.Id;
         entity.ModuleId = module.Id;
         entity.QuotationId = quotationId ?? existing?.QuotationId;
-        entity.PurchaseDate = ParseDate(request.PurchaseDate) ?? DateTime.UtcNow.Date;
+        entity.InvoiceId = invoiceId ?? existing?.InvoiceId;
+        entity.PurchaseDate = ParseDate(request.PurchaseDate) ?? invoice?.InvoiceDate.Date ?? DateTime.UtcNow.Date;
         entity.SubscriptionStartDate = ParseDate(request.SubscriptionStartDate) ?? entity.PurchaseDate;
-        entity.SubscriptionEndDate = ParseDate(request.SubscriptionEndDate);
+        // TODO(SQL migration): invoice line items have no subscription duration
+        // column. This pass preserves the existing one-year default; add a
+        // duration/term field to the invoice or line-item schema later.
+        entity.SubscriptionEndDate = ParseDate(request.SubscriptionEndDate)
+            ?? entity.SubscriptionStartDate.AddYears(1).AddDays(-1);
         entity.CurrentYear = request.CurrentSubscriptionYear;
         entity.NextRenewalDate = request.NextRenewalDate;
         entity.Status = (request.Status ?? "active").ToLowerInvariant();
-        entity.InitialPurchasePrice = request.InitialPurchasePrice ?? module.Price ?? 0;
+        entity.InitialPurchasePrice = request.InitialPurchasePrice ??
+            (invoiceLineItem is not null ? invoiceLineItem.Qty * invoiceLineItem.Rate : module.Price ?? 0);
         entity.RenewalPercentage = request.RenewalPercentage ?? 0;
         entity.AnnualEscalationPercentage = request.EscalationPercentage ?? 0;
         return (entity, null);
@@ -577,7 +709,7 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
         DateTime.TryParse(value, out var result) ? result.Date : null;
 
     private static decimal CalculateRenewalAmount(CustomerModuleSubscriptionEntity x, int year) =>
-        Math.Round(x.InitialPurchasePrice * (1 + x.RenewalPercentage / 100m) *
+        Math.Round(x.InitialPurchasePrice * (x.RenewalPercentage / 100m) *
             (decimal)Math.Pow((double)(1 + x.AnnualEscalationPercentage / 100m), year - 2), 2);
 
     private async Task MarkExpiredSubscriptionsAsync(DateTime today, CancellationToken ct)
@@ -602,6 +734,7 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
         CustomerName = x.Customer?.Name,
         ModuleName = x.Module?.ModuleName,
         QuotationId = x.QuotationId,
+        InvoiceId = x.InvoiceId,
         RenewalPercentage = x.RenewalPercentage,
         EscalationPercentage = x.AnnualEscalationPercentage,
         x.PurchaseDate,
@@ -616,6 +749,7 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
     {
         RenewalId = x.Id,
         SubscriptionId = x.SubscriptionId,
+        CustomerId = x.Subscription?.CustomerId,
         QuotationId = x.QuotationId,
         InvoiceId = x.InvoiceId,
         QuotationNumber = $"REN-{x.Id:D6}",
@@ -625,6 +759,8 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
         CustomerEmail = x.Subscription?.Customer?.Email,
         ModuleName = x.Subscription?.Module?.ModuleName,
         Year = x.RenewalYear,
+        PeriodStartDate = x.PeriodStartDate,
+        PeriodEndDate = x.PeriodEndDate,
         Amount = x.RenewalAmount,
         Date = x.CreatedAt,
         Status = x.Status

@@ -186,6 +186,7 @@ public class InvoiceItemEntity
 {
     public int Id { get; set; }
     public int InvoiceId { get; set; }
+    public int? ModuleId { get; set; }
     public int? ProductId { get; set; }
     public string Description { get; set; } = string.Empty;
     public decimal Qty { get; set; } = 1m;
@@ -310,6 +311,7 @@ public class CreateInvoiceRequest
 
 public class InvoiceItemRequest
 {
+    public int? ModuleId { get; set; }
     public string? Description { get; set; }
     public decimal Qty { get; set; } = 1m;
     public string? Uom { get; set; } = "Nos.";

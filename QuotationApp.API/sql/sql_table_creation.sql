@@ -299,6 +299,7 @@ CREATE INDEX IX_invoices_quotation_id ON invoices(quotation_id);
 CREATE TABLE invoice_items (
     id          INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_invoice_items PRIMARY KEY,
     invoice_id  INT NOT NULL,
+    module_id   INT NULL,
     product_id  INT NULL,
     description NVARCHAR(MAX) NOT NULL,
     qty         DECIMAL(12,2) NOT NULL,
@@ -307,7 +308,9 @@ CREATE TABLE invoice_items (
     CONSTRAINT FK_invoice_items_invoices
         FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
     CONSTRAINT FK_invoice_items_products
-        FOREIGN KEY (product_id) REFERENCES products(id)
+        FOREIGN KEY (product_id) REFERENCES products(id),
+    CONSTRAINT FK_invoice_items_modules
+        FOREIGN KEY (module_id) REFERENCES Modules(Id)
 );
 
 CREATE INDEX IX_invoice_items_invoice_id ON invoice_items(invoice_id);
@@ -366,6 +369,7 @@ CREATE TABLE CustomerModuleSubscription (
     CustomerId                  INT NOT NULL,
     ModuleId                    INT NOT NULL,
     QuotationId                 NVARCHAR(50) NULL,
+    InvoiceId                   INT NULL,
     PurchaseDate                DATE NOT NULL,
     SubscriptionStartDate       DATE NOT NULL,
     SubscriptionEndDate         DATE NULL,
@@ -382,6 +386,8 @@ CREATE TABLE CustomerModuleSubscription (
         FOREIGN KEY (ModuleId) REFERENCES Modules(Id),
     CONSTRAINT FK_CustomerModuleSubscription_Quotations
         FOREIGN KEY (QuotationId) REFERENCES Quotations(Id),
+    CONSTRAINT FK_CustomerModuleSubscription_Invoices
+        FOREIGN KEY (InvoiceId) REFERENCES invoices(id),
     CONSTRAINT CK_CustomerModuleSubscription_Status
         CHECK (Status IN ('active', 'expired', 'cancelled', 'pending')),
     CONSTRAINT CK_CustomerModuleSubscription_Prices
@@ -401,6 +407,8 @@ CREATE INDEX IX_CustomerModuleSubscription_CustomerId
     ON CustomerModuleSubscription(CustomerId);
 CREATE INDEX IX_CustomerModuleSubscription_ModuleId
     ON CustomerModuleSubscription(ModuleId);
+CREATE INDEX IX_CustomerModuleSubscription_InvoiceId
+    ON CustomerModuleSubscription(InvoiceId);
 CREATE INDEX IX_CustomerModuleSubscription_Status
     ON CustomerModuleSubscription(Status);
 CREATE INDEX IX_CustomerModuleSubscription_NextRenewalDate
