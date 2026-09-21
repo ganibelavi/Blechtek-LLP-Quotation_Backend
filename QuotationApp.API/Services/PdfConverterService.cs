@@ -812,7 +812,6 @@ public class PdfConverterService : IPdfConverterService
             return;
         }
 
-        // Render as a row with multiple columns for tab-separated labels
         column.Item().Row(row =>
         {
             for (int i = 0; i < validSegments.Count; i++)
