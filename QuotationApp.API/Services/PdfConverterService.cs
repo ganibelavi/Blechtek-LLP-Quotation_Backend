@@ -35,7 +35,6 @@ public class PdfConverterService : IPdfConverterService
     private static readonly QuestPDFColor DarkText = QuestPDFColor.FromHex("#333333");
     private static readonly QuestPDFColor MediumText = QuestPDFColor.FromHex("#555555");
     private static readonly QuestPDFColor LightText = QuestPDFColor.FromHex("#888888");
-    private static readonly QuestPDFColor NoteBackground = QuestPDFColor.FromHex("#F8FBFA");
 
     // Text labels that must render with ONLY the label portion bold (e.g. "Name:" bold, "XYZ Corp" normal)
     private static readonly string[] BoldLabelPrefixes = new[]
@@ -626,7 +625,6 @@ public class PdfConverterService : IPdfConverterService
         // Check for section headings (uppercase headings like "QUOTATION TO", "SCOPE OF WORK", etc.)
         var isSectionHeading = IsSectionHeading(para.Text);
         var isQuotationToHeading = para.Text.Trim().StartsWith("QUOTATION TO", StringComparison.OrdinalIgnoreCase);
-        var isNote = para.Text.Contains("Deliverables do not include", StringComparison.OrdinalIgnoreCase);
         var isPricingHeading = IsPricingSectionHeading(para.Text);
         var isScopeHeading = IsScopeSectionHeading(para.Text);
 
@@ -640,7 +638,7 @@ public class PdfConverterService : IPdfConverterService
 
         if (isScopeHeading)
         {
-            column.Item().PaddingTop(24).PaddingBottom(8).BorderBottom(1).BorderColor(TextBlack).PaddingBottom(4)
+            column.Item().EnsureSpace(100).PaddingTop(2).PaddingBottom(2).BorderBottom(1).BorderColor(TextBlack).PaddingBottom(2)
                 .Text(para.Text.ToUpper())
                 .FontSize(11).FontFamily("Calibri").FontColor(TextBlack).Bold();
             return;
@@ -662,12 +660,17 @@ public class PdfConverterService : IPdfConverterService
             return;
         }
 
-        if (isNote)
+        // Digitization paragraphs are explanatory body text even when the
+        // source document marks the paragraph as bold.
+        if (para.Text.Trim().StartsWith("Digitization of", StringComparison.OrdinalIgnoreCase))
         {
-            column.Item().PaddingTop(16).PaddingBottom(16).PaddingLeft(12).BorderLeft(3).BorderColor(TextBlack)
-                .Background(NoteBackground).Padding(10, Unit.Point).PaddingRight(12, Unit.Point)
+            column.Item()
                 .Text(para.Text)
-                .FontSize(10).FontFamily("Calibri").FontColor(DarkText).Italic().LineHeight(1.55f);
+                .Style(TextStyle.Default
+                    .FontSize(para.FontSize)
+                    .FontFamily("Calibri")
+                    .FontColor(para.TextColor ?? TextBlack)
+                    .LineHeight(1.55f));
             return;
         }
 
@@ -696,7 +699,8 @@ public class PdfConverterService : IPdfConverterService
                          text.StartsWith("We discussed the current challenges", StringComparison.OrdinalIgnoreCase) ||
                          text.StartsWith("Preliminary Business Proposal", StringComparison.OrdinalIgnoreCase) ||
                          text.StartsWith("Our experts will be involved", StringComparison.OrdinalIgnoreCase) ||
-                         text.StartsWith("Digitization of Audit Tracker", StringComparison.OrdinalIgnoreCase) ||
+                         text.StartsWith("Digitization of", StringComparison.OrdinalIgnoreCase) ||
+                         text.StartsWith("Deliverables do not include", StringComparison.OrdinalIgnoreCase) ||
                          text.StartsWith("Training and implementation using CQUAL", StringComparison.OrdinalIgnoreCase);
 
         // Texts that should always be bold (field labels, section headers)
