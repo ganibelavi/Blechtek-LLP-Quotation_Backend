@@ -665,7 +665,25 @@ public class PdfConverterService : IPdfConverterService
             column.Item().PaddingTop(16).PaddingBottom(16).PaddingLeft(12).BorderLeft(3).BorderColor(TextBlack)
                 .Background(NoteBackground).Padding(10, Unit.Point).PaddingRight(12, Unit.Point)
                 .Text(para.Text)
-                .FontSize(10).FontFamily("Calibri").FontColor(DarkText).Italic().LineHeight(1.55f);
+                .Style(TextStyle.Default
+                    .FontSize(10)
+                    .FontFamily("Calibri")
+                    .FontColor(DarkText)
+                    .LineHeight(1.55f));
+            return;
+        }
+
+        // Digitization paragraphs are explanatory body text even when the
+        // source document marks the paragraph as bold.
+        if (para.Text.Trim().StartsWith("Digitization of", StringComparison.OrdinalIgnoreCase))
+        {
+            column.Item()
+                .Text(para.Text)
+                .Style(TextStyle.Default
+                    .FontSize(para.FontSize)
+                    .FontFamily("Calibri")
+                    .FontColor(para.TextColor ?? TextBlack)
+                    .LineHeight(1.55f));
             return;
         }
 
@@ -694,7 +712,7 @@ public class PdfConverterService : IPdfConverterService
                          text.StartsWith("We discussed the current challenges", StringComparison.OrdinalIgnoreCase) ||
                          text.StartsWith("Preliminary Business Proposal", StringComparison.OrdinalIgnoreCase) ||
                          text.StartsWith("Our experts will be involved", StringComparison.OrdinalIgnoreCase) ||
-                         text.StartsWith("Digitization of Audit Tracker", StringComparison.OrdinalIgnoreCase) ||
+                         text.StartsWith("Digitization of", StringComparison.OrdinalIgnoreCase) ||
                          text.StartsWith("Training and implementation using CQUAL", StringComparison.OrdinalIgnoreCase);
 
         // Texts that should always be bold (field labels, section headers)
