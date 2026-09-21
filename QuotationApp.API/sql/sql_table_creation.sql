@@ -1,7 +1,3 @@
--- Quotation application schema for SQL Server.
--- This script mirrors the entities and table mappings in
--- Data/QuotationDbContext.cs. Run it against a new database.
-
 CREATE TABLE Users (
     Id              INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_Users PRIMARY KEY,
     Email           NVARCHAR(200) NOT NULL,

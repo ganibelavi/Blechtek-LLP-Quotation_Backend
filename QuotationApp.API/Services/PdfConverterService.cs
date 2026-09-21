@@ -1176,7 +1176,10 @@ public class PdfConverterService : IPdfConverterService
             .ToList();
 
         var valueIndex = 0;
-        var alignedPriceLines = particularsLines.Select(line =>
+        var alignedParticularsLines = new List<string>();
+        var alignedPriceLines = new List<string>();
+
+        foreach (var line in particularsLines)
         {
             var trimmedLine = line.Trim();
             var isPriceLabel =
@@ -1188,15 +1191,52 @@ public class PdfConverterService : IPdfConverterService
                 trimmedLine.StartsWith("Subtotal:", StringComparison.OrdinalIgnoreCase) ||
                 trimmedLine.StartsWith("Final Price:", StringComparison.OrdinalIgnoreCase);
 
-            if (!isPriceLabel || valueIndex >= numericValues.Count)
+            if (IsZeroDiscountLine(trimmedLine))
             {
-                return string.Empty;
+                if (isPriceLabel)
+                {
+                    valueIndex++;
+                }
+
+                continue;
             }
 
-            return numericValues[valueIndex++];
-        });
+            alignedParticularsLines.Add(line);
 
+            if (!isPriceLabel || valueIndex >= numericValues.Count)
+            {
+                alignedPriceLines.Add(string.Empty);
+                continue;
+            }
+
+            alignedPriceLines.Add(numericValues[valueIndex++]);
+        }
+
+        particularsCell.Text = string.Join("\n", alignedParticularsLines);
         priceCell.Text = string.Join("\n", alignedPriceLines);
+    }
+
+    private static bool IsZeroDiscountLine(string text)
+    {
+        if (!text.StartsWith("Discount (", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var percentStart = text.IndexOf('(') + 1;
+        var percentEnd = text.IndexOf('%', percentStart);
+        if (percentStart <= 0 || percentEnd <= percentStart)
+        {
+            return false;
+        }
+
+        var percentageText = text.Substring(percentStart, percentEnd - percentStart).Trim();
+        return decimal.TryParse(
+                   percentageText,
+                   NumberStyles.Number,
+                   CultureInfo.CurrentCulture,
+                   out var percentage) &&
+               percentage == 0m;
     }
 
     private static List<string> SplitCellLines(string text)
@@ -1226,9 +1266,16 @@ public class PdfConverterService : IPdfConverterService
             (table.Rows[0][2].Text.Trim().Equals("Price in INR", StringComparison.OrdinalIgnoreCase) ||
              table.Rows[0][2].Text.Trim().Equals("Price (INR)", StringComparison.OrdinalIgnoreCase));
 
-        if (isPricingTable && table.Rows.Count > 1 && table.Rows[1].Count >= 3)
+        if (isPricingTable)
         {
-            AlignPricingCellValues(table.Rows[1][1], table.Rows[1][2]);
+            foreach (var pricingRow in table.Rows.Skip(1).Where(row => row.Count >= 3))
+            {
+                if (SplitCellLines(pricingRow[1].Text)
+                    .Any(line => line.Trim().StartsWith("Discount (", StringComparison.OrdinalIgnoreCase)))
+                {
+                    AlignPricingCellValues(pricingRow[1], pricingRow[2]);
+                }
+            }
         }
 
         // Check if this is a scope table (has specific headers for scope)
