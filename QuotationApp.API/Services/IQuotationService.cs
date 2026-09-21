@@ -22,7 +22,7 @@ public interface IQuotationService
     Task<QuotationResult?> UpdateDiscountAsync(string quotationId, decimal discountPercentage);
 
     /// <summary>Updates quotation details (validation date, modules) and regenerates documents.</summary>
-    Task<QuotationResult?> UpdateQuotationAsync(string quotationId, DateTime validationDate, List<string> selectedModules);
+    Task<QuotationResult?> UpdateQuotationAsync(string quotationId, DateTime validationDate, List<string> selectedModules, List<QuotationModuleRequest> moduleDetails);
 
     /// <summary>Gets the next auto-generated quotation number without creating a quotation.</summary>
     Task<string> GetNextQuotationNoAsync();

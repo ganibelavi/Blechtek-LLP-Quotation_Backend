@@ -625,7 +625,7 @@ public class SqlQuotationService : IQuotationService
             QuotationToEmail = quotation.QuotationToEmail,
             ModulesJson = SerializeModules(quotation.QuotationModules.Select(m => m.ModuleName)),
             DiscountPercentage = quotation.DiscountPercentage,
-            ChangedAt = DateTime.UtcNow,
+            ChangedAt = DateTime.Now,
             ChangeType = changeType
         });
     }
@@ -695,7 +695,7 @@ public class SqlQuotationService : IQuotationService
     /// <summary>
     /// Updates quotation details (validation date, modules) and regenerates documents.
     /// </summary>
-    public async Task<QuotationResult?> UpdateQuotationAsync(string quotationId, DateTime validationDate, List<string> selectedModules)
+    public async Task<QuotationResult?> UpdateQuotationAsync(string quotationId, DateTime validationDate, List<string> selectedModules, List<QuotationModuleRequest> moduleDetails)
     {
         var quotation = await _dbContext.Quotations
             .Include(q => q.QuotationModules)
@@ -704,34 +704,28 @@ public class SqlQuotationService : IQuotationService
         if (quotation == null)
             return null;
 
-        // Validate modules
         await ValidateModulesAsync(selectedModules);
 
-        // Update validation date
         quotation.ValidationDate = validationDate;
 
-        // Preserve entered module details while replacing the selected module rows.
-        var existingDetails = quotation.QuotationModules.ToDictionary(
-            m => m.ModuleName,
-            StringComparer.OrdinalIgnoreCase);
+        var detailsByModule = (moduleDetails ?? new List<QuotationModuleRequest>())
+            .ToDictionary(d => d.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
 
-        // Update modules - remove existing and add new
         _dbContext.QuotationModules.RemoveRange(quotation.QuotationModules);
         quotation.QuotationModules = selectedModules.Select(m => new QuotationModuleEntity
         {
             QuotationId = quotationId,
             ModuleName = m,
-            NoOfUsers = existingDetails.TryGetValue(m, out var existing) ? existing.NoOfUsers : null,
-            NoOfInstallations = existingDetails.TryGetValue(m, out existing) ? existing.NoOfInstallations : null,
-            NoOfSites = existingDetails.TryGetValue(m, out existing) ? existing.NoOfSites : null,
-            ImplementationEffortUnit = existingDetails.TryGetValue(m, out existing)
-                ? existing.ImplementationEffortUnit
+            NoOfUsers = detailsByModule.TryGetValue(m, out var detail) ? detail.NoOfUsers : null,
+            NoOfInstallations = detailsByModule.TryGetValue(m, out detail) ? detail.NoOfInstallations : null,
+            NoOfSites = detailsByModule.TryGetValue(m, out detail) ? detail.NoOfSites : null,
+            ImplementationEffortUnit = detailsByModule.TryGetValue(m, out detail)
+                ? detail.ImplementationEffortUnit
                 : null
         }).ToList();
         await ApplyPricingSnapshotAsync(quotation, quotation.QuotationModules, quotation.DiscountPercentage ?? 0m);
         AddHistorySnapshot(quotation, "DetailsUpdated");
 
-        // Build request from stored data with updated validation date and modules
         var request = new QuotationRequest
         {
             ValidationDate = validationDate,
@@ -760,7 +754,6 @@ public class SqlQuotationService : IQuotationService
             DiscountPercentage = quotation.DiscountPercentage ?? 0
         };
 
-        // Regenerate documents with updated data
         var docxPath = await GenerateWordDocumentAsync(request, quotationId);
         await _pdfConverter.ConvertToPdfAsync(docxPath);
 

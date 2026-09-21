@@ -138,4 +138,6 @@ public class UpdateQuotationRequest
     /// <summary>Exact module names as they appear in the master list.</summary>
     [Required, MinLength(1, ErrorMessage = "Select at least one module.")]
     public List<string> SelectedModules { get; set; } = new();
+
+    public List<QuotationModuleRequest> ModuleDetails { get; set; } = new();
 }
