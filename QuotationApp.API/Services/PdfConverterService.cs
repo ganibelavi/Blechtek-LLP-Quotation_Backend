@@ -22,6 +22,8 @@ namespace QuotationApp.API.Services;
 /// Faithfully replicates the Word template design including colors, tables, borders, and styling.
 /// Matches the frontend QuotationPdfView design exactly.
 /// </summary>
+/// 
+/// 
 public class PdfConverterService : IPdfConverterService
 {
     // Color constants matching the frontend design and Word template

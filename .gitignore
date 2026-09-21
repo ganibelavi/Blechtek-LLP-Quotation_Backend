@@ -20,4 +20,6 @@ artifacts/
 TestResults/
 _ReSharper*/
 */.vs/
+Generated/
+*.pdf
 
