@@ -636,7 +636,7 @@ public class PdfConverterService : IPdfConverterService
 
         if (isScopeHeading)
         {
-            column.Item().PaddingTop(24).PaddingBottom(8).BorderBottom(1).BorderColor(TextBlack).PaddingBottom(4)
+            column.Item().EnsureSpace(100).PaddingTop(2).PaddingBottom(2).BorderBottom(1).BorderColor(TextBlack).PaddingBottom(2)
                 .Text(para.Text.ToUpper())
                 .FontSize(11).FontFamily("Calibri").FontColor(TextBlack).Bold();
             return;
