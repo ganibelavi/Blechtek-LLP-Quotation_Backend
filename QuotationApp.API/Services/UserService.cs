@@ -96,4 +96,14 @@ public class UserService : IUserService
         if (user == null) return false;
         return BCrypt.Net.BCrypt.Verify(password, user.PasswordHash);
     }
+
+    public async Task<bool> UpdatePasswordAsync(string email, string password)
+    {
+        var user = await GetByEmailAsync(email);
+        if (user == null || !user.IsActive) return false;
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
+        await _db.SaveChangesAsync();
+        return true;
+    }
 }

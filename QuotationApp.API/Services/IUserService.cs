@@ -12,4 +12,5 @@ public interface IUserService
     Task<bool> DeleteUserAsync(int id);
     Task RecordLoginAsync(string email, string? remoteAddress = null);
     Task<bool> ValidateCredentialsAsync(string email, string password);
+    Task<bool> UpdatePasswordAsync(string email, string password);
 }

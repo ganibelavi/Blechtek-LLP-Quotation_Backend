@@ -70,5 +70,30 @@ namespace QuotationApp.API.Services
 
             return Task.CompletedTask;
         }
+
+        public Task SendPasswordResetOtpAsync(string recipientEmail, string otp)
+        {
+            if (string.IsNullOrWhiteSpace(recipientEmail))
+                throw new ArgumentException("Recipient email is required", nameof(recipientEmail));
+
+            using var msg = new MailMessage();
+            msg.From = new MailAddress(string.IsNullOrWhiteSpace(_options.From) ? "no-reply@blechtek.local" : _options.From);
+            msg.To.Add(new MailAddress(recipientEmail));
+            msg.Subject = "Your password reset OTP";
+            msg.Body = $"Your password reset OTP is {otp}. It expires in 10 minutes.";
+            msg.IsBodyHtml = false;
+
+            using var client = new SmtpClient(_options.Host, _options.Port)
+            {
+                EnableSsl = _options.EnableSsl,
+            };
+
+            if (!string.IsNullOrWhiteSpace(_options.Username))
+                client.Credentials = new NetworkCredential(_options.Username, _options.Password);
+
+            client.Send(msg);
+            _logger.LogInformation("Password reset OTP sent to {Recipient}", recipientEmail);
+            return Task.CompletedTask;
+        }
     }
 }
