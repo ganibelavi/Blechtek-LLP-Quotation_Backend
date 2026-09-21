@@ -111,12 +111,12 @@ public class PdfConverterService : IPdfConverterService
         var backendLogoJpg = Path.Combine(_contentRoot, "logo", "logo.jpg");
 
         // Check frontend/logo directory (project workspace sibling)
-        var frontendLogoPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "logo", "logo.png"));
-        var frontendLogoJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "logo", "logo.jpg"));
+        var frontendLogoPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "logo", "logo.png"));
+        var frontendLogoJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "logo", "logo.jpg"));
 
         // Also check frontend/public/logo (where it's served from)
-        var frontendPublicLogoPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "public", "logo", "logo.png"));
-        var frontendPublicLogoJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "public", "logo", "logo.jpg"));
+        var frontendPublicLogoPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "public", "logo", "logo.png"));
+        var frontendPublicLogoJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "public", "logo", "logo.jpg"));
 
         if (File.Exists(backendLogoPng)) return backendLogoPng;
         if (File.Exists(backendLogoJpg)) return backendLogoJpg;
@@ -135,12 +135,12 @@ public class PdfConverterService : IPdfConverterService
         var backendWatermarkJpg = Path.Combine(_contentRoot, "logo", "watermark.jpg");
 
         // Check frontend/logo directory (project workspace sibling)
-        var frontendWatermarkPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "logo", "watermark.png"));
-        var frontendWatermarkJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "logo", "watermark.jpg"));
+        var frontendWatermarkPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "logo", "watermark.png"));
+        var frontendWatermarkJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "logo", "watermark.jpg"));
 
         // Also check frontend/public/logo (where it's served from)
-        var frontendPublicWatermarkPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "public", "logo", "watermark.png"));
-        var frontendPublicWatermarkJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "public", "logo", "watermark.jpg"));
+        var frontendPublicWatermarkPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "public", "logo", "watermark.png"));
+        var frontendPublicWatermarkJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "public", "logo", "watermark.jpg"));
 
         if (File.Exists(backendWatermarkPng)) return backendWatermarkPng;
         if (File.Exists(backendWatermarkJpg)) return backendWatermarkJpg;
