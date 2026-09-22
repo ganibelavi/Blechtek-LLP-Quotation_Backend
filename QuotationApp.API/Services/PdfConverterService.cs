@@ -107,50 +107,46 @@ public class PdfConverterService : IPdfConverterService
 
     private string GetLogoPath()
     {
-        // Check multiple locations for the logo, similar to WordGeneratorService
-        var backendLogoPng = Path.Combine(_contentRoot, "logo", "logo.png");
-        var backendLogoJpg = Path.Combine(_contentRoot, "logo", "logo.jpg");
+        // Check multiple locations for the logo. The frontend project folder is
+        // named "frontend" (with assets in public/logo, where they are served
+        // from); also check the legacy sibling folder name for compatibility.
+        var candidates = new[]
+        {
+            Path.Combine(_contentRoot, "logo", "logo.png"),
+            Path.Combine(_contentRoot, "logo", "logo.jpg"),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "public", "logo", "logo.png")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "public", "logo", "logo.jpg")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "logo", "logo.png")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "logo", "logo.jpg")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "logo", "logo.png")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "logo", "logo.jpg")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "public", "logo", "logo.png")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "public", "logo", "logo.jpg")),
+        };
 
-        // Check frontend/logo directory (project workspace sibling)
-        var frontendLogoPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "logo", "logo.png"));
-        var frontendLogoJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "logo", "logo.jpg"));
-
-        // Also check frontend/public/logo (where it's served from)
-        var frontendPublicLogoPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "public", "logo", "logo.png"));
-        var frontendPublicLogoJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "public", "logo", "logo.jpg"));
-
-        if (File.Exists(backendLogoPng)) return backendLogoPng;
-        if (File.Exists(backendLogoJpg)) return backendLogoJpg;
-        if (File.Exists(frontendLogoPng)) return frontendLogoPng;
-        if (File.Exists(frontendLogoJpg)) return frontendLogoJpg;
-        if (File.Exists(frontendPublicLogoPng)) return frontendPublicLogoPng;
-        if (File.Exists(frontendPublicLogoJpg)) return frontendPublicLogoJpg;
-
-        return null;
+        return candidates.FirstOrDefault(File.Exists);
     }
 
     private string GetWatermarkPath()
     {
-        // Check multiple locations for the watermark
-        var backendWatermarkPng = Path.Combine(_contentRoot, "logo", "watermark.png");
-        var backendWatermarkJpg = Path.Combine(_contentRoot, "logo", "watermark.jpg");
+        // Check multiple locations for the watermark. The frontend project folder
+        // is named "frontend" (with assets in public/logo, where they are served
+        // from); also check the legacy sibling folder name for compatibility.
+        var candidates = new[]
+        {
+            Path.Combine(_contentRoot, "logo", "watermark.png"),
+            Path.Combine(_contentRoot, "logo", "watermark.jpg"),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "public", "logo", "watermark.png")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "public", "logo", "watermark.jpg")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "logo", "watermark.png")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "logo", "watermark.jpg")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "logo", "watermark.png")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "logo", "watermark.jpg")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "public", "logo", "watermark.png")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "public", "logo", "watermark.jpg")),
+        };
 
-        // Check frontend/logo directory (project workspace sibling)
-        var frontendWatermarkPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "logo", "watermark.png"));
-        var frontendWatermarkJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "logo", "watermark.jpg"));
-
-        // Also check frontend/public/logo (where it's served from)
-        var frontendPublicWatermarkPng = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "public", "logo", "watermark.png"));
-        var frontendPublicWatermarkJpg = Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "public", "logo", "watermark.jpg"));
-
-        if (File.Exists(backendWatermarkPng)) return backendWatermarkPng;
-        if (File.Exists(backendWatermarkJpg)) return backendWatermarkJpg;
-        if (File.Exists(frontendWatermarkPng)) return frontendWatermarkPng;
-        if (File.Exists(frontendWatermarkJpg)) return frontendWatermarkJpg;
-        if (File.Exists(frontendPublicWatermarkPng)) return frontendPublicWatermarkPng;
-        if (File.Exists(frontendPublicWatermarkJpg)) return frontendPublicWatermarkJpg;
-
-        return null;
+        return candidates.FirstOrDefault(File.Exists);
     }
 
     public async Task<string> ConvertToPdfAsync(string docxPath)
@@ -526,14 +522,15 @@ public class PdfConverterService : IPdfConverterService
                     {
                         headerRow.RelativeItem().Column(leftCol =>
                         {
-                            // Load and display logo image from multiple possible locations
+                            // Display the company logo image from the frontend public/logo
+                            // folder (or any of the other checked locations). Fall back to
+                            // the company name as text when no logo file is available.
                             if (!string.IsNullOrEmpty(logoPath) && File.Exists(logoPath))
                             {
                                 leftCol.Item().Height(30).Image(logoPath);
                             }
                             else
                             {
-                                // Fallback text if logo not found
                                 leftCol.Item().Text("BlechTek Software Solutions LLP")
                                     .FontSize(14).FontFamily("Calibri").FontColor(TextBlack).SemiBold();
                             }

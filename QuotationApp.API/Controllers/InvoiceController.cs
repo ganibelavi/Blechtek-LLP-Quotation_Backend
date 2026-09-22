@@ -173,6 +173,7 @@ public class InvoiceController : ControllerBase
             invoiceNo = invoice.InvoiceNo,
             dateOfIssue = invoice.InvoiceDate,
             companyName = customerName,
+            organizationName = invoice.SellerName ?? request.SupplierName ?? request.CompanyName ?? "",
             receiverName = request.ReceiverName ?? customerName,
             consigneeName = request.ConsigneeName ?? customerName,
             poNoDate = request.PoNoDate,
@@ -643,6 +644,7 @@ public class InvoiceController : ControllerBase
             quotationNo = quotationNo,
             invoiceNo = record.InvoiceNo,
             companyName = customerName,
+            organizationName = record.SellerName ?? "",
             receiverName = customerName,
             consigneeName = customerName,
             dateOfIssue = record.InvoiceDate,
@@ -654,6 +656,7 @@ public class InvoiceController : ControllerBase
             {
                 originalFor = "ORIGINAL FOR RECIPIENT",
                 companyName = customerName,
+                organizationName = record.SellerName ?? "",
                 invoiceNo = record.InvoiceNo,
                 dateOfIssue = record.InvoiceDate,
                 timeOfIssue = "",
