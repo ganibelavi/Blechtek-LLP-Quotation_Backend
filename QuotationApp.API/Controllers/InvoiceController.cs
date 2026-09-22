@@ -247,9 +247,10 @@ public class InvoiceController : ControllerBase
             ? null
             : await _db.Quotations.AsNoTracking().FirstOrDefaultAsync(q => q.Id == record.QuotationId);
         var bankDetails = await _db.InvoiceBankDetails.FirstOrDefaultAsync(b => b.InvoiceId == record.Id);
+        var itemPricing = await GetItemPricingAsync(record);
         var totalAmount = record.Items.Sum(item => item.Qty * item.Rate);
 
-        return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotation?.QuotationNo));
+        return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotation?.QuotationNo, itemPricing));
     }
 
     [HttpGet]
@@ -281,6 +282,19 @@ public class InvoiceController : ControllerBase
             .AsNoTracking()
             .Where(q => quotationIds.Contains(q.Id))
             .ToDictionaryAsync(q => q.Id, q => q.QuotationNo);
+        var purchaseOrderIds = records
+            .Where(r => r.PoId.HasValue)
+            .Select(r => r.PoId!.Value)
+            .Distinct()
+            .ToList();
+        var purchaseOrderItems = await _db.PurchaseOrderItems
+            .AsNoTracking()
+            .Where(item => purchaseOrderIds.Contains(item.PoId))
+            .ToListAsync();
+        var quotationModules = await _db.QuotationModules
+            .AsNoTracking()
+            .Where(module => quotationIds.Contains(module.QuotationId))
+            .ToListAsync();
 
         var response = records
             .Select(record =>
@@ -292,7 +306,10 @@ public class InvoiceController : ControllerBase
                     quotationNumbers.TryGetValue(record.QuotationId, out var number)
                     ? number
                     : null;
-                return BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotationNo);
+                var itemPricing = BuildItemPricing(
+                    purchaseOrderItems.Where(item => item.PoId == record.PoId),
+                    quotationModules.Where(module => module.QuotationId == record.QuotationId));
+                return BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotationNo, itemPricing);
             })
             .ToList();
 
@@ -613,7 +630,56 @@ public class InvoiceController : ControllerBase
         }
     }
 
-    private static object BuildInvoiceResponse(InvoiceEntity record, CustomerEntity? customer, decimal totalAmount, InvoiceBankDetailEntity? bankDetails, string? quotationNo)
+    private async Task<IReadOnlyDictionary<string, InvoiceItemPricing>> GetItemPricingAsync(InvoiceEntity record)
+    {
+        var purchaseOrderItems = record.PoId.HasValue
+            ? await _db.PurchaseOrderItems
+                .AsNoTracking()
+                .Where(item => item.PoId == record.PoId.Value)
+                .ToListAsync()
+            : new List<PurchaseOrderItemEntity>();
+        var quotationModules = !string.IsNullOrWhiteSpace(record.QuotationId)
+            ? await _db.QuotationModules
+                .AsNoTracking()
+                .Where(module => module.QuotationId == record.QuotationId)
+                .ToListAsync()
+            : new List<QuotationModuleEntity>();
+
+        return BuildItemPricing(purchaseOrderItems, quotationModules);
+    }
+
+    private static IReadOnlyDictionary<string, InvoiceItemPricing> BuildItemPricing(
+        IEnumerable<PurchaseOrderItemEntity> purchaseOrderItems,
+        IEnumerable<QuotationModuleEntity> quotationModules)
+    {
+        var pricing = new Dictionary<string, InvoiceItemPricing>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in quotationModules)
+        {
+            pricing[item.ModuleName.Trim()] = new InvoiceItemPricing(
+                item.ModulePrice ?? 0m,
+                item.ImplementationPrice ?? 0m);
+        }
+
+        foreach (var item in purchaseOrderItems)
+        {
+            pricing[item.Description.Trim()] = new InvoiceItemPricing(
+                item.ModulePrice,
+                item.ImplementationPrice);
+        }
+
+        return pricing;
+    }
+
+    private sealed record InvoiceItemPricing(decimal ModulePrice, decimal ImplementationPrice);
+
+    private static object BuildInvoiceResponse(
+        InvoiceEntity record,
+        CustomerEntity? customer,
+        decimal totalAmount,
+        InvoiceBankDetailEntity? bankDetails,
+        string? quotationNo,
+        IReadOnlyDictionary<string, InvoiceItemPricing>? itemPricing = null)
     {
         var customerName = record.BuyerName ?? customer?.Name ?? "";
         var customerAddress = record.BuyerAddress ?? customer?.Address ?? "";
@@ -628,6 +694,12 @@ public class InvoiceController : ControllerBase
             qty = item.Qty,
             uom = item.Uom,
             rate = item.Rate,
+            modulePrice = itemPricing != null && itemPricing.TryGetValue(item.Description.Trim(), out var pricing)
+                ? pricing.ModulePrice
+                : 0m,
+            implementationPrice = itemPricing != null && itemPricing.TryGetValue(item.Description.Trim(), out pricing)
+                ? pricing.ImplementationPrice
+                : 0m,
         }).ToList();
 
         var bankName = bankDetails?.BankName ?? "";
