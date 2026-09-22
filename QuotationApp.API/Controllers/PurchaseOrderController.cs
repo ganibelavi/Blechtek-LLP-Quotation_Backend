@@ -138,6 +138,81 @@ public class PurchaseOrderController : ControllerBase
         return Ok(response);
     }
 
+    [HttpPut("{id:int}")]
+    public async Task<ActionResult<object>> Update(
+        int id,
+        [FromBody] CreatePurchaseOrderRequest request)
+    {
+        if (request is null)
+        {
+            return BadRequest(new { error = "Purchase order payload is required." });
+        }
+
+        var purchaseOrder = await _db.PurchaseOrders
+            .Include(po => po.Items)
+            .FirstOrDefaultAsync(po => po.Id == id);
+
+        if (purchaseOrder is null)
+        {
+            return NotFound(new { error = "Purchase order not found." });
+        }
+
+        var buyerName = GetFirstNonEmpty(request.BuyerName, request.CompanyName, request.SupplierName, "Unknown Buyer");
+        var supplierName = GetFirstNonEmpty(request.SupplierName, request.CompanyName, request.BuyerName, buyerName);
+        var buyer = await ResolveCustomerAsync(request.CustomerId, buyerName, request.BuyerAddress, request.BuyerState, request.BuyerStateCode, request.BuyerGSTN);
+        var supplier = await ResolveSupplierAsync(request.SupplierId, supplierName, request.SupplierAddress, request.SupplierState, request.SupplierStateCode, request.SupplierGSTN);
+
+        purchaseOrder.CustomerId = buyer.Id;
+        purchaseOrder.SupplierId = supplier.Id;
+        purchaseOrder.QuotationId = request.QuotationId;
+        purchaseOrder.QuotationRefNo = GetQuotationRefNo(request.QuotationId, request.QuotationRefNo);
+        purchaseOrder.QuotationRefDate = ParseNullableDate(request.QuotationRefDate);
+        purchaseOrder.PoDate = ParseDate(request.PoDate, purchaseOrder.PoDate);
+        purchaseOrder.Status = string.IsNullOrWhiteSpace(request.Status) ? purchaseOrder.Status : request.Status;
+        purchaseOrder.DeliveryTerms = request.DeliveryTerms;
+        purchaseOrder.PaymentTerms = request.PaymentTerms;
+        purchaseOrder.PoDirection = request.PoDirection;
+        purchaseOrder.ReceivedFromEmail = request.ReceivedFromEmail;
+        purchaseOrder.AttachmentUrl = request.AttachmentUrl;
+        purchaseOrder.VerificationStatus = string.IsNullOrWhiteSpace(request.VerificationStatus)
+            ? purchaseOrder.VerificationStatus
+            : request.VerificationStatus;
+        purchaseOrder.VerifiedBy = string.IsNullOrWhiteSpace(request.VerifiedBy) ? null : request.VerifiedBy.Trim();
+        purchaseOrder.VerifiedAt = ParseNullableDate(request.VerifiedAt);
+        purchaseOrder.VerificationNotes = string.IsNullOrWhiteSpace(request.VerificationNotes)
+            ? request.Notes
+            : request.VerificationNotes;
+        purchaseOrder.UploadedBy = string.IsNullOrWhiteSpace(request.UploadedBy) ? null : request.UploadedBy.Trim();
+        purchaseOrder.ReceivedAt = ParseNullableDate(request.ReceivedAt);
+
+        _db.PurchaseOrderItems.RemoveRange(purchaseOrder.Items);
+        var lineItems = request.Items
+            .Where(item => !string.IsNullOrWhiteSpace(item.Description))
+            .Select(item => new PurchaseOrderItemEntity
+            {
+                PoId = purchaseOrder.Id,
+                Description = item.Description!,
+                Qty = item.Qty <= 0 ? 1 : item.Qty,
+                Uom = string.IsNullOrWhiteSpace(item.Uom) ? "Nos." : item.Uom,
+                Rate = item.Rate,
+                ModulePrice = item.ModulePrice,
+                ImplementationPrice = item.ImplementationPrice,
+            })
+            .ToList();
+
+        _db.PurchaseOrderItems.AddRange(lineItems);
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            id = purchaseOrder.Id,
+            poNo = purchaseOrder.PoNo,
+            verificationNotes = purchaseOrder.VerificationNotes,
+            notes = purchaseOrder.VerificationNotes,
+            totalAmount = lineItems.Sum(item => item.Qty * item.Rate),
+        });
+    }
+
     [HttpGet("{id:int}")]
     public async Task<ActionResult<object>> GetById(int id)
     {
