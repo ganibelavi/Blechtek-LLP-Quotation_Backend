@@ -1514,13 +1514,23 @@ public class PdfConverterService : IPdfConverterService
         // Data row has 2 cells: left (Name, Address, Contact, Email) and right (Quotation No, Date)
         if (dataRow.Count >= 2)
         {
+            var leftLines = SplitQuotationMetadataLines(dataRow[0].Text);
+            var rightLines = SplitQuotationMetadataLines(dataRow[1].Text);
+            var dateLines = leftLines
+                .Where(line => line.StartsWith("Date:", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            leftLines = leftLines
+                .Where(line => !line.StartsWith("Date:", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            rightLines.AddRange(dateLines);
+
             column.Item().Row(row =>
             {
                 // Left column - 50%
                 row.RelativeItem(1).Column(leftCol =>
                 {
                     leftCol.Spacing(3);
-                    foreach (var cell in dataRow[0].Text.Split('\n'))
+                    foreach (var cell in leftLines)
                     {
                         var trimmed = cell.Trim();
                         if (!string.IsNullOrEmpty(trimmed))
@@ -1530,6 +1540,18 @@ public class PdfConverterService : IPdfConverterService
                             // in bold, keeping any trailing value at normal weight.
                             if (TryGetBoldLabelPrefix(trimmed, out var leftBoldLabel, out var leftLabelRest))
                             {
+                                if (leftBoldLabel.Equals("Email:", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    leftCol.Item().Text(leftBoldLabel)
+                                        .FontSize(10).FontFamily("Calibri").FontColor(TextBlack).Bold();
+                                    if (!string.IsNullOrWhiteSpace(leftLabelRest))
+                                    {
+                                        leftCol.Item().Text(leftLabelRest.Trim())
+                                            .FontSize(10).FontFamily("Calibri").FontColor(TextBlack).LineHeight(1.4f);
+                                    }
+                                    continue;
+                                }
+
                                 leftCol.Item().Text(t =>
                                 {
                                     t.DefaultTextStyle(TextStyle.Default.FontSize(10).FontFamily("Calibri").FontColor(TextBlack).LineHeight(1.4f));
@@ -1558,7 +1580,7 @@ public class PdfConverterService : IPdfConverterService
                 row.RelativeItem(1).Column(rightCol =>
                 {
                     rightCol.Spacing(3);
-                    foreach (var cell in dataRow[1].Text.Split('\n'))
+                    foreach (var cell in rightLines)
                     {
                         var trimmed = cell.Trim();
                         if (!string.IsNullOrEmpty(trimmed))
@@ -1589,6 +1611,22 @@ public class PdfConverterService : IPdfConverterService
                 });
             });
         }
+    }
+
+    private static List<string> SplitQuotationMetadataLines(string text)
+    {
+        var normalized = text
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Replace('|', '\n');
+
+        return System.Text.RegularExpressions.Regex.Split(
+                normalized,
+                @"(?=(?:Name|Address|Contact\s+No\.|Email|Quotation\s+No\.?|Date)\s*:)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+            .Select(line => line.Trim())
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .ToList();
     }
 
     private static bool TryParseColor(string val, out QuestPDFColor color)
