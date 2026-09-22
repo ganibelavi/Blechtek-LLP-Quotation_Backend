@@ -221,6 +221,8 @@ CREATE TABLE po_items (
     qty         DECIMAL(12,2) NOT NULL,
     uom         NVARCHAR(20) NOT NULL,
     rate        DECIMAL(12,2) NOT NULL,
+    module_price DECIMAL(12,2) NOT NULL CONSTRAINT DF_po_items_module_price DEFAULT 0,
+    implementation_price DECIMAL(12,2) NOT NULL CONSTRAINT DF_po_items_implementation_price DEFAULT 0,
     CONSTRAINT FK_po_items_purchase_orders
         FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
     CONSTRAINT FK_po_items_products

@@ -282,6 +282,8 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.Qty).HasColumnType("decimal(12,2)").HasColumnName("qty");
             entity.Property(e => e.Uom).HasMaxLength(20).HasColumnName("uom");
             entity.Property(e => e.Rate).HasColumnType("decimal(12,2)").HasColumnName("rate");
+            entity.Property(e => e.ModulePrice).HasColumnType("decimal(12,2)").HasColumnName("module_price");
+            entity.Property(e => e.ImplementationPrice).HasColumnType("decimal(12,2)").HasColumnName("implementation_price");
             entity.ToTable("po_items");
 
             entity.HasOne(e => e.PurchaseOrder)

@@ -313,6 +313,17 @@ IF COL_LENGTH(N'dbo.purchase_orders', N'uploaded_by') IS NOT NULL
 END";
     purchaseOrderSchemaCommand.ExecuteNonQuery();
 
+    using var purchaseOrderItemSchemaCommand = connection.CreateCommand();
+    purchaseOrderItemSchemaCommand.CommandText = @"
+IF OBJECT_ID(N'dbo.po_items', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.po_items', N'module_price') IS NULL
+        ALTER TABLE dbo.po_items ADD module_price decimal(12,2) NOT NULL CONSTRAINT DF_po_items_module_price DEFAULT 0;
+    IF COL_LENGTH(N'dbo.po_items', N'implementation_price') IS NULL
+        ALTER TABLE dbo.po_items ADD implementation_price decimal(12,2) NOT NULL CONSTRAINT DF_po_items_implementation_price DEFAULT 0;
+END";
+    purchaseOrderItemSchemaCommand.ExecuteNonQuery();
+
     using var moduleSchemaCommand = connection.CreateCommand();
     moduleSchemaCommand.CommandText = @"
 IF OBJECT_ID(N'dbo.Modules', N'U') IS NOT NULL

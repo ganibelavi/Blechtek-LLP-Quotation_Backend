@@ -62,7 +62,9 @@ public class PurchaseOrderController : ControllerBase
             VerificationStatus = string.IsNullOrWhiteSpace(request.VerificationStatus) ? "pending" : request.VerificationStatus,
             VerifiedBy = string.IsNullOrWhiteSpace(request.VerifiedBy) ? null : request.VerifiedBy.Trim(),
             VerifiedAt = ParseNullableDate(request.VerifiedAt),
-            VerificationNotes = request.VerificationNotes,
+            VerificationNotes = string.IsNullOrWhiteSpace(request.VerificationNotes)
+                ? request.Notes
+                : request.VerificationNotes,
             UploadedBy = string.IsNullOrWhiteSpace(request.UploadedBy) ? null : request.UploadedBy.Trim(),
             ReceivedAt = ParseNullableDate(request.ReceivedAt),
         };
@@ -81,6 +83,8 @@ public class PurchaseOrderController : ControllerBase
                     Qty = item.Qty <= 0 ? 1 : item.Qty,
                     Uom = string.IsNullOrWhiteSpace(item.Uom) ? "Nos." : item.Uom,
                     Rate = item.Rate,
+                    ModulePrice = item.ModulePrice,
+                    ImplementationPrice = item.ImplementationPrice,
                 })
                 .ToList();
 
@@ -127,6 +131,7 @@ public class PurchaseOrderController : ControllerBase
             uploadedBy = purchaseOrder.UploadedBy,
             receivedAt = purchaseOrder.ReceivedAt,
             totalAmount = totalAmount,
+            notes = purchaseOrder.VerificationNotes,
             items = request.Items,
         };
 
@@ -183,6 +188,7 @@ public class PurchaseOrderController : ControllerBase
             supplierGSTN = supplier?.Gstn ?? buyer?.Gstn,
             deliveryTerms = record.DeliveryTerms,
             paymentTerms = record.PaymentTerms,
+            notes = record.VerificationNotes,
             totalAmount = record.Items.Sum(i => i.Qty * i.Rate),
             items = record.Items.Select(i => new
             {
@@ -191,6 +197,8 @@ public class PurchaseOrderController : ControllerBase
                 qty = i.Qty,
                 uom = i.Uom,
                 rate = i.Rate,
+                modulePrice = i.ModulePrice,
+                implementationPrice = i.ImplementationPrice,
             }).ToList(),
         };
 
@@ -258,6 +266,7 @@ public class PurchaseOrderController : ControllerBase
                 supplierGSTN = supplier?.Gstn ?? buyer?.Gstn,
                 deliveryTerms = record.DeliveryTerms,
                 paymentTerms = record.PaymentTerms,
+                notes = record.VerificationNotes,
                 poDirection = record.PoDirection,
                 receivedFromEmail = record.ReceivedFromEmail,
                 attachmentUrl = record.AttachmentUrl,
@@ -275,6 +284,8 @@ public class PurchaseOrderController : ControllerBase
                     qty = i.Qty,
                     uom = i.Uom,
                     rate = i.Rate,
+                    modulePrice = i.ModulePrice,
+                    implementationPrice = i.ImplementationPrice,
                 }).ToList(),
             };
         }).ToList();
