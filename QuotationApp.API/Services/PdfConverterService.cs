@@ -542,7 +542,7 @@ public class PdfConverterService : IPdfConverterService
                         });
                     });
 
-                    headerCol.Item().PaddingTop(8).BorderBottom(2).BorderColor(TextBlack).PaddingBottom(0);
+                    headerCol.Item().PaddingTop(8).PaddingBottom(0);
                     headerCol.Item().PaddingTop(16);
                 });
 
@@ -627,25 +627,19 @@ public class PdfConverterService : IPdfConverterService
 
         if (isPricingHeading)
         {
-            column.Item().PaddingTop(24).PaddingBottom(8).BorderBottom(1).BorderColor(TextBlack).PaddingBottom(4)
-                .Text(para.Text.ToUpper())
-                .FontSize(11).FontFamily("Calibri").FontColor(TextBlack).Bold();
+            RenderHeadingWithTextWidthUnderline(column, para.Text.ToUpper(), 24, 8);
             return;
         }
 
         if (isScopeHeading)
         {
-            column.Item().EnsureSpace(100).PaddingTop(2).PaddingBottom(2).BorderBottom(1).BorderColor(TextBlack).PaddingBottom(2)
-                .Text(para.Text.ToUpper())
-                .FontSize(11).FontFamily("Calibri").FontColor(TextBlack).Bold();
+            RenderHeadingWithTextWidthUnderline(column, para.Text.ToUpper(), 2, 2, ensureSpace: true);
             return;
         }
 
         if (isSectionHeading)
         {
-            column.Item().PaddingTop(24).PaddingBottom(8).BorderBottom(1).BorderColor(TextBlack).PaddingBottom(4)
-                .Text(para.Text.ToUpper())
-                .FontSize(11).FontFamily("Calibri").FontColor(TextBlack).Bold();
+            RenderHeadingWithTextWidthUnderline(column, para.Text.ToUpper(), 24, 8);
             return;
         }
 
@@ -1151,6 +1145,31 @@ public class PdfConverterService : IPdfConverterService
             "TERMS AND CONDITIONS"
         };
         return headings.Any(h => trimmed.Equals(h, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Renders a section heading (e.g. "GOALS AND EXPECTATIONS", "SCOPE OF WORK",
+    /// "PRICE FOR IMPLEMENTATION") with a bottom border whose width matches the
+    /// rendered text width instead of spanning the full page width.
+    /// </summary>
+    private void RenderHeadingWithTextWidthUnderline(
+        ColumnDescriptor column,
+        string headingText,
+        float paddingTop,
+        float paddingBottom,
+        bool ensureSpace = false)
+    {
+        var item = ensureSpace ? column.Item().EnsureSpace(100) : column.Item();
+        if (paddingTop > 0) item = item.PaddingTop(paddingTop, Unit.Point);
+        if (paddingBottom > 0) item = item.PaddingBottom(paddingBottom, Unit.Point);
+
+        item.Row(row =>
+        {
+            // AutoItem shrinks to the text width, so the border only spans the text.
+            row.AutoItem().BorderBottom(1).BorderColor(TextBlack)
+                .PaddingBottom(2).Text(headingText)
+                .FontSize(11).FontFamily("Calibri").FontColor(TextBlack).Bold();
+        });
     }
 
     private bool IsPricingSectionHeading(string text)
