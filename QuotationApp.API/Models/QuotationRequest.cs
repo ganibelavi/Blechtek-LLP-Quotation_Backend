@@ -59,16 +59,16 @@ public class QuotationModuleRequest
 
 public class QuotationToInfo
 {
-    [Required, StringLength(150)]
+    [StringLength(150)]
     public string Name { get; set; } = string.Empty;
 
-    [Required, StringLength(400)]
+    [StringLength(400)]
     public string Address { get; set; } = string.Empty;
 
-    [Required, Phone, StringLength(30)]
+    [StringLength(30)]
     public string ContactNo { get; set; } = string.Empty;
 
-    [Required, EmailAddress, StringLength(150)]
+    [StringLength(150)]
     public string Email { get; set; } = string.Empty;
 }
 

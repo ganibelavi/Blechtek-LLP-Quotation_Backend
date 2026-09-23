@@ -10,6 +10,7 @@ namespace QuotationApp.API.Controllers;
 public sealed class MasterController(QuotationDbContext db) : ControllerBase
 {
     [HttpGet("customers")] public async Task<IActionResult> Customers() => Ok(await db.Customers.AsNoTracking().ToListAsync());
+    [HttpGet("references")] public async Task<IActionResult> References() => Ok(await db.References.AsNoTracking().OrderBy(x => x.Name).ToListAsync());
     [HttpGet("suppliers")] public async Task<IActionResult> Suppliers() => Ok(await db.Suppliers.AsNoTracking().ToListAsync());
     [HttpGet("company-profile")] public async Task<IActionResult> Profiles() => Ok(await db.CompanyProfiles.AsNoTracking().ToListAsync());
     [HttpGet("company-bank-accounts")] public async Task<IActionResult> Accounts() => Ok(await db.CompanyBankAccounts.AsNoTracking().ToListAsync());
@@ -17,6 +18,13 @@ public sealed class MasterController(QuotationDbContext db) : ControllerBase
     [HttpGet("terms-templates")] public async Task<IActionResult> Terms() => Ok(await db.TermsTemplates.AsNoTracking().ToListAsync());
 
     [HttpPost("customers")] public Task<IActionResult> CreateCustomer(CustomerEntity value) => Save(value, db.Customers);
+    [HttpPost("references")] public async Task<IActionResult> CreateReference(ReferenceEntity value)
+    {
+        value.Name = value.Name.Trim();
+        if (string.IsNullOrWhiteSpace(value.Name)) return BadRequest(new { error = "Reference name is required." });
+        if (await db.References.AnyAsync(x => x.Name == value.Name)) return Conflict(new { error = "Reference already exists." });
+        return await Save(value, db.References);
+    }
     [HttpPost("suppliers")] public Task<IActionResult> CreateSupplier(SupplierEntity value) => Save(value, db.Suppliers);
     [HttpPost("company-profile")] public Task<IActionResult> CreateProfile(CompanyProfileEntity value) => Save(value, db.CompanyProfiles);
     [HttpPost("company-bank-accounts")] public Task<IActionResult> CreateAccount(CompanyBankAccountEntity value) => Save(value, db.CompanyBankAccounts);
