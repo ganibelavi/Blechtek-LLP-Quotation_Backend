@@ -90,6 +90,7 @@ public class InvoiceController : ControllerBase
             QuotationId = request.QuotationId,
             InvoiceNo = invoiceNo,
             InvoiceDate = ParseDate(request.DateOfIssue, DateTime.UtcNow),
+            TimeOfIssue = request.TimeOfIssue,
             PlaceOfSupply = request.PlaceOfService,
             HsnCode = request.HsnCode,
             SacCode = request.SacCode,
@@ -105,6 +106,7 @@ public class InvoiceController : ControllerBase
             // changed later through the invoice status endpoint.
             Status = "draft",
             AmountInWords = request.AmountInWords,
+            TermsOfSale = request.TermsOfSale,
             CreatedAt = DateTime.UtcNow,
             CompanyProfileId = request.CompanyProfileId,
             SellerName = request.SellerName ?? request.SupplierName,
@@ -172,8 +174,8 @@ public class InvoiceController : ControllerBase
             quotationNo = quotation?.QuotationNo ?? request.QuotationNo,
             invoiceNo = invoice.InvoiceNo,
             dateOfIssue = invoice.InvoiceDate,
-            companyName = customerName,
-            organizationName = invoice.SellerName ?? request.SupplierName ?? request.CompanyName ?? "",
+            companyName = request.CompanyName ?? customerName,
+            organizationName = request.CompanyName ?? "",
             receiverName = request.ReceiverName ?? customerName,
             consigneeName = request.ConsigneeName ?? customerName,
             poNoDate = request.PoNoDate,
@@ -182,10 +184,12 @@ public class InvoiceController : ControllerBase
             invoice = new
             {
                 originalFor = request.OriginalFor,
-                companyName = customerName,
+                companyName = request.CompanyName ?? customerName,
+                organizationName = request.CompanyName ?? "",
                 invoiceNo = invoice.InvoiceNo,
+                quotationNo = quotation?.QuotationNo ?? request.QuotationNo,
                 dateOfIssue = invoice.InvoiceDate,
-                timeOfIssue = request.TimeOfIssue,
+                timeOfIssue = invoice.TimeOfIssue,
                 placeOfService = request.PlaceOfService,
                 supplierName = request.SupplierName,
                 supplierAddress = request.SupplierAddress,
@@ -212,7 +216,7 @@ public class InvoiceController : ControllerBase
                 sacCode = request.SacCode,
                 reverseCharge = request.ReverseCharge,
                 amountInWords = request.AmountInWords,
-                termsOfSale = request.TermsOfSale,
+                termsOfSale = invoice.TermsOfSale,
                 sgstPct = request.SgstPct,
                 cgstPct = request.CgstPct,
                 igstPct = request.IgstPct,
@@ -250,7 +254,7 @@ public class InvoiceController : ControllerBase
         var itemPricing = await GetItemPricingAsync(record);
         var totalAmount = record.Items.Sum(item => item.Qty * item.Rate);
 
-        return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotation?.QuotationNo, itemPricing));
+        return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotation?.QuotationNo, quotation?.OrganizationName, itemPricing));
     }
 
     [HttpGet]
@@ -282,6 +286,10 @@ public class InvoiceController : ControllerBase
             .AsNoTracking()
             .Where(q => quotationIds.Contains(q.Id))
             .ToDictionaryAsync(q => q.Id, q => q.QuotationNo);
+        var quotationOrganizations = await _db.Quotations
+            .AsNoTracking()
+            .Where(q => quotationIds.Contains(q.Id))
+            .ToDictionaryAsync(q => q.Id, q => q.OrganizationName);
         var purchaseOrderIds = records
             .Where(r => r.PoId.HasValue)
             .Select(r => r.PoId!.Value)
@@ -306,10 +314,14 @@ public class InvoiceController : ControllerBase
                     quotationNumbers.TryGetValue(record.QuotationId, out var number)
                     ? number
                     : null;
+                var organizationName = record.QuotationId != null &&
+                    quotationOrganizations.TryGetValue(record.QuotationId, out var organization)
+                    ? organization
+                    : null;
                 var itemPricing = BuildItemPricing(
                     purchaseOrderItems.Where(item => item.PoId == record.PoId),
                     quotationModules.Where(module => module.QuotationId == record.QuotationId));
-                return BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotationNo, itemPricing);
+                return BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotationNo, organizationName, itemPricing);
             })
             .ToList();
 
@@ -405,6 +417,7 @@ public class InvoiceController : ControllerBase
         record.QuotationId = request.QuotationId;
         record.InvoiceNo = await ResolveRequestedOrGeneratedInvoiceNoAsync(request.InvoiceNo);
         record.InvoiceDate = ParseDate(request.DateOfIssue, DateTime.UtcNow);
+        record.TimeOfIssue = request.TimeOfIssue;
         record.PlaceOfSupply = request.PlaceOfService;
         record.HsnCode = request.HsnCode;
         record.SacCode = request.SacCode;
@@ -417,6 +430,7 @@ public class InvoiceController : ControllerBase
         record.Subtotal = request.TotalAmount;
         record.GrandTotal = request.TotalAmount;
         record.AmountInWords = request.AmountInWords;
+        record.TermsOfSale = request.TermsOfSale;
         record.CompanyProfileId = request.CompanyProfileId;
         record.SellerName = request.SellerName ?? request.SupplierName;
         record.SellerAddress = request.SellerAddress ?? request.SupplierAddress;
@@ -488,7 +502,7 @@ public class InvoiceController : ControllerBase
         var updatedBankDetails = updatedRecord.BankDetails;
         var updatedTotalAmount = updatedRecord.Items.Sum(item => item.Qty * item.Rate);
 
-        return Ok(BuildInvoiceResponse(updatedRecord, updatedCustomer, updatedTotalAmount, updatedBankDetails, quotation?.QuotationNo));
+        return Ok(BuildInvoiceResponse(updatedRecord, updatedCustomer, updatedTotalAmount, updatedBankDetails, quotation?.QuotationNo, quotation?.OrganizationName));
     }
 
     [HttpPatch("{id:int}/status")]
@@ -571,7 +585,7 @@ public class InvoiceController : ControllerBase
             : await _db.Quotations.AsNoTracking().FirstOrDefaultAsync(q => q.Id == record.QuotationId);
         var totalAmount = record.Items.Sum(item => item.Qty * item.Rate);
 
-        return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotation?.QuotationNo));
+        return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotation?.QuotationNo, quotation?.OrganizationName));
     }
 
     private async Task CreateSubscriptionsFromPaidInvoiceAsync(InvoiceEntity invoice)
@@ -679,6 +693,7 @@ public class InvoiceController : ControllerBase
         decimal totalAmount,
         InvoiceBankDetailEntity? bankDetails,
         string? quotationNo,
+        string? organizationName,
         IReadOnlyDictionary<string, InvoiceItemPricing>? itemPricing = null)
     {
         var customerName = record.BuyerName ?? customer?.Name ?? "";
@@ -715,8 +730,8 @@ public class InvoiceController : ControllerBase
             quotationId = record.QuotationId,
             quotationNo = quotationNo,
             invoiceNo = record.InvoiceNo,
-            companyName = customerName,
-            organizationName = record.SellerName ?? "",
+            companyName = organizationName ?? record.SellerName ?? customerName,
+            organizationName = organizationName ?? record.SellerName ?? "",
             receiverName = customerName,
             consigneeName = customerName,
             dateOfIssue = record.InvoiceDate,
@@ -727,11 +742,12 @@ public class InvoiceController : ControllerBase
             invoice = new
             {
                 originalFor = "ORIGINAL FOR RECIPIENT",
-                companyName = customerName,
-                organizationName = record.SellerName ?? "",
+                companyName = organizationName ?? record.SellerName ?? customerName,
+                organizationName = organizationName ?? record.SellerName ?? "",
                 invoiceNo = record.InvoiceNo,
+                quotationNo = quotationNo,
                 dateOfIssue = record.InvoiceDate,
-                timeOfIssue = "",
+                timeOfIssue = record.TimeOfIssue,
                 placeOfService = record.PlaceOfSupply,
                 supplierName = record.SellerName ?? customerName,
                 supplierAddress = record.SellerAddress ?? customerAddress,
@@ -758,7 +774,7 @@ public class InvoiceController : ControllerBase
                 sacCode = record.SacCode,
                 reverseCharge = record.ReverseCharge ? "Yes" : "No",
                 amountInWords = record.AmountInWords,
-                termsOfSale = "",
+                termsOfSale = record.TermsOfSale ?? "",
                 sgstPct = record.SgstPct,
                 cgstPct = record.CgstPct,
                 igstPct = record.IgstPct,

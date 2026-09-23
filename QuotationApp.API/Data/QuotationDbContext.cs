@@ -301,6 +301,7 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.QuotationId).HasMaxLength(50).HasColumnType("nvarchar(50)").HasColumnName("quotation_id");
             entity.Property(e => e.InvoiceNo).IsRequired().HasMaxLength(50).HasColumnName("invoice_no");
             entity.Property(e => e.InvoiceDate).IsRequired().HasColumnName("invoice_date");
+            entity.Property(e => e.TimeOfIssue).HasMaxLength(10).HasColumnName("time_of_issue");
             entity.Property(e => e.PlaceOfSupply).HasMaxLength(100).HasColumnName("place_of_supply");
             entity.Property(e => e.HsnCode).HasMaxLength(20).HasColumnName("hsn_code");
             entity.Property(e => e.SacCode).HasMaxLength(20).HasColumnName("sac_code");
@@ -314,6 +315,7 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.GrandTotal).HasColumnType("decimal(14,2)").HasColumnName("grand_total");
             entity.Property(e => e.Status).IsRequired().HasMaxLength(20).HasColumnName("status");
             entity.Property(e => e.AmountInWords).HasMaxLength(1000).HasColumnName("amount_in_words");
+            entity.Property(e => e.TermsOfSale).HasMaxLength(4000).HasColumnName("terms_of_sale");
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnName("created_at");
             entity.Property(e => e.CompanyProfileId).HasColumnName("company_profile_id");
             entity.Property(e => e.SellerName).HasMaxLength(255).HasColumnName("seller_name");

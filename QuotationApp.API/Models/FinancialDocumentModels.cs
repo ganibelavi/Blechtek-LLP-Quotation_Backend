@@ -137,6 +137,7 @@ public class InvoiceEntity
     public string? QuotationId { get; set; }
     public string InvoiceNo { get; set; } = string.Empty;
     public DateTime InvoiceDate { get; set; } = DateTime.UtcNow;
+    public string? TimeOfIssue { get; set; }
     public string? PlaceOfSupply { get; set; }
     public string? HsnCode { get; set; }
     public string? SacCode { get; set; }
@@ -150,6 +151,7 @@ public class InvoiceEntity
     public decimal GrandTotal { get; set; }
     public string Status { get; set; } = "draft";
     public string? AmountInWords { get; set; }
+    public string? TermsOfSale { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public int? CompanyProfileId { get; set; }
     public string? SellerName { get; set; }

@@ -54,6 +54,15 @@ namespace QuotationApp.API.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("HsnCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("HsnCode");
+
+                    b.Property<decimal?>("ImplementationEffortCost")
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("ImplementationEffortCost");
+
                     b.Property<string>("ModuleName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -66,6 +75,15 @@ namespace QuotationApp.API.Migrations
 
                     b.Property<decimal?>("Price")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool>("ReverseChargeDefault")
+                        .HasColumnType("bit")
+                        .HasColumnName("ReverseChargeDefault");
+
+                    b.Property<string>("SacCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("SacCode");
 
                     b.HasKey("Id");
 
@@ -81,11 +99,30 @@ namespace QuotationApp.API.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<string>("CreatedByUser")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<DateTime?>("Date")
                         .HasColumnType("datetime2");
 
+                    b.Property<decimal?>("DiscountAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("DiscountPercentage")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal?>("FinalPrice")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<DateTime>("GeneratedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("ImplementationPriceTotal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("ModulePriceTotal")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("OrganizationName")
                         .IsRequired()
@@ -116,12 +153,95 @@ namespace QuotationApp.API.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
 
+                    b.Property<string>("ReferenceBy")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<decimal?>("Subtotal")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<DateTime>("ValidationDate")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
 
                     b.ToTable("Quotations", (string)null);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Data.QuotationHistoryEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ChangeType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("ChangedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("Date")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("DiscountPercentage")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("ModulesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("OrganizationName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("QuotationId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("QuotationNo")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("QuotationToAddress")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
+
+                    b.Property<string>("QuotationToContactNo")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("QuotationToEmail")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("QuotationToName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("ReferenceBy")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<DateTime>("ValidationDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("QuotationId");
+
+                    b.HasIndex("OrganizationName", "ModulesJson");
+
+                    b.ToTable("QuotationHistory", (string)null);
                 });
 
             modelBuilder.Entity("QuotationApp.API.Data.QuotationModuleEntity", b =>
@@ -133,6 +253,43 @@ namespace QuotationApp.API.Migrations
                     b.Property<string>("ModuleName")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal?>("DiscountAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("DiscountPercentage")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal?>("FinalPrice")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ImplementationEffortUnit")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<decimal?>("ImplementationMultiplier")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<decimal?>("ImplementationPrice")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("ImplementationUnitPrice")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("ModulePrice")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("ModuleSubtotal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("NoOfInstallations")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("NoOfSites")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("NoOfUsers")
+                        .HasColumnType("int");
 
                     b.HasKey("QuotationId", "ModuleName");
 
@@ -191,6 +348,968 @@ namespace QuotationApp.API.Migrations
                     b.ToTable("Users", (string)null);
                 });
 
+            modelBuilder.Entity("QuotationApp.API.Models.CompanyBankAccountEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AccountNo")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("account_no");
+
+                    b.Property<string>("AccountType")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("account_type");
+
+                    b.Property<string>("BankName")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("bank_name");
+
+                    b.Property<string>("Ifsc")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("ifsc");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_default");
+
+                    b.Property<string>("MsmeNo")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("msme_no");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("company_bank_accounts", (string)null);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.CompanyProfileEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("address");
+
+                    b.Property<string>("DefaultTermsOfSale")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("default_terms_of_sale");
+
+                    b.Property<string>("Gstn")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("gstn");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("State")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("state");
+
+                    b.Property<string>("StateCode")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("state_code");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("company_profile", (string)null);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.CustomerEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("address");
+
+                    b.Property<string>("ContactName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("contact_name");
+
+                    b.Property<string>("ContactNumber")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("contact_number");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("Gstn")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("gstn");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("State")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("state");
+
+                    b.Property<string>("StateCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasColumnName("state_code");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("customers", (string)null);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.CustomerModuleSubscriptionEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("AnnualEscalationPercentage")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CurrentYear")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("InitialPurchasePrice")
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<int?>("InvoiceId")
+                        .HasColumnType("int")
+                        .HasColumnName("InvoiceId");
+
+                    b.Property<int>("ModuleId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("NextRenewalDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("PurchaseDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("QuotationId")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal>("RenewalPercentage")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("SubscriptionEndDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("SubscriptionStartDate")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("InvoiceId");
+
+                    b.HasIndex("ModuleId");
+
+                    b.ToTable("CustomerModuleSubscription", (string)null);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.GstRateEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("CgstPct")
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("cgst_pct");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<decimal>("IgstPct")
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("igst_pct");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("label");
+
+                    b.Property<decimal>("SgstPct")
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("sgst_pct");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("gst_rates", (string)null);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.InvoiceBankDetailEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AccountNo")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("account_no");
+
+                    b.Property<string>("AccountType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("account_type");
+
+                    b.Property<string>("BankName")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("bank_name");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Ifsc")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("ifsc");
+
+                    b.Property<int>("InvoiceId")
+                        .HasColumnType("int")
+                        .HasColumnName("invoice_id");
+
+                    b.Property<string>("MsmeNo")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("msme_no");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvoiceId")
+                        .IsUnique();
+
+                    b.ToTable("invoice_bank_details", (string)null);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.InvoiceEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AmountInWords")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("amount_in_words");
+
+                    b.Property<string>("BuyerAddress")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("buyer_address");
+
+                    b.Property<string>("BuyerGstn")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("buyer_gstn");
+
+                    b.Property<string>("BuyerName")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("buyer_name");
+
+                    b.Property<string>("BuyerState")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("buyer_state");
+
+                    b.Property<string>("BuyerStateCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasColumnName("buyer_state_code");
+
+                    b.Property<decimal>("CgstPct")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("cgst_pct");
+
+                    b.Property<int?>("CompanyProfileId")
+                        .HasColumnType("int")
+                        .HasColumnName("company_profile_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int")
+                        .HasColumnName("customer_id");
+
+                    b.Property<decimal>("GrandTotal")
+                        .HasColumnType("decimal(14,2)")
+                        .HasColumnName("grand_total");
+
+                    b.Property<int?>("GstRateId")
+                        .HasColumnType("int")
+                        .HasColumnName("gst_rate_id");
+
+                    b.Property<string>("HsnCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("hsn_code");
+
+                    b.Property<decimal>("IgstPct")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("igst_pct");
+
+                    b.Property<decimal>("Insurance")
+                        .HasColumnType("decimal(12,2)")
+                        .HasColumnName("insurance");
+
+                    b.Property<DateTime>("InvoiceDate")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("invoice_date");
+
+                    b.Property<string>("InvoiceNo")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("invoice_no");
+
+                    b.Property<string>("TimeOfIssue")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasColumnName("time_of_issue");
+
+                    b.Property<string>("TermsOfSale")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)")
+                        .HasColumnName("terms_of_sale");
+
+                    b.Property<string>("PlaceOfSupply")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("place_of_supply");
+
+                    b.Property<int?>("PoId")
+                        .HasColumnType("int")
+                        .HasColumnName("po_id");
+
+                    b.Property<string>("QuotationId")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("quotation_id");
+
+                    b.Property<bool>("ReverseCharge")
+                        .HasColumnType("bit")
+                        .HasColumnName("reverse_charge");
+
+                    b.Property<string>("SacCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("sac_code");
+
+                    b.Property<string>("SellerAddress")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("seller_address");
+
+                    b.Property<string>("SellerGstn")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("seller_gstn");
+
+                    b.Property<string>("SellerName")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("seller_name");
+
+                    b.Property<string>("SellerState")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("seller_state");
+
+                    b.Property<string>("SellerStateCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasColumnName("seller_state_code");
+
+                    b.Property<decimal>("SgstPct")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("sgst_pct");
+
+                    b.Property<string>("ShipToAddress")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("ship_to_address");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasColumnType("decimal(14,2)")
+                        .HasColumnName("subtotal");
+
+                    b.Property<decimal>("TdsPct")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("tds_pct");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("InvoiceNo")
+                        .IsUnique();
+
+                    b.HasIndex("QuotationId");
+
+                    b.ToTable("invoices", null, t =>
+                        {
+                            t.HasTrigger("trg_invoice_requires_verified_po");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.InvoiceItemEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("description");
+
+                    b.Property<int>("InvoiceId")
+                        .HasColumnType("int")
+                        .HasColumnName("invoice_id");
+
+                    b.Property<int?>("ModuleId")
+                        .HasColumnType("int")
+                        .HasColumnName("module_id");
+
+                    b.Property<int?>("ProductId")
+                        .HasColumnType("int")
+                        .HasColumnName("product_id");
+
+                    b.Property<decimal>("Qty")
+                        .HasColumnType("decimal(12,2)")
+                        .HasColumnName("qty");
+
+                    b.Property<decimal>("Rate")
+                        .HasColumnType("decimal(12,2)")
+                        .HasColumnName("rate");
+
+                    b.Property<string>("Uom")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("uom");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvoiceId");
+
+                    b.HasIndex("ModuleId");
+
+                    b.ToTable("invoice_items", (string)null);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.ModulePricingEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("AnnualEscalationPercentage")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("InitialPurchasePrice")
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ModuleId")
+                        .HasColumnType("int")
+                        .HasColumnName("ModuleId");
+
+                    b.Property<DateTime>("PricingEffectiveFrom")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime?>("PricingEffectiveTo")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("RenewalPercentage")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ModuleId");
+
+                    b.ToTable("ModulePricing", (string)null);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.ProductEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<decimal>("DefaultRate")
+                        .HasColumnType("decimal(12,2)")
+                        .HasColumnName("default_rate");
+
+                    b.Property<string>("HsnSac")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("hsn_sac");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Uom")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("uom");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("products", (string)null);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.PurchaseOrderEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AttachmentUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("attachment_url");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("DeliveryTerms")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("delivery_terms");
+
+                    b.Property<string>("PaymentTerms")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("payment_terms");
+
+                    b.Property<DateTime>("PoDate")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("po_date");
+
+                    b.Property<string>("PoDirection")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("po_direction");
+
+                    b.Property<string>("PoNo")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("po_no");
+
+                    b.Property<string>("QuotationId")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("quotation_id");
+
+                    b.Property<DateTime?>("QuotationRefDate")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("quotation_ref_date");
+
+                    b.Property<string>("QuotationRefNo")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("quotation_ref_no");
+
+                    b.Property<DateTime?>("ReceivedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("received_at");
+
+                    b.Property<string>("ReceivedFromEmail")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("received_from_email");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<int?>("SupplierId")
+                        .HasColumnType("int")
+                        .HasColumnName("supplier_id");
+
+                    b.Property<string>("UploadedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("uploaded_by");
+
+                    b.Property<string>("VerificationNotes")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("verification_notes");
+
+                    b.Property<string>("VerificationStatus")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("verification_status");
+
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("verified_at");
+
+                    b.Property<string>("VerifiedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("verified_by");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("PoNo")
+                        .IsUnique();
+
+                    b.HasIndex("SupplierId");
+
+                    b.ToTable("purchase_orders", null, t =>
+                        {
+                            t.HasTrigger("trg_po_verification_history");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.PurchaseOrderItemEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("description");
+
+                    b.Property<decimal>("ImplementationPrice")
+                        .HasColumnType("decimal(12,2)")
+                        .HasColumnName("implementation_price");
+
+                    b.Property<decimal>("ModulePrice")
+                        .HasColumnType("decimal(12,2)")
+                        .HasColumnName("module_price");
+
+                    b.Property<int>("PoId")
+                        .HasColumnType("int")
+                        .HasColumnName("po_id");
+
+                    b.Property<int?>("ProductId")
+                        .HasColumnType("int")
+                        .HasColumnName("product_id");
+
+                    b.Property<decimal>("Qty")
+                        .HasColumnType("decimal(12,2)")
+                        .HasColumnName("qty");
+
+                    b.Property<decimal>("Rate")
+                        .HasColumnType("decimal(12,2)")
+                        .HasColumnName("rate");
+
+                    b.Property<string>("Uom")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("uom");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PoId");
+
+                    b.ToTable("po_items", (string)null);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.SubscriptionPaymentHistoryEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal?>("Amount")
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("InvoiceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("PaymentDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("PaymentMode")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("SubscriptionId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TransactionReference")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvoiceId");
+
+                    b.HasIndex("SubscriptionId");
+
+                    b.ToTable("SubscriptionPaymentHistory", (string)null);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.SubscriptionRenewalEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("EscalationPercentage")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<int?>("InvoiceId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("PeriodEndDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("PeriodStartDate")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("PreviousAmount")
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<string>("QuotationId")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal>("RenewalAmount")
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<int>("RenewalYear")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("SubscriptionId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubscriptionId", "RenewalYear")
+                        .IsUnique();
+
+                    b.ToTable("SubscriptionRenewal", (string)null);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.SupplierEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("address");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Gstn")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("gstn");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("State")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("state");
+
+                    b.Property<string>("StateCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasColumnName("state_code");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("suppliers", (string)null);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.TermsTemplateEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("content");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit")
+                        .HasColumnName("is_default");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("label");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("terms_templates", (string)null);
+                });
+
             modelBuilder.Entity("QuotationApp.API.Data.QuotationModuleEntity", b =>
                 {
                     b.HasOne("QuotationApp.API.Data.ModuleEntity", null)
@@ -207,9 +1326,168 @@ namespace QuotationApp.API.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("QuotationApp.API.Models.CustomerModuleSubscriptionEntity", b =>
+                {
+                    b.HasOne("QuotationApp.API.Models.CustomerEntity", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("QuotationApp.API.Models.InvoiceEntity", null)
+                        .WithMany()
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("QuotationApp.API.Data.ModuleEntity", "Module")
+                        .WithMany()
+                        .HasForeignKey("ModuleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("Module");
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.InvoiceBankDetailEntity", b =>
+                {
+                    b.HasOne("QuotationApp.API.Models.InvoiceEntity", "Invoice")
+                        .WithOne("BankDetails")
+                        .HasForeignKey("QuotationApp.API.Models.InvoiceBankDetailEntity", "InvoiceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Invoice");
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.InvoiceEntity", b =>
+                {
+                    b.HasOne("QuotationApp.API.Models.CustomerEntity", null)
+                        .WithMany("Invoices")
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("QuotationApp.API.Data.QuotationEntity", null)
+                        .WithMany()
+                        .HasForeignKey("QuotationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.InvoiceItemEntity", b =>
+                {
+                    b.HasOne("QuotationApp.API.Models.InvoiceEntity", "Invoice")
+                        .WithMany("Items")
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("QuotationApp.API.Data.ModuleEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ModuleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Invoice");
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.ModulePricingEntity", b =>
+                {
+                    b.HasOne("QuotationApp.API.Data.ModuleEntity", "Module")
+                        .WithMany()
+                        .HasForeignKey("ModuleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Module");
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.PurchaseOrderEntity", b =>
+                {
+                    b.HasOne("QuotationApp.API.Models.CustomerEntity", null)
+                        .WithMany("PurchaseOrders")
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("QuotationApp.API.Models.SupplierEntity", null)
+                        .WithMany("PurchaseOrders")
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.PurchaseOrderItemEntity", b =>
+                {
+                    b.HasOne("QuotationApp.API.Models.PurchaseOrderEntity", "PurchaseOrder")
+                        .WithMany("Items")
+                        .HasForeignKey("PoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PurchaseOrder");
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.SubscriptionPaymentHistoryEntity", b =>
+                {
+                    b.HasOne("QuotationApp.API.Models.InvoiceEntity", "Invoice")
+                        .WithMany()
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("QuotationApp.API.Models.CustomerModuleSubscriptionEntity", "Subscription")
+                        .WithMany()
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Invoice");
+
+                    b.Navigation("Subscription");
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.SubscriptionRenewalEntity", b =>
+                {
+                    b.HasOne("QuotationApp.API.Models.CustomerModuleSubscriptionEntity", "Subscription")
+                        .WithMany("Renewals")
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Subscription");
+                });
+
             modelBuilder.Entity("QuotationApp.API.Data.QuotationEntity", b =>
                 {
                     b.Navigation("QuotationModules");
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.CustomerEntity", b =>
+                {
+                    b.Navigation("Invoices");
+
+                    b.Navigation("PurchaseOrders");
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.CustomerModuleSubscriptionEntity", b =>
+                {
+                    b.Navigation("Renewals");
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.InvoiceEntity", b =>
+                {
+                    b.Navigation("BankDetails");
+
+                    b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.PurchaseOrderEntity", b =>
+                {
+                    b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("QuotationApp.API.Models.SupplierEntity", b =>
+                {
+                    b.Navigation("PurchaseOrders");
                 });
 #pragma warning restore 612, 618
         }
