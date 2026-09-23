@@ -1388,7 +1388,13 @@ public class PdfConverterService : IPdfConverterService
                             foreach (var cell in row)
                             {
                                 var cellBackground = cell.BackgroundColor;
-                                if (!cellBackground.HasValue && isAlternate && table.Rows.Count > 1)
+                                if (isPricingTable)
+                                {
+                                    // Pricing table: render on a clean background, ignoring
+                                    // both template-provided shading and auto-generated alternates.
+                                    cellBackground = null;
+                                }
+                                else if (!cellBackground.HasValue && isAlternate && table.Rows.Count > 1)
                                 {
                                     cellBackground = LightGray; // Alternate row shading #F2F4F7
                                 }
