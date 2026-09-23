@@ -20,6 +20,7 @@ public class QuotationDbContext : DbContext
     public DbSet<LoginHistoryEntity> LoginHistory { get; set; }
     public DbSet<QuotationHistoryEntity> QuotationHistory { get; set; }
     public DbSet<CustomerEntity> Customers { get; set; }
+    public DbSet<ReferenceEntity> References { get; set; }
     public DbSet<SupplierEntity> Suppliers { get; set; }
     public DbSet<CompanyProfileEntity> CompanyProfiles { get; set; }
     public DbSet<CompanyBankAccountEntity> CompanyBankAccounts { get; set; }
@@ -168,6 +169,18 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.Email).HasMaxLength(255).HasColumnName("email");
             entity.Property(e => e.CreatedAt).IsRequired().HasColumnName("created_at");
             entity.ToTable("customers");
+        });
+
+        modelBuilder.Entity<ReferenceEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(150).HasColumnName("name");
+            entity.Property(e => e.Email).HasMaxLength(255).HasColumnName("email");
+            entity.Property(e => e.Phone).HasMaxLength(30).HasColumnName("phone");
+            entity.Property(e => e.Address).HasMaxLength(1000).HasColumnName("address");
+            entity.Property(e => e.CreatedAt).IsRequired().HasColumnName("created_at");
+            entity.HasIndex(e => e.Name).IsUnique();
+            entity.ToTable("references");
         });
 
         modelBuilder.Entity<SupplierEntity>(entity =>

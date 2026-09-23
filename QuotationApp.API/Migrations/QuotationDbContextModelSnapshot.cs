@@ -491,6 +491,44 @@ namespace QuotationApp.API.Migrations
                     b.ToTable("customers", (string)null);
                 });
 
+            modelBuilder.Entity("QuotationApp.API.Models.ReferenceEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("address");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("name");
+
+                    b.HasKey("Id");
+                    b.HasIndex("Name").IsUnique();
+                    b.ToTable("references", (string)null);
+                });
+
             modelBuilder.Entity("QuotationApp.API.Models.CustomerModuleSubscriptionEntity", b =>
                 {
                     b.Property<int>("Id")
