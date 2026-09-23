@@ -1137,14 +1137,14 @@ public class SqlQuotationService : IQuotationService
 
         if (scopeRow is null) return;
 
-        foreach (var module in modules.Where(module => selectedModules.Contains(module.Module)))
+        foreach (var module in modules)
         {
             var row = (TableRow)scopeRow.CloneNode(true);
             var rowReplacements = new Dictionary<string, string>
             {
                 ["{{PILLAR}}"] = module.Pillar,
                 ["{{MODULE}}"] = module.Module,
-                ["{{SELECTED}}"] = "Yes"
+                ["{{SELECTED}}"] = selectedModules.Contains(module.Module) ? "Yes" : "No"
             };
             foreach (var paragraph in row.Descendants<Paragraph>())
             {

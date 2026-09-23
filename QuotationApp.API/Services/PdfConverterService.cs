@@ -17,13 +17,6 @@ using OpenXmlColor = DocumentFormat.OpenXml.Wordprocessing.Color;
 
 namespace QuotationApp.API.Services;
 
-/// <summary>
-/// Converts the generated .docx to .pdf using QuestPDF.
-/// Faithfully replicates the Word template design including colors, tables, borders, and styling.
-/// Matches the frontend QuotationPdfView design exactly.
-/// </summary>
-/// 
-/// 
 public class PdfConverterService : IPdfConverterService
 {
     // Color constants matching the frontend design and Word template
@@ -127,11 +120,28 @@ public class PdfConverterService : IPdfConverterService
         return candidates.FirstOrDefault(File.Exists);
     }
 
+    private string GetAuthoritySealPath()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(_contentRoot, "logo", "Authority_Seal.png"),
+            Path.Combine(_contentRoot, "logo", "Authority_Seal.jpg"),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "public", "logo", "Authority_Seal.png")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "public", "logo", "Authority_Seal.jpg")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "logo", "Authority_Seal.png")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "frontend", "logo", "Authority_Seal.jpg")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "public", "logo", "Authority_Seal.png")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "public", "logo", "Authority_Seal.jpg")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "logo", "Authority_Seal.png")),
+            Path.GetFullPath(Path.Combine(_contentRoot, "..", "..", "Blechtek-LLP-Quotation_Frontend", "logo", "Authority_Seal.jpg")),
+        };
+
+        return candidates.FirstOrDefault(File.Exists);
+    }
+
     private string GetWatermarkPath()
     {
-        // Check multiple locations for the watermark. The frontend project folder
-        // is named "frontend" (with assets in public/logo, where they are served
-        // from); also check the legacy sibling folder name for compatibility.
+
         var candidates = new[]
         {
             Path.Combine(_contentRoot, "logo", "watermark.png"),
@@ -303,10 +313,6 @@ public class PdfConverterService : IPdfConverterService
         };
     }
 
-    /// <summary>
-    /// Extracts text from a paragraph preserving tab characters (w:tab elements).
-    /// InnerText doesn't include tabs, so we manually build the text including tabs.
-    /// </summary>
     private static string ExtractTextWithTabs(Paragraph paragraph)
     {
         var sb = new System.Text.StringBuilder();
@@ -386,14 +392,7 @@ public class PdfConverterService : IPdfConverterService
 
             foreach (var cell in cells)
             {
-                // IMPORTANT: cell.InnerText concatenates every paragraph in the cell into a single
-                // string with NO line breaks between them. That broke label bolding — e.g. a cell
-                // containing "Name: X" then "Address: Y" then "Contact No.: Z" as separate <w:p>
-                // paragraphs collapsed into one run-on string, so only the very first label ("Name:")
-                // was ever detected; "Address:", "Contact No.:", "Email:", "Date:", "Definition:", and
-                // "Installation pre-requisites..." were all swallowed into the unbolded "rest" text.
-                // Extracting each paragraph separately and rejoining with '\n' preserves the line
-                // breaks so downstream Split('\n') + per-line bold-label detection works correctly.
+
                 var cellParagraphTexts = cell.Elements<Paragraph>()
                     .Select(p => p.InnerText.Trim())
                     .Where(t => !string.IsNullOrEmpty(t))
@@ -436,10 +435,6 @@ public class PdfConverterService : IPdfConverterService
                 var cellShadingFill = cellShading?.Fill?.Value;
                 if (!string.IsNullOrWhiteSpace(cellShadingFill) && TryParseColor(cellShadingFill, out var qc))
                     backgroundColor = qc;
-
-                // Check for vertical alignment - use OpenXML VerticalAlignment
-                // var vAlign = cellProps?.GetFirstChild<DocumentFormat.OpenXml.Wordprocessing.VerticalAlignment>();
-                // We'll handle this in PDF generation
 
                 // Check run properties for bold and color
                 var paragraphs = cell.Elements<Paragraph>();
@@ -607,16 +602,23 @@ public class PdfConverterService : IPdfConverterService
     {
         if (string.IsNullOrWhiteSpace(para.Text)) return;
 
-        // Keep a small signing gap between the company signature line and the
-        // signatory name without changing spacing in the rest of the closing.
         if (para.Text.Trim().Equals("Sushama Inamdar", StringComparison.OrdinalIgnoreCase) &&
             index > 0 &&
             allElements[index - 1] is ParagraphContent previousParagraph &&
-            previousParagraph.Text.Trim().Equals(
+            previousParagraph.Text.Trim().TrimEnd('.').Equals(
                 "For BlechTek Software Solutions LLP",
                 StringComparison.OrdinalIgnoreCase))
         {
-            column.Item().Height(75, Unit.Point);
+            var signingSealPath = GetAuthoritySealPath();
+            if (!string.IsNullOrEmpty(signingSealPath) && File.Exists(signingSealPath))
+            {
+                column.Item().PaddingTop(10).PaddingBottom(10)
+                    .AlignLeft().Width(120).Image(signingSealPath);
+            }
+            else
+            {
+                column.Item().Height(40, Unit.Point);
+            }
         }
 
         // Check for section headings (uppercase headings like "QUOTATION TO", "SCOPE OF WORK", etc.)
@@ -707,12 +709,6 @@ public class PdfConverterService : IPdfConverterService
                          text.Equals("Definition:", StringComparison.OrdinalIgnoreCase) ||
                          text.Equals("Installation pre-requisites (in case of on-premise Server):", StringComparison.OrdinalIgnoreCase);
 
-        // NEW: If this paragraph starts with one of the known label prefixes (Name:, Address:,
-        // Contact No.:, Email:, Quotation No.:, Date:, Reference:, Subject:, Dear Sir / Madam,,
-        // Definition:, Installation pre-requisites...), render it as two spans so ONLY the
-        // label portion is bold and any trailing value stays normal weight. This also correctly
-        // covers the case where the paragraph is just the label by itself (rest will be empty).
-        // Also handle tab-separated multiple labels in one paragraph (e.g. "Name: John\t\tQuotation No: Q-123")
         if (TryGetBoldLabelPrefix(text, out var boldLabel, out var labelRest) || ContainsTabSeparatedLabels(text))
         {
             RenderParagraphWithLabels(column, para, text);
@@ -755,9 +751,6 @@ public class PdfConverterService : IPdfConverterService
         }
     }
 
-    /// <summary>
-    /// Checks if the text contains tab-separated label-value pairs (e.g. "Name: John\t\tQuotation No: Q-123")
-    /// </summary>
     private static bool ContainsTabSeparatedLabels(string text)
     {
         if (string.IsNullOrEmpty(text)) return false;
@@ -777,10 +770,7 @@ public class PdfConverterService : IPdfConverterService
         return false;
     }
 
-    /// <summary>
-    /// Renders a paragraph that may contain multiple tab-separated label-value pairs.
-    /// Each label is rendered bold, each value normal weight.
-    /// </summary>
+
     private void RenderParagraphWithLabels(ColumnDescriptor column, ParagraphContent para, string text)
     {
         var segments = text.Split('\t');
@@ -909,15 +899,6 @@ public class PdfConverterService : IPdfConverterService
         // Look backwards to find if we're after "TERMS AND CONDITIONS" heading and before the next section
         bool foundTermsHeading = false;
 
-        // BUG FIX: the old forward-only check could never detect that we'd already passed the
-        // closing statement ("Thanking You" / "We hope this document is in line...") because it
-        // only looked FORWARD for that closing phrase. Any paragraph physically located AFTER the
-        // closing (e.g. the "For BlechTek Software Solutions LLP" / "Sushama Inamdar" signature
-        // block) would find no closing phrase ahead of it, fall through, and incorrectly be
-        // reported as "still in Terms and Conditions" -- which routed it to
-        // RenderTermsAndConditionsItem (plain, unbolded text) instead of our label-bolding logic.
-        // We now also scan backwards for the closing phrase; if it appears before currentIndex,
-        // we know we're already past the Terms and Conditions section.
         bool foundClosingBeforeCurrent = false;
 
         for (int i = currentIndex - 1; i >= 0; i--)
@@ -1108,11 +1089,7 @@ public class PdfConverterService : IPdfConverterService
         }
         else
         {
-            // Regular paragraph within terms section.
-            // Safety net: if this line starts with one of our known bold labels (e.g. "Definition:",
-            // "Installation pre-requisites (in case of on-premise Server):", "For BlechTek Software
-            // Solutions LLP", "Sushama Inamdar"), still render only the label portion bold here too,
-            // in case such content is nested inside the Terms and Conditions numbering structure.
+
             if (TryGetBoldLabelPrefix(text, out var termsBoldLabel, out var termsLabelRest))
             {
                 column.Item().PaddingLeft(30).PaddingTop(4).Text(t =>
