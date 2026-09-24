@@ -983,6 +983,8 @@ public class SqlQuotationService : IQuotationService
                     pricingValuesText);
                 NormalizeStandardPricingRows(body);
 
+                PopulateAdditionalScopeTable(body, request.AdditionalScopes);
+
                 foreach (var paragraph in body.Descendants<Paragraph>())
                 {
                     ReplaceParagraphText(paragraph, replacements);
@@ -1346,6 +1348,51 @@ public class SqlQuotationService : IQuotationService
                 runProperties.BoldComplexScript = null;
             }
         }
+    }
+
+    private static void PopulateAdditionalScopeTable(
+        Body body,
+        IEnumerable<AdditionalScopeRequest> additionalScopes)
+    {
+        var scopes = additionalScopes?.ToList() ?? new List<AdditionalScopeRequest>();
+        if (scopes.Count == 0) return;
+
+        var templateRow = body
+            .Descendants<TableRow>()
+            .FirstOrDefault(row =>
+            {
+                var rowText = string.Concat(row.Descendants<Text>().Select(text => text.Text));
+                return rowText.Contains("{{ADD_SCOPE_REQUIREMENT}}", StringComparison.Ordinal) &&
+                       rowText.Contains("{{ADD_SCOPE_MODULE}}", StringComparison.Ordinal) &&
+                       rowText.Contains("{{ADD_SCOPE_MANPOWER}}", StringComparison.Ordinal) &&
+                       rowText.Contains("{{ADD_SCOPE_DAYS}}", StringComparison.Ordinal) &&
+                       rowText.Contains("{{ADD_SCOPE_RATE}}", StringComparison.Ordinal) &&
+                       rowText.Contains("{{ADD_SCOPE_AMOUNT}}", StringComparison.Ordinal);
+            });
+
+        if (templateRow is null) return;
+
+        for (var index = 0; index < scopes.Count; index++)
+        {
+            var scope = scopes[index];
+            var row = (TableRow)templateRow.CloneNode(true);
+            var rowReplacements = new Dictionary<string, string>
+            {
+                ["{{ADD_SCOPE_REQUIREMENT}}"] = scope.Requirement ?? string.Empty,
+                ["{{ADD_SCOPE_MODULE}}"] = scope.Modules ?? string.Empty,
+                ["{{ADD_SCOPE_MANPOWER}}"] = scope.NoOfManpower.ToString(),
+                ["{{ADD_SCOPE_DAYS}}"] = scope.NoOfDays.ToString(),
+                ["{{ADD_SCOPE_RATE}}"] = scope.Rate.ToString("N2"),
+                ["{{ADD_SCOPE_AMOUNT}}"] = scope.Amount.ToString("N2")
+            };
+            foreach (var paragraph in row.Descendants<Paragraph>())
+            {
+                ReplaceParagraphText(paragraph, rowReplacements);
+            }
+            templateRow.InsertBeforeSelf(row);
+        }
+
+        templateRow.Remove();
     }
 
     private static void ReplaceParagraphText(
