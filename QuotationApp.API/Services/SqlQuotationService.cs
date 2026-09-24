@@ -523,7 +523,8 @@ public class SqlQuotationService : IQuotationService
             QuotationToContactNo = request.QuotationTo.ContactNo,
             QuotationToEmail = request.QuotationTo.Email,
             GeneratedAt = result.GeneratedAt,
-            DiscountPercentage = request.DiscountPercentage > 0 ? request.DiscountPercentage : (decimal?)null,
+            DiscountPercentage = GetCommonDiscountPercentage(
+                pricing.Select(item => (decimal?)item.DiscountPercentage)),
             ModulePriceTotal = pricing.Sum(p => p.ModulePrice),
             ImplementationPriceTotal = pricing.Sum(p => p.ImplementationPrice),
             Subtotal = pricing.Sum(p => p.ModuleSubtotal),
@@ -689,6 +690,17 @@ public class SqlQuotationService : IQuotationService
         });
     }
 
+    private static decimal? GetCommonDiscountPercentage(IEnumerable<decimal?> discounts)
+    {
+        var values = discounts
+            .Where(discount => discount.HasValue)
+            .Select(discount => discount!.Value)
+            .Distinct()
+            .ToList();
+
+        return values.Count == 1 ? values[0] : null;
+    }
+
     /// <summary>
     /// Updates the discount percentage for an existing quotation and regenerates the Word/PDF documents.
     /// </summary>
@@ -768,6 +780,9 @@ public class SqlQuotationService : IQuotationService
 
         quotation.ValidationDate = validationDate;
 
+        var previousDiscounts = quotation.QuotationModules
+            .ToDictionary(m => m.ModuleName, m => m.DiscountPercentage, StringComparer.OrdinalIgnoreCase);
+
         var detailsByModule = (moduleDetails ?? new List<QuotationModuleRequest>())
             .ToDictionary(d => d.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
 
@@ -787,7 +802,12 @@ public class SqlQuotationService : IQuotationService
                 : null
         }).ToList();
         await ApplyPricingSnapshotAsync(quotation, quotation.QuotationModules, quotation.DiscountPercentage ?? 0m);
-        AddHistorySnapshot(quotation, "DetailsUpdated");
+        quotation.DiscountPercentage = GetCommonDiscountPercentage(
+            quotation.QuotationModules.Select(module => module.DiscountPercentage));
+        var discountChanged = quotation.QuotationModules.Any(module =>
+            previousDiscounts.TryGetValue(module.ModuleName, out var previousDiscount) &&
+            previousDiscount != module.DiscountPercentage);
+        AddHistorySnapshot(quotation, discountChanged ? "DiscountUpdated" : "DetailsUpdated");
 
         var request = new QuotationRequest
         {
