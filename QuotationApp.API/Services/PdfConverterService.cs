@@ -19,32 +19,6 @@ public class PdfConverterService : IPdfConverterService
         _contentRoot = env.ContentRootPath;
     }
 
-    /// <summary>
-    /// Converts an already-created Word document (.docx)
-    /// directly to PDF.
-    ///
-    /// The Word template is the single source of truth for:
-    /// - Font family
-    /// - Font size
-    /// - Font color
-    /// - Bold / Italic
-    /// - Tables
-    /// - Table borders
-    /// - Table header background
-    /// - Cell formatting
-    /// - Paragraph spacing
-    /// - Page margins
-    /// - Header
-    /// - Footer
-    /// - Logo
-    /// - Watermark
-    /// - Page layout
-    /// - Page breaks
-    /// - Alignment
-    /// - Overall document design
-    ///
-    /// This service does NOT recreate any of the above formatting.
-    /// </summary>
     public async Task<string> ConvertToPdfAsync(string docxPath)
     {
         if (string.IsNullOrWhiteSpace(docxPath))
@@ -110,12 +84,6 @@ public class PdfConverterService : IPdfConverterService
         return expectedPdfPath;
     }
 
-    /// <summary>
-    /// Converts DOCX directly to PDF using LibreOffice.
-    ///
-    /// LibreOffice renders the actual Word document instead of
-    /// recreating the document using QuestPDF.
-    /// </summary>
     private async Task ConvertDocxToPdfUsingLibreOfficeAsync(
         string docxPath,
         string outputFolder)
@@ -135,20 +103,6 @@ public class PdfConverterService : IPdfConverterService
                 "/usr/bin/soffice");
         }
 
-        /*
-         * LibreOffice arguments:
-         *
-         * --headless
-         *     Run without opening the LibreOffice UI.
-         *
-         * --convert-to pdf
-         *     Convert the DOCX to PDF.
-         *
-         * --outdir
-         *     Folder where the PDF should be created.
-         *
-         * The DOCX itself is passed as the final argument.
-         */
         var arguments =
             $"--headless " +
             $"--convert-to pdf " +
@@ -216,15 +170,6 @@ public class PdfConverterService : IPdfConverterService
         }
     }
 
-    /// <summary>
-    /// Finds the LibreOffice executable.
-    ///
-    /// Search order:
-    /// 1. LIBREOFFICE_PATH environment variable
-    /// 2. Standard Windows installation locations
-    /// 3. Standard Linux installation locations
-    /// 4. PATH environment variable
-    /// </summary>
     private string FindLibreOfficeExecutable()
     {
         // ============================================================
