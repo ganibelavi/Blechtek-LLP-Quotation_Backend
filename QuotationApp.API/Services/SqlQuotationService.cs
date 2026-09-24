@@ -53,6 +53,7 @@ public class SqlQuotationService : IQuotationService
     {
         await ValidateModulesAsync(request.SelectedModules);
         ValidateModuleDetails(request);
+        await ValidateAdditionalScopesAsync(request.AdditionalScopes);
 
         var quotationId = $"Q-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8]}";
 
@@ -129,6 +130,7 @@ public class SqlQuotationService : IQuotationService
         var quotation = await _dbContext.Quotations
             .AsNoTracking()
             .Include(q => q.QuotationModules)
+            .Include(q => q.AdditionalScopes)
             .FirstOrDefaultAsync(q => q.Id == quotationId);
         if (quotation is null) return new List<QuotationRevisionEntry>();
 
@@ -177,6 +179,7 @@ public class SqlQuotationService : IQuotationService
         var quotations = await _dbContext.Quotations
             .AsNoTracking()
             .Include(q => q.QuotationModules)
+            .Include(q => q.AdditionalScopes)
             .OrderByDescending(q => q.GeneratedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -230,6 +233,7 @@ public class SqlQuotationService : IQuotationService
                             .First(m => m.ModuleName == moduleName).ImplementationEffortUnit
                     })
                     .ToList(),
+                AdditionalScopes = q.AdditionalScopes.ToList(),
                 GeneratedAt = q.GeneratedAt,
                 DiscountPercentage = q.DiscountPercentage
             };
@@ -244,6 +248,7 @@ public class SqlQuotationService : IQuotationService
         var quotation = await _dbContext.Quotations
             .AsNoTracking()
             .Include(q => q.QuotationModules)
+            .Include(q => q.AdditionalScopes)
             .FirstOrDefaultAsync(q => q.Id == quotationId);
 
         if (quotation is null)
@@ -295,6 +300,7 @@ public class SqlQuotationService : IQuotationService
                         .First(m => m.ModuleName == moduleName).ImplementationEffortUnit
                 })
                 .ToList(),
+            AdditionalScopes = quotation.AdditionalScopes.ToList(),
             GeneratedAt = quotation.GeneratedAt,
             DiscountPercentage = quotation.DiscountPercentage
         };
@@ -468,8 +474,30 @@ public class SqlQuotationService : IQuotationService
             throw new ArgumentException($"Unknown module(s): {string.Join(", ", unknown)}");
     }
 
+    private async Task ValidateAdditionalScopesAsync(IEnumerable<AdditionalScopeRequest>? scopes)
+    {
+        var additionalScopes = scopes?.ToList() ?? new List<AdditionalScopeRequest>();
+        if (additionalScopes.Count == 0) return;
+
+        var modules = await _moduleService.GetModulesAsync();
+        var validNames = modules
+            .Select(module => module.Module)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var unknown = additionalScopes
+            .Select(scope => scope.Modules?.Trim() ?? string.Empty)
+            .Where(moduleName => !string.IsNullOrWhiteSpace(moduleName) && !validNames.Contains(moduleName))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (unknown.Count > 0)
+            throw new ArgumentException($"Unknown additional scope module(s): {string.Join(", ", unknown)}");
+    }
+
     private async Task SaveToDatabaseAsync(QuotationResult result, QuotationRequest request, string quotationNo)
     {
+        var moduleIds = await _dbContext.Modules
+            .AsNoTracking()
+            .ToDictionaryAsync(m => m.ModuleName, m => m.Id, StringComparer.OrdinalIgnoreCase);
         var detailsByModule = request.ModuleDetails
             .ToDictionary(d => d.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
         var pricing = await CalculatePricingAsync(request.SelectedModules, request.ModuleDetails, request.DiscountPercentage);
@@ -512,7 +540,24 @@ public class SqlQuotationService : IQuotationService
                 DiscountPercentage = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).DiscountPercentage,
                 DiscountAmount = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).DiscountAmount,
                 FinalPrice = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).FinalPrice
-            }).ToList()
+            }).ToList(),
+            AdditionalScopes = request.AdditionalScopes
+                .Where(scope => !string.IsNullOrWhiteSpace(scope.Modules))
+                .Select(scope => new AdditionalScope
+                {
+                    QuotationId = result.QuotationId,
+                    Requirement = scope.Requirement?.Trim() ?? string.Empty,
+                    ModulesId = scope.ModulesId > 0
+                        ? scope.ModulesId
+                        : moduleIds.GetValueOrDefault(scope.Modules.Trim()),
+                    Modules = scope.Modules.Trim(),
+                    NoOfManpower = scope.NoOfManpower,
+                    NoOfDays = scope.NoOfDays,
+                    Rate = scope.Rate,
+                    Amount = scope.NoOfManpower * scope.NoOfDays * scope.Rate,
+                    Price = scope.NoOfManpower * scope.NoOfDays * scope.Rate
+                })
+                .ToList()
         };
 
         _dbContext.Quotations.Add(quotation);

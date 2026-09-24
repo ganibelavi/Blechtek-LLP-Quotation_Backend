@@ -29,6 +29,8 @@ public class QuotationRequest
 
     public List<QuotationModuleRequest> ModuleDetails { get; set; } = new();
 
+    public List<AdditionalScopeRequest> AdditionalScopes { get; set; } = new();
+
     [Required]
     public QuotationToInfo QuotationTo { get; set; } = new();
 
@@ -55,6 +57,32 @@ public class QuotationModuleRequest
     public string? ImplementationEffortUnit { get; set; }
 
     public decimal? ModulePriceOverride { get; set; }
+}
+
+public class AdditionalScopeRequest
+{
+    [StringLength(500)]
+    public string Requirement { get; set; } = string.Empty;
+
+    public int ModulesId { get; set; }
+
+    [StringLength(200)]
+    public string Modules { get; set; } = string.Empty;
+
+    [Range(0, int.MaxValue)]
+    public int NoOfManpower { get; set; }
+
+    [Range(0, int.MaxValue)]
+    public int NoOfDays { get; set; }
+
+    [Range(0, double.MaxValue)]
+    public decimal Rate { get; set; }
+
+    [Range(0, double.MaxValue)]
+    public decimal Amount { get; set; }
+
+    [Range(0, double.MaxValue)]
+    public decimal Price { get; set; }
 }
 
 public class QuotationToInfo
@@ -117,6 +145,7 @@ public class QuotationHistoryEntry
     public string ReferenceBy { get; set; } = string.Empty;
     public List<string> Modules { get; set; } = new();
     public List<QuotationModuleDetail> ModuleDetails { get; set; } = new();
+    public List<AdditionalScope> AdditionalScopes { get; set; } = new();
     public DateTime GeneratedAt { get; set; }
     public decimal? DiscountPercentage { get; set; }
 }
