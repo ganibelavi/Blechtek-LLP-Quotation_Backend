@@ -523,8 +523,7 @@ public class SqlQuotationService : IQuotationService
             QuotationToContactNo = request.QuotationTo.ContactNo,
             QuotationToEmail = request.QuotationTo.Email,
             GeneratedAt = result.GeneratedAt,
-            DiscountPercentage = GetCommonDiscountPercentage(
-                pricing.Select(item => (decimal?)item.DiscountPercentage)),
+            DiscountPercentage = request.DiscountPercentage > 0 ? request.DiscountPercentage : (decimal?)null,
             ModulePriceTotal = pricing.Sum(p => p.ModulePrice),
             ImplementationPriceTotal = pricing.Sum(p => p.ImplementationPrice),
             Subtotal = pricing.Sum(p => p.ModuleSubtotal),
@@ -690,17 +689,6 @@ public class SqlQuotationService : IQuotationService
         });
     }
 
-    private static decimal? GetCommonDiscountPercentage(IEnumerable<decimal?> discounts)
-    {
-        var values = discounts
-            .Where(discount => discount.HasValue)
-            .Select(discount => discount!.Value)
-            .Distinct()
-            .ToList();
-
-        return values.Count == 1 ? values[0] : null;
-    }
-
     /// <summary>
     /// Updates the discount percentage for an existing quotation and regenerates the Word/PDF documents.
     /// </summary>
@@ -780,9 +768,6 @@ public class SqlQuotationService : IQuotationService
 
         quotation.ValidationDate = validationDate;
 
-        var previousDiscounts = quotation.QuotationModules
-            .ToDictionary(m => m.ModuleName, m => m.DiscountPercentage, StringComparer.OrdinalIgnoreCase);
-
         var detailsByModule = (moduleDetails ?? new List<QuotationModuleRequest>())
             .ToDictionary(d => d.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
 
@@ -802,12 +787,7 @@ public class SqlQuotationService : IQuotationService
                 : null
         }).ToList();
         await ApplyPricingSnapshotAsync(quotation, quotation.QuotationModules, quotation.DiscountPercentage ?? 0m);
-        quotation.DiscountPercentage = GetCommonDiscountPercentage(
-            quotation.QuotationModules.Select(module => module.DiscountPercentage));
-        var discountChanged = quotation.QuotationModules.Any(module =>
-            previousDiscounts.TryGetValue(module.ModuleName, out var previousDiscount) &&
-            previousDiscount != module.DiscountPercentage);
-        AddHistorySnapshot(quotation, discountChanged ? "DiscountUpdated" : "DetailsUpdated");
+        AddHistorySnapshot(quotation, "DetailsUpdated");
 
         var request = new QuotationRequest
         {
@@ -1003,6 +983,7 @@ public class SqlQuotationService : IQuotationService
 
                 PopulateScopeTable(body, modules, request.SelectedModules);
                 PopulatePricingTableFromTemplate(body, request, modulePrices, discountPercentage, subtotal, implementationPriceTotal, modulePriceTotal, discountAmount, finalPrice);
+                PopulateLicenseRenewalModuleRows(body, request.SelectedModules);
                 NormalizeStandardPricingRows(body);
 
                 PopulateAdditionalScopeTable(body, request.AdditionalScopes);
@@ -1428,6 +1409,46 @@ public class SqlQuotationService : IQuotationService
             }
             overallTemplateRow.Remove();
         }
+    }
+
+    /// <summary>
+    /// Clones the "License renewal" row (the one carrying the {{MODULE_NAME}} placeholder
+    /// in its price column) once per selected module, so the same particulars text is
+    /// repeated for each module with that module's name shown in the price column,
+    /// matching how the module price / implementation rows are already repeated per module.
+    /// </summary>
+    private static void PopulateLicenseRenewalModuleRows(
+        Body body,
+        IEnumerable<string> selectedModules)
+    {
+        var moduleNames = selectedModules?.ToList() ?? new List<string>();
+        if (moduleNames.Count == 0) return;
+
+        var templateRow = body
+            .Descendants<TableRow>()
+            .FirstOrDefault(row =>
+            {
+                var rowText = string.Concat(row.Descendants<Text>().Select(t => t.Text));
+                return rowText.Contains("{{MODULE_NAME}}", StringComparison.Ordinal);
+            });
+
+        if (templateRow is null) return;
+
+        foreach (var moduleName in moduleNames)
+        {
+            var clonedRow = (TableRow)templateRow.CloneNode(true);
+            var rowReplacements = new Dictionary<string, string>
+            {
+                ["{{MODULE_NAME}}"] = moduleName
+            };
+            foreach (var paragraph in clonedRow.Descendants<Paragraph>())
+            {
+                ReplaceParagraphText(paragraph, rowReplacements);
+            }
+            templateRow.InsertBeforeSelf(clonedRow);
+        }
+
+        templateRow.Remove();
     }
 
     private static void ReplaceRowPlaceholders(TableRow row, Dictionary<string, string> replacements)
