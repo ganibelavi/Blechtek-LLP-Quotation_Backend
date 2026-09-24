@@ -1345,8 +1345,8 @@ public class SqlQuotationService : IQuotationService
             var modulePrice = module?.Price ?? 0m;
             var implementationEffort = GetEffortMultiplier(detail?.ImplementationEffortUnit);
             var implementationRate = module?.ImplementationEffortCost ?? 0m;
-            var implementationTotal = implementationEffort * implementationRate;
             var noOfUsers = detail?.NoOfUsers ?? 0;
+            var implementationTotal = noOfUsers * implementationRate;
 
             var moduleReplacements = new Dictionary<string, string>
             {
