@@ -127,6 +127,30 @@ BEGIN
 END";
     historyTableCommand.ExecuteNonQuery();
 
+    using var additionalScopesTableCommand = connection.CreateCommand();
+    additionalScopesTableCommand.CommandText = @"
+IF OBJECT_ID(N'dbo.AdditionalScopes', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.AdditionalScopes
+    (
+        Id int IDENTITY(1,1) NOT NULL CONSTRAINT PK_AdditionalScopes PRIMARY KEY,
+        QuotationId nvarchar(50) NOT NULL,
+        Requirement nvarchar(500) NOT NULL,
+        ModulesId int NOT NULL,
+        Modules nvarchar(200) NOT NULL,
+        NoOfManpower int NOT NULL,
+        NoOfDays int NOT NULL,
+        Rate decimal(18,2) NOT NULL,
+        Amount decimal(18,2) NOT NULL,
+        Price decimal(18,2) NOT NULL,
+        CONSTRAINT FK_AdditionalScopes_Modules FOREIGN KEY (ModulesId) REFERENCES dbo.Modules(Id),
+        CONSTRAINT FK_AdditionalScopes_Quotations FOREIGN KEY (QuotationId) REFERENCES dbo.Quotations(Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_AdditionalScopes_ModulesId ON dbo.AdditionalScopes (ModulesId);
+    CREATE INDEX IX_AdditionalScopes_QuotationId ON dbo.AdditionalScopes (QuotationId);
+END";
+    additionalScopesTableCommand.ExecuteNonQuery();
+
     using var masterTablesCommand = connection.CreateCommand();
     masterTablesCommand.CommandText = @"
 IF OBJECT_ID(N'dbo.company_profile', N'U') IS NULL
