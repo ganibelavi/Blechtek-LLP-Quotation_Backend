@@ -934,7 +934,7 @@ public class SqlQuotationService : IQuotationService
                     finalPrice);
                 var pricingParticularsText = string.Join(
                     Environment.NewLine,
-                    "Product License - {{MODULE_LIST}} (single installation). Scope as listed above.",
+                    "CQUAL {{MODULE_LIST}} Product License applicable for single site - Users{{MODULE_DETAILS}}",
                     moduleParticularsText,
                     string.Empty,
                     overallPricingParticularsText);
@@ -982,10 +982,7 @@ public class SqlQuotationService : IQuotationService
                 };
 
                 PopulateScopeTable(body, modules, request.SelectedModules);
-                PopulatePricingTable(
-                    body,
-                    pricingParticularsText,
-                    pricingValuesText);
+                PopulatePricingTableFromTemplate(body, request, modulePrices, discountPercentage, subtotal, implementationPriceTotal, modulePriceTotal, discountAmount, finalPrice);
                 NormalizeStandardPricingRows(body);
 
                 PopulateAdditionalScopeTable(body, request.AdditionalScopes);
@@ -1086,6 +1083,8 @@ public class SqlQuotationService : IQuotationService
                 detail => detail.ModuleName.Trim(),
                 StringComparer.OrdinalIgnoreCase);
 
+        const string licenseRenewalText = "The License renewal would be required to be done every Year These renewal fees will facilitate to have the Product Upgrades, which would cover improvements, bug fixes, and changes in AIAG VDA compliances. Support of 7 Man days is included in this price.";
+
         return string.Join(
             Environment.NewLine + Environment.NewLine,
             selectedModules.Select(moduleName =>
@@ -1094,10 +1093,7 @@ public class SqlQuotationService : IQuotationService
                 return string.Join(
                     Environment.NewLine,
                     $"{moduleName}:",
-                    $"No. of Users: {detail?.NoOfUsers?.ToString() ?? "—"}",
-                    $"No. of Installations: {detail?.NoOfInstallations?.ToString() ?? "—"}",
-                    $"No. of Sites: {detail?.NoOfSites?.ToString() ?? "—"}",
-                    $"Implementation Effort: {detail?.ImplementationEffortUnit ?? "—"}",
+                    licenseRenewalText,
                     "Module Price:",
                     "Implementation Total:",
                     "Module Subtotal:",
@@ -1274,6 +1270,154 @@ public class SqlQuotationService : IQuotationService
         pricingRow.Remove();
     }
 
+    private static void PopulatePricingTableFromTemplate(
+        Body body,
+        QuotationRequest request,
+        IReadOnlyDictionary<string, ModuleItem> modulePrices,
+        decimal discountPercentage,
+        decimal subtotal,
+        decimal implementationPriceTotal,
+        decimal modulePriceTotal,
+        decimal discountAmount,
+        decimal finalPrice)
+    {
+        const string licenseRenewalText = "The License renewal would be required to be done every Year These renewal fees will facilitate to have the Product Upgrades, which would cover improvements, bug fixes, and changes in AIAG VDA compliances. Support of 7 Man days is included in this price.";
+
+        // Find the first template row (Product License row)
+        var allRows = body.Descendants<TableRow>().ToList();
+        var templateRowIndex = -1;
+
+        for (int i = 0; i < allRows.Count; i++)
+        {
+            var rowText = string.Concat(allRows[i].Descendants<Text>().Select(t => t.Text));
+            if (rowText.Contains("{{NO_OF_USERS}}", StringComparison.Ordinal) &&
+                rowText.Contains("{{MODULE_PRICE}}", StringComparison.Ordinal))
+            {
+                templateRowIndex = i;
+                break;
+            }
+        }
+
+        if (templateRowIndex == -1) return;
+
+        // Get the per-module template rows (the module price row and the implementation
+        // row), stopping before the "Customization" / "TBD" row.
+        // FIX: "Customization" and "TBD" live in separate table cells, so concatenating a
+        // row's text (as done below) joins them with no space in between (e.g.
+        // "2CustomizationTBD"). The previous check looked for the exact phrase
+        // "Customization TBD" (with a space), which never matched — so that row was never
+        // excluded and got swept into the 3-row block and cloned once per module. Here we
+        // check for the two keywords independently and treat that row as a stop marker: we
+        // collect rows up to (but not including) it, so it is left completely untouched —
+        // never cloned, never removed — and appears exactly once, wherever it sits in the
+        // template. A small scan cap guards against an unbounded scan if that marker row is
+        // ever missing from the template.
+        const int maxTemplateBlockRows = 5;
+        var templateRows = new List<TableRow>();
+        var offset = 0;
+        while (templateRows.Count < maxTemplateBlockRows && templateRowIndex + offset < allRows.Count)
+        {
+            var row = allRows[templateRowIndex + offset];
+            var rowText = string.Concat(row.Descendants<Text>().Select(t => t.Text));
+            var isCustomizationTbdRow =
+                rowText.Contains("Customization", StringComparison.OrdinalIgnoreCase) &&
+                rowText.Contains("TBD", StringComparison.OrdinalIgnoreCase);
+            if (isCustomizationTbdRow)
+            {
+                break;
+            }
+
+            templateRows.Add(row);
+            offset++;
+        }
+
+        if (templateRows.Count == 0) return;
+
+        var moduleNames = request.SelectedModules.ToList();
+        int rowNum = 1;
+
+        foreach (var moduleName in moduleNames)
+        {
+            modulePrices.TryGetValue(moduleName, out var module);
+            var detail = request.ModuleDetails?.FirstOrDefault(d => string.Equals(d.ModuleName, moduleName, StringComparison.OrdinalIgnoreCase));
+
+            var modulePrice = module?.Price ?? 0m;
+            var implementationEffort = GetEffortMultiplier(detail?.ImplementationEffortUnit);
+            var implementationRate = module?.ImplementationEffortCost ?? 0m;
+            var implementationTotal = implementationEffort * implementationRate;
+            var noOfUsers = detail?.NoOfUsers ?? 0;
+
+            var moduleReplacements = new Dictionary<string, string>
+            {
+                ["{{MODULE_NAME}}"] = moduleName,
+                ["{{LICENSE_RENEWAL}}"] = licenseRenewalText,
+                ["{{NO_OF_USERS}}"] = noOfUsers.ToString(),
+                ["{{MODULE_PRICE}}"] = $"{modulePrice:N2}",
+                ["{{IMPL_EFFORT}}"] = $"{implementationEffort:N0}",
+                ["{{IMPL_RATE}}"] = $"{implementationRate:N2}",
+                ["{{IMPL_TOTAL}}"] = $"{implementationTotal:N2}"
+            };
+
+            // Clone all 3 rows for this module
+            foreach (var templateRow in templateRows)
+            {
+                var clonedRow = (TableRow)templateRow.CloneNode(true);
+                ReplaceRowPlaceholders(clonedRow, moduleReplacements);
+                templateRows[0].InsertBeforeSelf(clonedRow);
+            }
+            rowNum++;
+        }
+
+        // Remove the template block
+        foreach (var templateRow in templateRows)
+        {
+            templateRow.Remove();
+        }
+
+        // Overall Calculation rows - find template row for overall
+        var overallTemplateRow = body
+            .Descendants<TableRow>()
+            .FirstOrDefault(row =>
+            {
+                var rowText = string.Concat(row.Descendants<Text>().Select(t => t.Text));
+                return rowText.Contains("{{OVERALL_LABEL}}", StringComparison.Ordinal) &&
+                       rowText.Contains("{{OVERALL_VALUE}}", StringComparison.Ordinal);
+            });
+
+        if (overallTemplateRow != null)
+        {
+            var overallRows = new[]
+            {
+                ("Module Price:", $"{modulePriceTotal:N2}"),
+                ("Implementation Total:", $"{implementationPriceTotal:N2}"),
+                ("Subtotal:", $"{subtotal:N2}"),
+                ($"Discount ({discountPercentage:N2}%):", $"{discountAmount:N2}"),
+                ("Final Price:", $"{finalPrice:N2}")
+            };
+
+            foreach (var (label, value) in overallRows)
+            {
+                var row = (TableRow)overallTemplateRow.CloneNode(true);
+                var replacements = new Dictionary<string, string>
+                {
+                    ["{{OVERALL_LABEL}}"] = label,
+                    ["{{OVERALL_VALUE}}"] = value
+                };
+                ReplaceRowPlaceholders(row, replacements);
+                overallTemplateRow.InsertBeforeSelf(row);
+            }
+            overallTemplateRow.Remove();
+        }
+    }
+
+    private static void ReplaceRowPlaceholders(TableRow row, Dictionary<string, string> replacements)
+    {
+        foreach (var paragraph in row.Descendants<Paragraph>())
+        {
+            ReplaceParagraphText(paragraph, replacements);
+        }
+    }
+
     private static List<string> SplitTextLines(string text)
     {
         return text
@@ -1291,7 +1435,7 @@ public class SqlQuotationService : IQuotationService
         var isModuleName = line.EndsWith(":", StringComparison.Ordinal) &&
             index + 1 < particularsLines.Count &&
             particularsLines[index + 1].Trim().StartsWith(
-                "No. of Users:",
+                "The License renewal",
                 StringComparison.OrdinalIgnoreCase);
 
         return isModuleName ||
