@@ -64,7 +64,7 @@ public class AdditionalScopeRequest
     [StringLength(500)]
     public string Requirement { get; set; } = string.Empty;
 
-    public int ModulesId { get; set; }
+    public int? ModulesId { get; set; }
 
     [StringLength(200)]
     public string Modules { get; set; } = string.Empty;

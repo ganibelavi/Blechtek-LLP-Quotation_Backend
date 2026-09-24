@@ -136,7 +136,7 @@ BEGIN
         Id int IDENTITY(1,1) NOT NULL CONSTRAINT PK_AdditionalScopes PRIMARY KEY,
         QuotationId nvarchar(50) NOT NULL,
         Requirement nvarchar(500) NOT NULL,
-        ModulesId int NOT NULL,
+        ModulesId int NULL,
         Modules nvarchar(200) NOT NULL,
         NoOfManpower int NOT NULL,
         NoOfDays int NOT NULL,
@@ -150,6 +150,19 @@ BEGIN
     CREATE INDEX IX_AdditionalScopes_QuotationId ON dbo.AdditionalScopes (QuotationId);
 END";
     additionalScopesTableCommand.ExecuteNonQuery();
+
+    using var additionalScopesModuleIdCommand = connection.CreateCommand();
+    additionalScopesModuleIdCommand.CommandText = @"
+IF OBJECT_ID(N'dbo.AdditionalScopes', N'U') IS NOT NULL
+AND EXISTS (
+    SELECT 1
+    FROM sys.columns
+    WHERE object_id = OBJECT_ID(N'dbo.AdditionalScopes')
+      AND name = N'ModulesId'
+      AND is_nullable = 0
+)
+    ALTER TABLE dbo.AdditionalScopes ALTER COLUMN ModulesId int NULL";
+    additionalScopesModuleIdCommand.ExecuteNonQuery();
 
     using var masterTablesCommand = connection.CreateCommand();
     masterTablesCommand.CommandText = @"

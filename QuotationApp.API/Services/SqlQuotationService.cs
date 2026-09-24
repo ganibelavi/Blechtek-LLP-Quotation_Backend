@@ -485,13 +485,20 @@ public class SqlQuotationService : IQuotationService
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var unknown = additionalScopes
             .Select(scope => scope.Modules?.Trim() ?? string.Empty)
-            .Where(moduleName => !string.IsNullOrWhiteSpace(moduleName) && !validNames.Contains(moduleName))
+            .Where(moduleName =>
+                !string.IsNullOrWhiteSpace(moduleName) &&
+                !IsOtherScopeModule(moduleName) &&
+                !validNames.Contains(moduleName))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         if (unknown.Count > 0)
             throw new ArgumentException($"Unknown additional scope module(s): {string.Join(", ", unknown)}");
     }
+
+    private static bool IsOtherScopeModule(string moduleName) =>
+        string.Equals(moduleName, "Other", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(moduleName, "Others", StringComparison.OrdinalIgnoreCase);
 
     private async Task SaveToDatabaseAsync(QuotationResult result, QuotationRequest request, string quotationNo)
     {
@@ -543,19 +550,27 @@ public class SqlQuotationService : IQuotationService
             }).ToList(),
             AdditionalScopes = request.AdditionalScopes
                 .Where(scope => !string.IsNullOrWhiteSpace(scope.Modules))
-                .Select(scope => new AdditionalScope
+                .Select(scope =>
                 {
-                    QuotationId = result.QuotationId,
-                    Requirement = scope.Requirement?.Trim() ?? string.Empty,
-                    ModulesId = scope.ModulesId > 0
-                        ? scope.ModulesId
-                        : moduleIds.GetValueOrDefault(scope.Modules.Trim()),
-                    Modules = scope.Modules.Trim(),
-                    NoOfManpower = scope.NoOfManpower,
-                    NoOfDays = scope.NoOfDays,
-                    Rate = scope.Rate,
-                    Amount = scope.NoOfManpower * scope.NoOfDays * scope.Rate,
-                    Price = scope.NoOfManpower * scope.NoOfDays * scope.Rate
+                    var moduleName = scope.Modules.Trim();
+                    var isOtherScope = IsOtherScopeModule(moduleName);
+
+                    return new AdditionalScope
+                    {
+                        QuotationId = result.QuotationId,
+                        Requirement = scope.Requirement?.Trim() ?? string.Empty,
+                        ModulesId = isOtherScope
+                            ? null
+                            : scope.ModulesId > 0
+                                ? scope.ModulesId
+                                : moduleIds.GetValueOrDefault(moduleName),
+                        Modules = isOtherScope ? "Others" : moduleName,
+                        NoOfManpower = scope.NoOfManpower,
+                        NoOfDays = scope.NoOfDays,
+                        Rate = scope.Rate,
+                        Amount = scope.NoOfManpower * scope.NoOfDays * scope.Rate,
+                        Price = scope.NoOfManpower * scope.NoOfDays * scope.Rate
+                    };
                 })
                 .ToList()
         };
