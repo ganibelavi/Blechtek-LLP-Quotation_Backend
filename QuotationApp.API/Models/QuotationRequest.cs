@@ -56,6 +56,9 @@ public class QuotationModuleRequest
     [StringLength(30)]
     public string? ImplementationEffortUnit { get; set; }
 
+    [Range(0, 100, ErrorMessage = "Module discount must be between 0 and 100.")]
+    public decimal? DiscountPercentage { get; set; }
+
     public decimal? ModulePriceOverride { get; set; }
 }
 

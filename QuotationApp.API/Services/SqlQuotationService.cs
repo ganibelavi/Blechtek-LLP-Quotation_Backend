@@ -589,8 +589,6 @@ public class SqlQuotationService : IQuotationService
         var modulePrices = modules.ToDictionary(m => m.Module, StringComparer.OrdinalIgnoreCase);
         var detailsByModule = (moduleDetails ?? Enumerable.Empty<QuotationModuleRequest>())
             .ToDictionary(d => d.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
-        var discount = Math.Clamp(discountPercentage, 0m, 100m);
-
         return selectedModules.Select(moduleName =>
         {
             modulePrices.TryGetValue(moduleName.Trim(), out var module);
@@ -603,6 +601,7 @@ public class SqlQuotationService : IQuotationService
             var implementationMultiplier = GetEffortMultiplier(detail?.ImplementationEffortUnit);
             var implementationPrice = implementationUnitPrice * implementationMultiplier;
             var moduleSubtotal = modulePrice + implementationPrice;
+            var discount = Math.Clamp(detail?.DiscountPercentage ?? discountPercentage, 0m, 100m);
             var discountAmount = moduleSubtotal * discount / 100m;
 
             return new QuotationModulePricing
@@ -722,7 +721,8 @@ public class SqlQuotationService : IQuotationService
                 NoOfUsers = m.NoOfUsers,
                 NoOfInstallations = m.NoOfInstallations,
                 NoOfSites = m.NoOfSites,
-                ImplementationEffortUnit = m.ImplementationEffortUnit
+                ImplementationEffortUnit = m.ImplementationEffortUnit,
+                DiscountPercentage = m.DiscountPercentage
             }).ToList(),
             QuotationTo = new QuotationToInfo
             {
@@ -781,6 +781,9 @@ public class SqlQuotationService : IQuotationService
             NoOfSites = detailsByModule.TryGetValue(m, out detail) ? detail.NoOfSites : null,
             ImplementationEffortUnit = detailsByModule.TryGetValue(m, out detail)
                 ? detail.ImplementationEffortUnit
+                : null,
+            DiscountPercentage = detailsByModule.TryGetValue(m, out detail)
+                ? detail.DiscountPercentage
                 : null
         }).ToList();
         await ApplyPricingSnapshotAsync(quotation, quotation.QuotationModules, quotation.DiscountPercentage ?? 0m);
@@ -802,7 +805,8 @@ public class SqlQuotationService : IQuotationService
                     NoOfUsers = m.NoOfUsers,
                     NoOfInstallations = m.NoOfInstallations,
                     NoOfSites = m.NoOfSites,
-                    ImplementationEffortUnit = m.ImplementationEffortUnit
+                    ImplementationEffortUnit = m.ImplementationEffortUnit,
+                    DiscountPercentage = m.DiscountPercentage
                 }).ToList(),
             QuotationTo = new QuotationToInfo
             {
@@ -842,7 +846,8 @@ public class SqlQuotationService : IQuotationService
             NoOfUsers = m.NoOfUsers,
             NoOfInstallations = m.NoOfInstallations,
             NoOfSites = m.NoOfSites,
-            ImplementationEffortUnit = m.ImplementationEffortUnit
+            ImplementationEffortUnit = m.ImplementationEffortUnit,
+            DiscountPercentage = m.DiscountPercentage
         }).ToList();
         var pricing = await CalculatePricingAsync(
             quotationModules.Select(m => m.ModuleName),

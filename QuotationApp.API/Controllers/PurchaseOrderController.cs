@@ -301,7 +301,7 @@ public class PurchaseOrderController : ControllerBase
 
         var quotationLookup = await _db.Quotations
             .AsNoTracking()
-            .Select(q => new { q.Id, q.QuotationNo })
+            .Select(q => new { q.Id, q.QuotationNo, q.OrganizationName })
             .ToListAsync();
 
         var response = records.Select(record =>
@@ -323,6 +323,9 @@ public class PurchaseOrderController : ControllerBase
                 customerId = record.CustomerId,
                 supplierId = record.SupplierId,
                 quotationId = record.QuotationId,
+                organizationName = !string.IsNullOrWhiteSpace(record.QuotationId)
+                    ? quotationLookup.FirstOrDefault(q => q.Id == record.QuotationId)?.OrganizationName
+                    : null,
                 quotationRefNo = record.QuotationRefNo ?? linkedQuotationNo,
                 quotationRefDate = record.QuotationRefDate,
                 poNo = record.PoNo,
