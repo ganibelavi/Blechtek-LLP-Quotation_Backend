@@ -196,6 +196,10 @@ public class SqlQuotationService : IQuotationService
                 .OrderBy(m => m, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+            var totalSubtotal = q.QuotationModules.Sum(m => m.ModuleSubtotal ?? 0m);
+            var totalDiscountAmount = q.QuotationModules.Sum(m => m.DiscountAmount ?? 0m);
+            var overallDiscountPercentage = totalSubtotal > 0 ? (totalDiscountAmount / totalSubtotal) * 100m : 0m;
+
             return new QuotationHistoryEntry
             {
                 QuotationId = q.Id,
@@ -235,7 +239,7 @@ public class SqlQuotationService : IQuotationService
                     .ToList(),
                 AdditionalScopes = q.AdditionalScopes.ToList(),
                 GeneratedAt = q.GeneratedAt,
-                DiscountPercentage = q.DiscountPercentage
+                DiscountPercentage = overallDiscountPercentage
             };
         }).ToList();
     }
@@ -262,6 +266,9 @@ public class SqlQuotationService : IQuotationService
             .Select(m => m.ModuleName)
             .OrderBy(m => m, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        var totalSubtotal = quotation.QuotationModules.Sum(m => m.ModuleSubtotal ?? 0m);
+        var totalDiscountAmount = quotation.QuotationModules.Sum(m => m.DiscountAmount ?? 0m);
 
         return new QuotationHistoryEntry
         {
@@ -302,7 +309,7 @@ public class SqlQuotationService : IQuotationService
                 .ToList(),
             AdditionalScopes = quotation.AdditionalScopes.ToList(),
             GeneratedAt = quotation.GeneratedAt,
-            DiscountPercentage = quotation.DiscountPercentage
+            DiscountPercentage = totalSubtotal > 0 ? (totalDiscountAmount / totalSubtotal) * 100m : 0m
         };
     }
 
@@ -336,7 +343,9 @@ public class SqlQuotationService : IQuotationService
                 var totalDiscount = monthQuotes.Sum(q =>
                 {
                     var price = q.QuotationModules.Sum(m => modulePrices.GetValueOrDefault(m.ModuleName, 0));
-                    var discountPct = q.DiscountPercentage ?? 0;
+                    var totalSubtotal = q.QuotationModules.Sum(m => m.ModuleSubtotal ?? 0m);
+                    var totalDiscountAmount = q.QuotationModules.Sum(m => m.DiscountAmount ?? 0m);
+                    var discountPct = totalSubtotal > 0 ? (totalDiscountAmount / totalSubtotal) * 100m : 0m;
                     return price * discountPct / 100;
                 });
                 var revenue = totalPrice - totalDiscount;
@@ -419,7 +428,9 @@ public class SqlQuotationService : IQuotationService
         var totalQuotedAmount = allQuotations.Sum(q =>
         {
             var totalPrice = q.QuotationModules.Sum(m => modulePrices.GetValueOrDefault(m.ModuleName, 0));
-            var discountPercentage = q.DiscountPercentage ?? 0;
+            var totalSubtotal = q.QuotationModules.Sum(m => m.ModuleSubtotal ?? 0m);
+            var totalDiscountAmount = q.QuotationModules.Sum(m => m.DiscountAmount ?? 0m);
+            var discountPercentage = totalSubtotal > 0 ? (totalDiscountAmount / totalSubtotal) * 100m : 0m;
             var discountAmount = totalPrice * discountPercentage / 100;
             return totalPrice - discountAmount;
         });
@@ -430,7 +441,9 @@ public class SqlQuotationService : IQuotationService
             .Select(q =>
             {
                 var totalPrice = q.QuotationModules.Sum(m => modulePrices.GetValueOrDefault(m.ModuleName, 0));
-                var discountPercentage = q.DiscountPercentage ?? 0;
+                var totalSubtotal = q.QuotationModules.Sum(m => m.ModuleSubtotal ?? 0m);
+                var totalDiscountAmount = q.QuotationModules.Sum(m => m.DiscountAmount ?? 0m);
+                var discountPercentage = totalSubtotal > 0 ? (totalDiscountAmount / totalSubtotal) * 100m : 0m;
                 var discountAmount = totalPrice * discountPercentage / 100;
                 var finalPrice = totalPrice - discountAmount;
 
@@ -523,7 +536,7 @@ public class SqlQuotationService : IQuotationService
             QuotationToContactNo = request.QuotationTo.ContactNo,
             QuotationToEmail = request.QuotationTo.Email,
             GeneratedAt = result.GeneratedAt,
-            DiscountPercentage = request.DiscountPercentage > 0 ? request.DiscountPercentage : (decimal?)null,
+            DiscountPercentage = null,
             ModulePriceTotal = pricing.Sum(p => p.ModulePrice),
             ImplementationPriceTotal = pricing.Sum(p => p.ImplementationPrice),
             Subtotal = pricing.Sum(p => p.ModuleSubtotal),
@@ -670,6 +683,10 @@ public class SqlQuotationService : IQuotationService
 
     private void AddHistorySnapshot(QuotationEntity quotation, string changeType)
     {
+        var totalSubtotal = quotation.QuotationModules.Sum(m => m.ModuleSubtotal ?? 0m);
+        var totalDiscountAmount = quotation.QuotationModules.Sum(m => m.DiscountAmount ?? 0m);
+        var overallDiscountPercentage = totalSubtotal > 0 ? (totalDiscountAmount / totalSubtotal) * 100m : (decimal?)null;
+
         _dbContext.QuotationHistory.Add(new QuotationHistoryEntity
         {
             QuotationId = quotation.Id,
@@ -683,7 +700,7 @@ public class SqlQuotationService : IQuotationService
             QuotationToContactNo = quotation.QuotationToContactNo,
             QuotationToEmail = quotation.QuotationToEmail,
             ModulesJson = SerializeModules(quotation.QuotationModules.Select(m => m.ModuleName)),
-            DiscountPercentage = quotation.DiscountPercentage,
+            DiscountPercentage = overallDiscountPercentage,
             ChangedAt = DateTime.Now,
             ChangeType = changeType
         });
@@ -701,8 +718,7 @@ public class SqlQuotationService : IQuotationService
         if (quotation == null)
             return null;
 
-        // Update discount percentage
-        quotation.DiscountPercentage = discountPercentage > 0 ? discountPercentage : (decimal?)null;
+        // Update discount percentage on module level
         await ApplyPricingSnapshotAsync(quotation, quotation.QuotationModules, discountPercentage);
         AddHistorySnapshot(quotation, "DiscountUpdated");
 
@@ -786,7 +802,13 @@ public class SqlQuotationService : IQuotationService
                 ? detail.DiscountPercentage
                 : null
         }).ToList();
-        await ApplyPricingSnapshotAsync(quotation, quotation.QuotationModules, quotation.DiscountPercentage ?? 0m);
+
+        // Calculate discount percentage from module-level discounts
+        var totalSubtotal = quotation.QuotationModules.Sum(m => m.ModuleSubtotal ?? 0m);
+        var totalDiscountAmount = quotation.QuotationModules.Sum(m => m.DiscountAmount ?? 0m);
+        var discountPercentage = totalSubtotal > 0 ? (totalDiscountAmount / totalSubtotal) * 100m : 0m;
+
+        await ApplyPricingSnapshotAsync(quotation, quotation.QuotationModules, discountPercentage);
         AddHistorySnapshot(quotation, "DetailsUpdated");
 
         var request = new QuotationRequest
@@ -815,7 +837,7 @@ public class SqlQuotationService : IQuotationService
                 ContactNo = quotation.QuotationToContactNo,
                 Email = quotation.QuotationToEmail
             },
-            DiscountPercentage = quotation.DiscountPercentage ?? 0
+            DiscountPercentage = discountPercentage
         };
 
         var docxPath = await GenerateWordDocumentAsync(request, quotationId);
@@ -896,21 +918,15 @@ public class SqlQuotationService : IQuotationService
                 var modules = await moduleService.GetModulesAsync();
                 var modulePrices = modules.ToDictionary(m => m.Module, StringComparer.OrdinalIgnoreCase);
 
-                var modulePriceTotal = request.SelectedModules.Sum(moduleName =>
-                {
-                    var module = modulePrices.GetValueOrDefault(moduleName);
-                    return module?.Price ?? 0m;
-                });
-                var implementationPriceTotal = request.SelectedModules.Sum(moduleName =>
-                {
-                    var module = modulePrices.GetValueOrDefault(moduleName);
-                    var detail = request.ModuleDetails
-                        .FirstOrDefault(d => string.Equals(d.ModuleName, moduleName, StringComparison.OrdinalIgnoreCase));
-                    return (module?.ImplementationEffortCost ?? 0m) *
-                        GetEffortMultiplier(detail?.ImplementationEffortUnit);
-                });
-                var subtotal = modulePriceTotal + implementationPriceTotal;
-                var discountPercentage = request.DiscountPercentage > 0 ? request.DiscountPercentage : 0m;
+                var pricing = await CalculatePricingAsync(request.SelectedModules, request.ModuleDetails, request.DiscountPercentage);
+                var modulePriceTotal = pricing.Sum(p => p.ModulePrice);
+                var implementationPriceTotal = pricing.Sum(p => p.ImplementationPrice);
+                var subtotal = pricing.Sum(p => p.ModuleSubtotal);
+                var discountPercentage = request.DiscountPercentage > 0
+                    ? request.DiscountPercentage
+                    : (pricing.Any(p => p.DiscountPercentage > 0)
+                        ? pricing.Where(p => p.DiscountPercentage > 0).Average(p => p.DiscountPercentage)
+                        : 0m);
                 var discountAmount = subtotal * discountPercentage / 100m;
                 var finalPrice = subtotal - discountAmount;
                 var moduleParticularsText = FormatModuleParticulars(
@@ -1301,18 +1317,6 @@ public class SqlQuotationService : IQuotationService
 
         if (templateRowIndex == -1) return;
 
-        // Get the per-module template rows (the module price row and the implementation
-        // row), stopping before the "Customization" / "TBD" row.
-        // FIX: "Customization" and "TBD" live in separate table cells, so concatenating a
-        // row's text (as done below) joins them with no space in between (e.g.
-        // "2CustomizationTBD"). The previous check looked for the exact phrase
-        // "Customization TBD" (with a space), which never matched — so that row was never
-        // excluded and got swept into the 3-row block and cloned once per module. Here we
-        // check for the two keywords independently and treat that row as a stop marker: we
-        // collect rows up to (but not including) it, so it is left completely untouched —
-        // never cloned, never removed — and appears exactly once, wherever it sits in the
-        // template. A small scan cap guards against an unbounded scan if that marker row is
-        // ever missing from the template.
         const int maxTemplateBlockRows = 5;
         var templateRows = new List<TableRow>();
         var offset = 0;
@@ -1347,6 +1351,9 @@ public class SqlQuotationService : IQuotationService
             var implementationRate = module?.ImplementationEffortCost ?? 0m;
             var noOfUsers = detail?.NoOfUsers ?? 0;
             var implementationTotal = noOfUsers * implementationRate;
+            var moduleSubtotal = modulePrice + implementationTotal;
+            var moduleDiscount = moduleSubtotal * discountPercentage / 100m;
+            var moduleFinalPrice = moduleSubtotal - moduleDiscount;
 
             var moduleReplacements = new Dictionary<string, string>
             {
@@ -1356,7 +1363,11 @@ public class SqlQuotationService : IQuotationService
                 ["{{MODULE_PRICE}}"] = $"{modulePrice:N2}",
                 ["{{IMPL_EFFORT}}"] = $"{implementationEffort:N0}",
                 ["{{IMPL_RATE}}"] = $"{implementationRate:N2}",
-                ["{{IMPL_TOTAL}}"] = $"{implementationTotal:N2}"
+                ["{{IMPL_TOTAL}}"] = $"{implementationTotal:N2}",
+                ["{{MODULE_SUBTOTAL}}"] = $"{moduleSubtotal:N2}",
+                ["{{MODULE_DISCOUNT_PCT}}"] = $"{discountPercentage:N2}",
+                ["{{MODULE_DISCOUNT}}"] = $"{moduleDiscount:N2}",
+                ["{{MODULE_FINAL}}"] = $"{moduleFinalPrice:N2}"
             };
 
             // Clone all 3 rows for this module
