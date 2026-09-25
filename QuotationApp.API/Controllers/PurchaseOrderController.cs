@@ -85,6 +85,8 @@ public class PurchaseOrderController : ControllerBase
                     Rate = item.Rate,
                     ModulePrice = item.ModulePrice,
                     ImplementationPrice = item.ImplementationPrice,
+                    DiscountPercentage = item.DiscountPercentage,
+                    DiscountAmount = item.DiscountAmount,
                 })
                 .ToList();
 
@@ -197,6 +199,8 @@ public class PurchaseOrderController : ControllerBase
                 Rate = item.Rate,
                 ModulePrice = item.ModulePrice,
                 ImplementationPrice = item.ImplementationPrice,
+                DiscountPercentage = item.DiscountPercentage,
+                DiscountAmount = item.DiscountAmount,
             })
             .ToList();
 
@@ -274,6 +278,8 @@ public class PurchaseOrderController : ControllerBase
                 rate = i.Rate,
                 modulePrice = i.ModulePrice,
                 implementationPrice = i.ImplementationPrice,
+                discountPercentage = i.DiscountPercentage,
+                discountAmount = i.DiscountAmount,
             }).ToList(),
         };
 
@@ -364,6 +370,8 @@ public class PurchaseOrderController : ControllerBase
                     rate = i.Rate,
                     modulePrice = i.ModulePrice,
                     implementationPrice = i.ImplementationPrice,
+                    discountPercentage = i.DiscountPercentage,
+                    discountAmount = i.DiscountAmount,
                 }).ToList(),
             };
         }).ToList();

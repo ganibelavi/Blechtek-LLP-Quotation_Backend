@@ -124,6 +124,8 @@ public class PurchaseOrderItemEntity
     public decimal Rate { get; set; } = 0m;
     public decimal ModulePrice { get; set; } = 0m;
     public decimal ImplementationPrice { get; set; } = 0m;
+    public decimal DiscountPercentage { get; set; } = 0m;
+    public decimal DiscountAmount { get; set; } = 0m;
     public decimal LineTotal => Qty * Rate;
 
     public PurchaseOrderEntity? PurchaseOrder { get; set; }
@@ -247,6 +249,8 @@ public class PurchaseOrderItemRequest
     public decimal Rate { get; set; }
     public decimal ModulePrice { get; set; }
     public decimal ImplementationPrice { get; set; }
+    public decimal DiscountPercentage { get; set; }
+    public decimal DiscountAmount { get; set; }
 }
 
 public class UpdatePurchaseOrderVerificationRequest

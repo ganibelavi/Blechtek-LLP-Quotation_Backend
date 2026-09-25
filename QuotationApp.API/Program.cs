@@ -85,6 +85,17 @@ using (var scope = app.Services.CreateScope())
         connection.Open();
     }
 
+    using var purchaseOrderDiscountColumnsCommand = connection.CreateCommand();
+    purchaseOrderDiscountColumnsCommand.CommandText = @"
+IF OBJECT_ID(N'dbo.po_items', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.po_items', N'discount_percentage') IS NULL
+        ALTER TABLE dbo.po_items ADD discount_percentage decimal(5,2) NOT NULL CONSTRAINT DF_po_items_discount_percentage DEFAULT 0;
+    IF COL_LENGTH(N'dbo.po_items', N'discount_amount') IS NULL
+        ALTER TABLE dbo.po_items ADD discount_amount decimal(12,2) NOT NULL CONSTRAINT DF_po_items_discount_amount DEFAULT 0;
+END";
+    purchaseOrderDiscountColumnsCommand.ExecuteNonQuery();
+
     using var command = connection.CreateCommand();
     command.CommandText = @"SELECT CASE WHEN EXISTS (
         SELECT 1
