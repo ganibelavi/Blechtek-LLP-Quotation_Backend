@@ -1317,6 +1317,20 @@ public class SqlQuotationService : IQuotationService
 
         if (templateRowIndex == -1) return;
 
+        // Collect the per-module template rows (module price row, "Module Subtotal:" row,
+        // implementation row, etc.), stopping BEFORE either of two rows that must stay as
+        // single, static rows rather than being cloned once per module:
+        //   1. The "Customization" / "TBD" row.
+        //   2. The overall total row carrying the {{OVERALL_VALUE}} placeholder (e.g.
+        //      "Total of All Modules Final Price:").
+        // FIX: previously only the Customization/TBD row was treated as a stop marker, so
+        // the {{OVERALL_VALUE}} row — which sits earlier in the table, right after the
+        // per-module rows — got swept into the same block and cloned once per module, each
+        // clone left with an unresolved "{{OVERALL_VALUE}}" placeholder (since the per-module
+        // replacement dictionary has no such key). Now both rows act as stop markers, so
+        // whichever appears first ends the per-module block, and the row is left in place
+        // untouched — appearing exactly once — to be filled in separately below with the true
+        // combined total across all selected modules.
         const int maxTemplateBlockRows = 5;
         var templateRows = new List<TableRow>();
         var offset = 0;
@@ -1327,7 +1341,9 @@ public class SqlQuotationService : IQuotationService
             var isCustomizationTbdRow =
                 rowText.Contains("Customization", StringComparison.OrdinalIgnoreCase) &&
                 rowText.Contains("TBD", StringComparison.OrdinalIgnoreCase);
-            if (isCustomizationTbdRow)
+            var isOverallValueRow =
+                rowText.Contains("{{OVERALL_VALUE}}", StringComparison.Ordinal);
+            if (isCustomizationTbdRow || isOverallValueRow)
             {
                 break;
             }
@@ -1340,6 +1356,12 @@ public class SqlQuotationService : IQuotationService
 
         var moduleNames = request.SelectedModules.ToList();
         int rowNum = 1;
+
+        // Accumulate the true combined total from the same per-module figures being
+        // rendered in the rows below, so the overall total always matches what the
+        // module rows actually display.
+        decimal totalModuleSubtotalAcrossModules = 0m;
+        decimal totalModuleFinalAcrossModules = 0m;
 
         foreach (var moduleName in moduleNames)
         {
@@ -1354,6 +1376,10 @@ public class SqlQuotationService : IQuotationService
             var moduleSubtotal = modulePrice + implementationTotal;
             var moduleDiscount = moduleSubtotal * discountPercentage / 100m;
             var moduleFinalPrice = moduleSubtotal - moduleDiscount;
+
+            // Accumulate into the running overall total.
+            totalModuleSubtotalAcrossModules += moduleSubtotal;
+            totalModuleFinalAcrossModules += moduleFinalPrice;
 
             var moduleReplacements = new Dictionary<string, string>
             {
@@ -1386,7 +1412,38 @@ public class SqlQuotationService : IQuotationService
             templateRow.Remove();
         }
 
+        // Populate the single overall total row (e.g. "Total of All Modules Final Price:")
+        // that now sits right after every per-module block, exactly once. Its price column
+        // shows the true combined total: all modules' prices + implementation costs, minus
+        // the overall discount — i.e. the same "finalPrice" already computed for the whole
+        // quotation.
+        var overallValueRow = body
+            .Descendants<TableRow>()
+            .FirstOrDefault(row =>
+            {
+                var rowText = string.Concat(row.Descendants<Text>().Select(t => t.Text));
+                return rowText.Contains("{{OVERALL_VALUE}}", StringComparison.Ordinal);
+            });
+
+        if (overallValueRow != null)
+        {
+            // Use the running total accumulated above from each module's own
+            // subtotal/discount/final-price figures — the same numbers shown in that
+            // module's rows — instead of the separately-computed "finalPrice" parameter,
+            // so the overall total always matches what's displayed per module.
+            var overallValueReplacements = new Dictionary<string, string>
+            {
+                ["{{OVERALL_VALUE}}"] = $"{totalModuleFinalAcrossModules:N2}"
+            };
+            ReplaceRowPlaceholders(overallValueRow, overallValueReplacements);
+        }
+
         // Overall Calculation rows - find template row for overall
+        // (Legacy path: applies only to an older template layout that carried both an
+        // {{OVERALL_LABEL}} and {{OVERALL_VALUE}} placeholder together on one row. The
+        // current template only has {{OVERALL_VALUE}}, handled above, so this search finds
+        // no match and safely does nothing — left in place untouched in case an older
+        // template variant is ever restored.)
         var overallTemplateRow = body
             .Descendants<TableRow>()
             .FirstOrDefault(row =>
@@ -1404,7 +1461,7 @@ public class SqlQuotationService : IQuotationService
                 ("Implementation Total:", $"{implementationPriceTotal:N2}"),
                 ("Subtotal:", $"{subtotal:N2}"),
                 ($"Discount ({discountPercentage:N2}%):", $"{discountAmount:N2}"),
-                ("Final Price:", $"{finalPrice:N2}")
+                ("Total of All Modules Final Price:", $"{finalPrice:N2}")
             };
 
             foreach (var (label, value) in overallRows)
@@ -1418,16 +1475,11 @@ public class SqlQuotationService : IQuotationService
                 ReplaceRowPlaceholders(row, replacements);
                 overallTemplateRow.InsertBeforeSelf(row);
             }
+
             overallTemplateRow.Remove();
         }
     }
 
-    /// <summary>
-    /// Clones the "License renewal" row (the one carrying the {{MODULE_NAME}} placeholder
-    /// in its price column) once per selected module, so the same particulars text is
-    /// repeated for each module with that module's name shown in the price column,
-    /// matching how the module price / implementation rows are already repeated per module.
-    /// </summary>
     private static void PopulateLicenseRenewalModuleRows(
         Body body,
         IEnumerable<string> selectedModules)
