@@ -10,10 +10,6 @@ using QuotationApp.API.Models;
 
 namespace QuotationApp.API.Services;
 
-/// <summary>
-/// SQL-backed implementation of IQuotationService using Entity Framework Core.
-/// Replaces the JSON-file-based QuotationService.
-/// </summary>
 public class SqlQuotationService : IQuotationService
 {
     private static readonly HashSet<string> AllowedEffortUnits = new(StringComparer.OrdinalIgnoreCase)
@@ -171,9 +167,6 @@ public class SqlQuotationService : IQuotationService
         return File.Exists(path) ? path : null;
     }
 
-    /// <summary>
-    /// Retrieves quotation history from database.
-    /// </summary>
     public async Task<List<QuotationHistoryEntry>> GetHistoryAsync(int page = 1, int pageSize = 20)
     {
         var quotations = await _dbContext.Quotations
@@ -244,9 +237,6 @@ public class SqlQuotationService : IQuotationService
         }).ToList();
     }
 
-    /// <summary>
-    /// Gets a single quotation by ID.
-    /// </summary>
     public async Task<QuotationHistoryEntry?> GetQuotationAsync(string quotationId)
     {
         var quotation = await _dbContext.Quotations
@@ -1317,20 +1307,6 @@ public class SqlQuotationService : IQuotationService
 
         if (templateRowIndex == -1) return;
 
-        // Collect the per-module template rows (module price row, "Module Subtotal:" row,
-        // implementation row, etc.), stopping BEFORE either of two rows that must stay as
-        // single, static rows rather than being cloned once per module:
-        //   1. The "Customization" / "TBD" row.
-        //   2. The overall total row carrying the {{OVERALL_VALUE}} placeholder (e.g.
-        //      "Total of All Modules Final Price:").
-        // FIX: previously only the Customization/TBD row was treated as a stop marker, so
-        // the {{OVERALL_VALUE}} row — which sits earlier in the table, right after the
-        // per-module rows — got swept into the same block and cloned once per module, each
-        // clone left with an unresolved "{{OVERALL_VALUE}}" placeholder (since the per-module
-        // replacement dictionary has no such key). Now both rows act as stop markers, so
-        // whichever appears first ends the per-module block, and the row is left in place
-        // untouched — appearing exactly once — to be filled in separately below with the true
-        // combined total across all selected modules.
         const int maxTemplateBlockRows = 5;
         var templateRows = new List<TableRow>();
         var offset = 0;
@@ -1412,11 +1388,6 @@ public class SqlQuotationService : IQuotationService
             templateRow.Remove();
         }
 
-        // Populate the single overall total row (e.g. "Total of All Modules Final Price:")
-        // that now sits right after every per-module block, exactly once. Its price column
-        // shows the true combined total: all modules' prices + implementation costs, minus
-        // the overall discount — i.e. the same "finalPrice" already computed for the whole
-        // quotation.
         var overallValueRow = body
             .Descendants<TableRow>()
             .FirstOrDefault(row =>
@@ -1427,10 +1398,7 @@ public class SqlQuotationService : IQuotationService
 
         if (overallValueRow != null)
         {
-            // Use the running total accumulated above from each module's own
-            // subtotal/discount/final-price figures — the same numbers shown in that
-            // module's rows — instead of the separately-computed "finalPrice" parameter,
-            // so the overall total always matches what's displayed per module.
+
             var overallValueReplacements = new Dictionary<string, string>
             {
                 ["{{OVERALL_VALUE}}"] = $"{totalModuleFinalAcrossModules:N2}"
@@ -1438,12 +1406,6 @@ public class SqlQuotationService : IQuotationService
             ReplaceRowPlaceholders(overallValueRow, overallValueReplacements);
         }
 
-        // Overall Calculation rows - find template row for overall
-        // (Legacy path: applies only to an older template layout that carried both an
-        // {{OVERALL_LABEL}} and {{OVERALL_VALUE}} placeholder together on one row. The
-        // current template only has {{OVERALL_VALUE}}, handled above, so this search finds
-        // no match and safely does nothing — left in place untouched in case an older
-        // template variant is ever restored.)
         var overallTemplateRow = body
             .Descendants<TableRow>()
             .FirstOrDefault(row =>
@@ -1608,7 +1570,6 @@ public class SqlQuotationService : IQuotationService
         IEnumerable<AdditionalScopeRequest> additionalScopes)
     {
         var scopes = additionalScopes?.ToList() ?? new List<AdditionalScopeRequest>();
-        if (scopes.Count == 0) return;
 
         var templateRow = body
             .Descendants<TableRow>()
@@ -1624,6 +1585,22 @@ public class SqlQuotationService : IQuotationService
             });
 
         if (templateRow is null) return;
+
+        var table = templateRow.Ancestors<Table>().FirstOrDefault();
+
+        if (scopes.Count == 0)
+        {
+            // Remove the entire Additional Scope table when no data (including header row)
+            table?.Remove();
+
+            // Also remove the "Additional Scope:" heading paragraph if present
+            var heading = body
+                .Descendants<Paragraph>()
+                .FirstOrDefault(p => p.InnerText.Trim().Equals("Additional Scope:", StringComparison.OrdinalIgnoreCase));
+            heading?.Remove();
+
+            return;
+        }
 
         for (var index = 0; index < scopes.Count; index++)
         {
