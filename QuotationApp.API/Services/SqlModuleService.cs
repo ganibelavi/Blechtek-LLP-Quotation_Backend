@@ -50,6 +50,8 @@ public class SqlModuleService : IModuleService
                     SacCode = m.SacCode,
                     ReverseChargeDefault = m.ReverseChargeDefault,
                     ImplementationEffortCost = m.ImplementationEffortCost,
+                    ImplementationEffortManDays = m.ImplementationEffortManDays,
+                    NoOfUsersForSingleInstallation = m.NoOfUsersForSingleInstallation,
                 })
                 .ToListAsync();
 
@@ -87,6 +89,8 @@ public class SqlModuleService : IModuleService
             SacCode = request.SacCode,
             ReverseChargeDefault = request.ReverseChargeDefault,
             ImplementationEffortCost = request.ImplementationEffortCost,
+            ImplementationEffortManDays = request.ImplementationEffortManDays,
+            NoOfUsersForSingleInstallation = request.NoOfUsersForSingleInstallation,
         };
 
         _dbContext.Modules.Add(entity);
@@ -139,7 +143,9 @@ public class SqlModuleService : IModuleService
                     [HsnCode] = {request.HsnCode},
                     [SacCode] = {request.SacCode},
                     [ReverseChargeDefault] = {request.ReverseChargeDefault},
-                    [ImplementationEffortCost] = {request.ImplementationEffortCost}
+                    [ImplementationEffortCost] = {request.ImplementationEffortCost},
+                    [ImplementationEffortManDays] = {request.ImplementationEffortManDays},
+                    [NoOfUsersForSingleInstallation] = {request.NoOfUsersForSingleInstallation}
                 WHERE [Id] = {id}");
 
             _cache = null;
@@ -163,6 +169,8 @@ public class SqlModuleService : IModuleService
         entity.SacCode = request.SacCode;
         entity.ReverseChargeDefault = request.ReverseChargeDefault;
         entity.ImplementationEffortCost = request.ImplementationEffortCost;
+        entity.ImplementationEffortManDays = request.ImplementationEffortManDays;
+        entity.NoOfUsersForSingleInstallation = request.NoOfUsersForSingleInstallation;
         await _dbContext.SaveChangesAsync();
         _cache = null;
         return ToModuleItem(entity);
@@ -223,6 +231,8 @@ public class SqlModuleService : IModuleService
         HsnCode = entity.HsnCode,
         SacCode = entity.SacCode,
         ReverseChargeDefault = entity.ReverseChargeDefault,
-        ImplementationEffortCost = entity.ImplementationEffortCost
+        ImplementationEffortCost = entity.ImplementationEffortCost,
+        ImplementationEffortManDays = entity.ImplementationEffortManDays,
+        NoOfUsersForSingleInstallation = entity.NoOfUsersForSingleInstallation,
     };
 }

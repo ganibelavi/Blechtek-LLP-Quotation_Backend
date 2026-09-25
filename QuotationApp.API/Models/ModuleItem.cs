@@ -15,6 +15,8 @@ public class ModuleItem
     public string? SacCode { get; set; }
     public bool ReverseChargeDefault { get; set; }
     public decimal? ImplementationEffortCost { get; set; }
+    public int? ImplementationEffortManDays { get; set; }
+    public int? NoOfUsersForSingleInstallation { get; set; }
 }
 
 public class ModuleUpsertRequest
@@ -26,4 +28,6 @@ public class ModuleUpsertRequest
     public string? SacCode { get; set; }
     public bool ReverseChargeDefault { get; set; }
     public decimal? ImplementationEffortCost { get; set; }
+    public int? ImplementationEffortManDays { get; set; }
+    public int? NoOfUsersForSingleInstallation { get; set; }
 }

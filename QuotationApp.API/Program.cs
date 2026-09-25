@@ -384,6 +384,10 @@ BEGIN
         ALTER TABLE dbo.Modules ADD ReverseChargeDefault bit NOT NULL CONSTRAINT DF_Modules_ReverseChargeDefault DEFAULT 0;
     IF COL_LENGTH(N'dbo.Modules', N'ImplementationEffortCost') IS NULL
         ALTER TABLE dbo.Modules ADD ImplementationEffortCost decimal(18,2) NULL;
+    IF COL_LENGTH(N'dbo.Modules', N'ImplementationEffortManDays') IS NULL
+        ALTER TABLE dbo.Modules ADD ImplementationEffortManDays int NULL;
+    IF COL_LENGTH(N'dbo.Modules', N'NoOfUsersForSingleInstallation') IS NULL
+        ALTER TABLE dbo.Modules ADD NoOfUsersForSingleInstallation int NULL;
 END";
     moduleSchemaCommand.ExecuteNonQuery();
 

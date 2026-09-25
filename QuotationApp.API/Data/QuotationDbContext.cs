@@ -524,6 +524,8 @@ public class ModuleEntity
     public string? SacCode { get; set; }
     public bool ReverseChargeDefault { get; set; }
     public decimal? ImplementationEffortCost { get; set; }
+    public int? ImplementationEffortManDays { get; set; }
+    public int? NoOfUsersForSingleInstallation { get; set; }
 }
 
 /// <summary>
