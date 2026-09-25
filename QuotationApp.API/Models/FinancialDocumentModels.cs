@@ -199,6 +199,8 @@ public class InvoiceItemEntity
     public string Uom { get; set; } = "Nos.";
     public decimal Rate { get; set; } = 0m;
     public decimal LineTotal => Qty * Rate;
+    public decimal DiscountPercentage { get; set; } = 0m;
+    public decimal DiscountAmount { get; set; } = 0m;
 
     public InvoiceEntity? Invoice { get; set; }
 }
@@ -326,6 +328,8 @@ public class InvoiceItemRequest
     public decimal Qty { get; set; } = 1m;
     public string? Uom { get; set; } = "Nos.";
     public decimal Rate { get; set; }
+    public decimal DiscountPercentage { get; set; }
+    public decimal DiscountAmount { get; set; }
 }
 
 public class UpdateInvoiceStatusRequest

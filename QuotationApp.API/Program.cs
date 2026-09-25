@@ -96,6 +96,17 @@ BEGIN
 END";
     purchaseOrderDiscountColumnsCommand.ExecuteNonQuery();
 
+    using var invoiceDiscountColumnsCommand = connection.CreateCommand();
+    invoiceDiscountColumnsCommand.CommandText = @"
+IF OBJECT_ID(N'dbo.invoice_items', N'U') IS NOT NULL
+BEGIN
+    IF COL_LENGTH(N'dbo.invoice_items', N'DiscountPercentage') IS NULL
+        ALTER TABLE dbo.invoice_items ADD DiscountPercentage decimal(5,2) NOT NULL CONSTRAINT DF_invoice_items_discount_percentage DEFAULT 0;
+    IF COL_LENGTH(N'dbo.invoice_items', N'DiscountAmount') IS NULL
+        ALTER TABLE dbo.invoice_items ADD DiscountAmount decimal(18,2) NOT NULL CONSTRAINT DF_invoice_items_discount_amount DEFAULT 0;
+END";
+    invoiceDiscountColumnsCommand.ExecuteNonQuery();
+
     using var command = connection.CreateCommand();
     command.CommandText = @"SELECT CASE WHEN EXISTS (
         SELECT 1

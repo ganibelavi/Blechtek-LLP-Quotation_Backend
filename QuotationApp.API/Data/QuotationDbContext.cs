@@ -391,6 +391,8 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.Qty).HasColumnType("decimal(12,2)").HasColumnName("qty");
             entity.Property(e => e.Uom).HasMaxLength(20).HasColumnName("uom");
             entity.Property(e => e.Rate).HasColumnType("decimal(12,2)").HasColumnName("rate");
+            entity.Property(e => e.DiscountPercentage).HasColumnType("decimal(5,2)").HasColumnName("DiscountPercentage");
+            entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18,2)").HasColumnName("DiscountAmount");
             entity.ToTable("invoice_items");
 
             entity.HasOne(e => e.Invoice)
