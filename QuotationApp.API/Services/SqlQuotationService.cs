@@ -1,5 +1,6 @@
 using System.IO;
 using System.Linq;
+using System.Globalization;
 using System.Text.Json;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
@@ -663,12 +664,25 @@ public class SqlQuotationService : IQuotationService
         foreach (var detail in details)
         {
             if (!string.IsNullOrWhiteSpace(detail.ImplementationEffortUnit) &&
-                !AllowedEffortUnits.Contains(detail.ImplementationEffortUnit.Trim()))
+                !IsValidEffortUnit(detail.ImplementationEffortUnit.Trim()))
             {
                 throw new ArgumentException(
                     $"Invalid implementation effort for '{detail.ModuleName}'.");
             }
         }
+    }
+
+    private static bool IsValidEffortUnit(string effortUnit)
+    {
+        if (AllowedEffortUnits.Contains(effortUnit)) return true;
+
+        return effortUnit.EndsWith(" Days", StringComparison.OrdinalIgnoreCase) &&
+            decimal.TryParse(
+                effortUnit[..^5].Trim(),
+                NumberStyles.Number,
+                CultureInfo.InvariantCulture,
+                out var days) &&
+            days > 0;
     }
 
     private void AddHistorySnapshot(QuotationEntity quotation, string changeType)
@@ -1029,6 +1043,12 @@ public class SqlQuotationService : IQuotationService
             "1 Day" => 1m,
             "2 Days" => 2m,
             "1 Week" => 7m,
+            _ when effortUnit?.EndsWith(" Days", StringComparison.OrdinalIgnoreCase) == true &&
+                decimal.TryParse(
+                    effortUnit[..^5].Trim(),
+                    NumberStyles.Number,
+                    CultureInfo.InvariantCulture,
+                    out var days) => days,
             _ => 0m
         };
     }
