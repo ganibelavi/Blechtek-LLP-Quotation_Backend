@@ -1570,7 +1570,6 @@ public class SqlQuotationService : IQuotationService
         IEnumerable<AdditionalScopeRequest> additionalScopes)
     {
         var scopes = additionalScopes?.ToList() ?? new List<AdditionalScopeRequest>();
-        if (scopes.Count == 0) return;
 
         var templateRow = body
             .Descendants<TableRow>()
@@ -1586,6 +1585,22 @@ public class SqlQuotationService : IQuotationService
             });
 
         if (templateRow is null) return;
+
+        var table = templateRow.Ancestors<Table>().FirstOrDefault();
+
+        if (scopes.Count == 0)
+        {
+            // Remove the entire Additional Scope table when no data (including header row)
+            table?.Remove();
+
+            // Also remove the "Additional Scope:" heading paragraph if present
+            var heading = body
+                .Descendants<Paragraph>()
+                .FirstOrDefault(p => p.InnerText.Trim().Equals("Additional Scope:", StringComparison.OrdinalIgnoreCase));
+            heading?.Remove();
+
+            return;
+        }
 
         for (var index = 0; index < scopes.Count; index++)
         {
