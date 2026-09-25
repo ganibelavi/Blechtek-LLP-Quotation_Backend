@@ -703,6 +703,7 @@ public class SqlQuotationService : IQuotationService
     {
         var quotation = await _dbContext.Quotations
             .Include(q => q.QuotationModules)
+            .Include(q => q.AdditionalScopes)
             .FirstOrDefaultAsync(q => q.Id == quotationId);
 
         if (quotation == null)
@@ -730,6 +731,16 @@ public class SqlQuotationService : IQuotationService
                 ImplementationEffortUnit = m.ImplementationEffortUnit,
                 DiscountPercentage = m.DiscountPercentage
             }).ToList(),
+            AdditionalScopes = quotation.AdditionalScopes
+                .Select(s => new AdditionalScopeRequest
+                {
+                    Requirement = s.Requirement,
+                    Modules = s.Modules,
+                    ModulesId = s.ModulesId ?? 0,
+                    NoOfManpower = s.NoOfManpower,
+                    NoOfDays = s.NoOfDays,
+                    Rate = s.Rate
+                }).ToList(),
             QuotationTo = new QuotationToInfo
             {
                 Name = quotation.QuotationToName,
@@ -759,12 +770,13 @@ public class SqlQuotationService : IQuotationService
     }
 
     /// <summary>
-    /// Updates quotation details (validation date, modules) and regenerates documents.
+    /// Updates quotation details (validation date, modules, additional scopes) and regenerates documents.
     /// </summary>
-    public async Task<QuotationResult?> UpdateQuotationAsync(string quotationId, DateTime validationDate, List<string> selectedModules, List<QuotationModuleRequest> moduleDetails)
+    public async Task<QuotationResult?> UpdateQuotationAsync(string quotationId, DateTime validationDate, List<string> selectedModules, List<QuotationModuleRequest> moduleDetails, List<AdditionalScopeRequest> additionalScopes)
     {
         var quotation = await _dbContext.Quotations
             .Include(q => q.QuotationModules)
+            .Include(q => q.AdditionalScopes)
             .FirstOrDefaultAsync(q => q.Id == quotationId);
 
         if (quotation == null)
@@ -793,6 +805,38 @@ public class SqlQuotationService : IQuotationService
                 : null
         }).ToList();
 
+        // Update Additional Scopes
+        var moduleIds = await _dbContext.Modules
+            .AsNoTracking()
+            .ToDictionaryAsync(m => m.ModuleName, m => m.Id, StringComparer.OrdinalIgnoreCase);
+
+        _dbContext.AdditionalScopes.RemoveRange(quotation.AdditionalScopes);
+        quotation.AdditionalScopes = (additionalScopes ?? new List<AdditionalScopeRequest>())
+            .Where(scope => !string.IsNullOrWhiteSpace(scope.Modules))
+            .Select(scope =>
+            {
+                var moduleName = scope.Modules.Trim();
+                var isOtherScope = IsOtherScopeModule(moduleName);
+
+                return new AdditionalScope
+                {
+                    QuotationId = quotationId,
+                    Requirement = scope.Requirement?.Trim() ?? string.Empty,
+                    ModulesId = isOtherScope
+                        ? null
+                        : scope.ModulesId > 0
+                            ? scope.ModulesId
+                            : moduleIds.GetValueOrDefault(moduleName),
+                    Modules = isOtherScope ? "Others" : moduleName,
+                    NoOfManpower = scope.NoOfManpower,
+                    NoOfDays = scope.NoOfDays,
+                    Rate = scope.Rate,
+                    Amount = scope.NoOfManpower * scope.NoOfDays * scope.Rate,
+                    Price = scope.NoOfManpower * scope.NoOfDays * scope.Rate
+                };
+            })
+            .ToList();
+
         // Calculate discount percentage from module-level discounts
         var totalSubtotal = quotation.QuotationModules.Sum(m => m.ModuleSubtotal ?? 0m);
         var totalDiscountAmount = quotation.QuotationModules.Sum(m => m.DiscountAmount ?? 0m);
@@ -819,6 +863,16 @@ public class SqlQuotationService : IQuotationService
                     NoOfSites = m.NoOfSites,
                     ImplementationEffortUnit = m.ImplementationEffortUnit,
                     DiscountPercentage = m.DiscountPercentage
+                }).ToList(),
+            AdditionalScopes = quotation.AdditionalScopes
+                .Select(s => new AdditionalScopeRequest
+                {
+                    Requirement = s.Requirement,
+                    Modules = s.Modules,
+                    ModulesId = s.ModulesId ?? 0,
+                    NoOfManpower = s.NoOfManpower,
+                    NoOfDays = s.NoOfDays,
+                    Rate = s.Rate
                 }).ToList(),
             QuotationTo = new QuotationToInfo
             {

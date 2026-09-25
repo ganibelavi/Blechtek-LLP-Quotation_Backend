@@ -161,7 +161,7 @@ public class UpdateDiscountRequest
     public decimal DiscountPercentage { get; set; }
 }
 
-/// <summary>Request payload for updating quotation details (validation date, modules).</summary>
+/// <summary>Request payload for updating quotation details (validation date, modules, additional scopes).</summary>
 public class UpdateQuotationRequest
 {
     [Required]
@@ -172,4 +172,6 @@ public class UpdateQuotationRequest
     public List<string> SelectedModules { get; set; } = new();
 
     public List<QuotationModuleRequest> ModuleDetails { get; set; } = new();
+
+    public List<AdditionalScopeRequest> AdditionalScopes { get; set; } = new();
 }
