@@ -143,19 +143,38 @@ public class InvoiceController : ControllerBase
         if (request.Items is { Count: > 0 })
         {
             var modules = await _db.Modules.AsNoTracking().ToListAsync();
+            var quotationModules = string.IsNullOrWhiteSpace(quotation?.Id)
+                ? new Dictionary<string, QuotationModuleEntity>()
+                : await _db.QuotationModules
+                    .Where(qm => qm.QuotationId == quotation.Id)
+                    .ToDictionaryAsync(qm => qm.ModuleName, qm => qm);
             var lineItems = request.Items
                 .Where(item => !string.IsNullOrWhiteSpace(item.Description))
-                .Select(item => new InvoiceItemEntity
+                .Select(item =>
                 {
-                    InvoiceId = invoice.Id,
-                    ModuleId = item.ModuleId ?? modules
+                    var description = item.Description ?? "";
+                    var moduleId = item.ModuleId ?? modules
                         .FirstOrDefault(module =>
-                            string.Equals(module.ModuleName.Trim(), item.Description!.Trim(), StringComparison.OrdinalIgnoreCase))
-                        ?.Id,
-                    Description = item.Description ?? "",
-                    Qty = item.Qty <= 0 ? 1 : item.Qty,
-                    Uom = string.IsNullOrWhiteSpace(item.Uom) ? "Nos." : item.Uom,
-                    Rate = item.Rate,
+                            string.Equals(module.ModuleName.Trim(), description.Trim(), StringComparison.OrdinalIgnoreCase))
+                        ?.Id;
+                    var discountPercentage = item.DiscountPercentage;
+                    var discountAmount = item.DiscountAmount;
+                    if (quotationModules.TryGetValue(description, out var quotationModule))
+                    {
+                        discountPercentage = quotationModule.DiscountPercentage ?? discountPercentage;
+                        discountAmount = quotationModule.DiscountAmount ?? discountAmount;
+                    }
+                    return new InvoiceItemEntity
+                    {
+                        InvoiceId = invoice.Id,
+                        ModuleId = moduleId,
+                        Description = description,
+                        Qty = item.Qty <= 0 ? 1 : item.Qty,
+                        Uom = string.IsNullOrWhiteSpace(item.Uom) ? "Nos." : item.Uom,
+                        Rate = item.Rate,
+                        DiscountPercentage = discountPercentage,
+                        DiscountAmount = discountAmount,
+                    };
                 })
                 .ToList();
 
@@ -668,24 +687,32 @@ public class InvoiceController : ControllerBase
     {
         var pricing = new Dictionary<string, InvoiceItemPricing>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var item in quotationModules)
-        {
-            pricing[item.ModuleName.Trim()] = new InvoiceItemPricing(
-                item.ModulePrice ?? 0m,
-                item.ImplementationPrice ?? 0m);
-        }
-
         foreach (var item in purchaseOrderItems)
         {
             pricing[item.Description.Trim()] = new InvoiceItemPricing(
                 item.ModulePrice,
-                item.ImplementationPrice);
+                item.ImplementationPrice,
+                item.DiscountPercentage,
+                item.DiscountAmount);
+        }
+
+        foreach (var item in quotationModules)
+        {
+            pricing[item.ModuleName.Trim()] = new InvoiceItemPricing(
+                item.ModulePrice ?? 0m,
+                item.ImplementationPrice ?? 0m,
+                item.DiscountPercentage ?? 0m,
+                item.DiscountAmount ?? 0m);
         }
 
         return pricing;
     }
 
-    private sealed record InvoiceItemPricing(decimal ModulePrice, decimal ImplementationPrice);
+    private sealed record InvoiceItemPricing(
+        decimal ModulePrice,
+        decimal ImplementationPrice,
+        decimal DiscountPercentage,
+        decimal DiscountAmount);
 
     private static object BuildInvoiceResponse(
         InvoiceEntity record,
@@ -709,7 +736,17 @@ public class InvoiceController : ControllerBase
             qty = item.Qty,
             uom = item.Uom,
             rate = item.Rate,
-            modulePrice = itemPricing != null && itemPricing.TryGetValue(item.Description.Trim(), out var pricing)
+            discountPercentage = itemPricing != null &&
+                itemPricing.TryGetValue(item.Description.Trim(), out var pricing) &&
+                item.DiscountPercentage == 0m
+                    ? pricing.DiscountPercentage
+                    : item.DiscountPercentage,
+            discountAmount = itemPricing != null &&
+                itemPricing.TryGetValue(item.Description.Trim(), out pricing) &&
+                item.DiscountAmount == 0m
+                    ? pricing.DiscountAmount
+                    : item.DiscountAmount,
+            modulePrice = itemPricing != null && itemPricing.TryGetValue(item.Description.Trim(), out pricing)
                 ? pricing.ModulePrice
                 : 0m,
             implementationPrice = itemPricing != null && itemPricing.TryGetValue(item.Description.Trim(), out pricing)
