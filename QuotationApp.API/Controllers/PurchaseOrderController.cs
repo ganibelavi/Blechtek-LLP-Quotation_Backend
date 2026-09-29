@@ -536,19 +536,27 @@ public class PurchaseOrderController : ControllerBase
             ? await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == verifiedById)
             : null;
 
-        // Build quotation items string
-        var quotationItems = quotation?.AdditionalScopes != null && quotation.AdditionalScopes.Any()
-            ? string.Join("; ", quotation.AdditionalScopes.Select(s => $"{s.Requirement} ({s.Modules})"))
+        // Build quotation items from modules with quantities
+        var quotationModules = quotation != null
+            ? await _db.QuotationModules
+                .Where(qm => qm.QuotationId == quotation.Id)
+                .ToListAsync()
+            : new List<QuotationModuleEntity>();
+
+        var quotationItems = quotationModules.Any()
+            ? string.Join("; ", quotationModules.Select(m =>
+            {
+                var qtyParts = new List<string>();
+                if (m.NoOfUsers.HasValue) qtyParts.Add($"{m.NoOfUsers} Users");
+                if (m.NoOfInstallations.HasValue) qtyParts.Add($"{m.NoOfInstallations} Installations");
+                if (m.NoOfSites.HasValue) qtyParts.Add($"{m.NoOfSites} Sites");
+                var qtyStr = qtyParts.Any() ? $" ({string.Join(", ", qtyParts)})" : "";
+                return $"{m.ModuleName}{qtyStr}";
+            }))
             : "";
 
         // Build quotation terms from quotation modules
-        var quotationTerms = quotation != null
-            ? await _db.QuotationModules
-                .Where(qm => qm.QuotationId == quotation.Id)
-                .Select(qm => qm.ModuleName)
-                .ToListAsync()
-            : new List<string>();
-
+        var quotationTerms = quotationModules.Select(m => m.ModuleName).ToList();
         var quotationTermsStr = string.Join(", ", quotationTerms);
 
         var response = new PoVerificationResponse
