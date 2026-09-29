@@ -790,17 +790,26 @@ public class PurchaseOrderController : ControllerBase
             ? await _db.Quotations.AsNoTracking().FirstOrDefaultAsync(q => q.Id == po.QuotationId)
             : null;
 
-        var quotationItems = quotation?.AdditionalScopes != null && quotation.AdditionalScopes.Any()
-            ? string.Join("; ", quotation.AdditionalScopes.Select(s => $"{s.Requirement} ({s.Modules})"))
-            : "";
-
-        var quotationTermsList = quotation != null
+        // Build quotation items from modules with quantities (same as verification endpoint)
+        var quotationModules = quotation != null
             ? await _db.QuotationModules
                 .Where(qm => qm.QuotationId == quotation.Id)
-                .Select(qm => qm.ModuleName)
                 .ToListAsync()
-            : new List<string>();
+            : new List<QuotationModuleEntity>();
 
+        var quotationItems = quotationModules.Any()
+            ? string.Join("; ", quotationModules.Select(m =>
+            {
+                var qtyParts = new List<string>();
+                if (m.NoOfUsers.HasValue) qtyParts.Add($"{m.NoOfUsers} Users");
+                if (m.NoOfInstallations.HasValue) qtyParts.Add($"{m.NoOfInstallations} Installations");
+                if (m.NoOfSites.HasValue) qtyParts.Add($"{m.NoOfSites} Sites");
+                var qtyStr = qtyParts.Any() ? $" ({string.Join(", ", qtyParts)})" : "";
+                return $"{m.ModuleName}{qtyStr}";
+            }))
+            : "";
+
+        var quotationTermsList = quotationModules.Select(m => m.ModuleName).ToList();
         var quotationTermsStr = string.Join(", ", quotationTermsList);
 
         // Recompute match on server
