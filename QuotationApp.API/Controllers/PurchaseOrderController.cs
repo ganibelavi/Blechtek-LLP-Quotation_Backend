@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using QuotationApp.API.Data;
 using QuotationApp.API.Models;
+using System.Security.Claims;
+using System.IO;
 
 namespace QuotationApp.API.Controllers;
 
@@ -14,6 +17,33 @@ public class PurchaseOrderController : ControllerBase
     public PurchaseOrderController(QuotationDbContext db)
     {
         _db = db;
+    }
+
+    private int GetCurrentUserId()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? User.FindFirst("sub")?.Value
+            ?? User.FindFirst("id")?.Value;
+
+        if (int.TryParse(userIdClaim, out var userId))
+        {
+            return userId;
+        }
+
+        // Fallback: try to get user by email from token
+        var email = User.FindFirst(ClaimTypes.Email)?.Value
+            ?? User.FindFirst(ClaimTypes.Name)?.Value;
+
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            var user = _db.Users.AsNoTracking().FirstOrDefault(u => u.Email == email);
+            if (user != null)
+            {
+                return user.Id;
+            }
+        }
+
+        return 0;
     }
 
     [HttpGet("next-number")]
@@ -42,6 +72,7 @@ public class PurchaseOrderController : ControllerBase
         var supplier = await ResolveSupplierAsync(request.SupplierId, supplierName, request.SupplierAddress, request.SupplierState, request.SupplierStateCode, request.SupplierGSTN);
 
         var poNo = await ResolveRequestedOrGeneratedPoNoAsync(request.PoNo);
+        var currentUserId = GetCurrentUserId();
 
         var purchaseOrder = new PurchaseOrderEntity
         {
@@ -59,13 +90,9 @@ public class PurchaseOrderController : ControllerBase
             PoDirection = request.PoDirection,
             ReceivedFromEmail = request.ReceivedFromEmail,
             AttachmentUrl = request.AttachmentUrl,
-            VerificationStatus = string.IsNullOrWhiteSpace(request.VerificationStatus) ? "pending" : request.VerificationStatus,
-            VerifiedBy = string.IsNullOrWhiteSpace(request.VerifiedBy) ? null : request.VerifiedBy.Trim(),
-            VerifiedAt = ParseNullableDate(request.VerifiedAt),
-            VerificationNotes = string.IsNullOrWhiteSpace(request.VerificationNotes)
-                ? request.Notes
-                : request.VerificationNotes,
-            UploadedBy = string.IsNullOrWhiteSpace(request.UploadedBy) ? null : request.UploadedBy.Trim(),
+            VerificationStatus = "pending",
+            CreatedBy = currentUserId > 0 ? currentUserId : null,
+            UploadedBy = request.UploadedBy,
             ReceivedAt = ParseNullableDate(request.ReceivedAt),
         };
 
@@ -179,12 +206,12 @@ public class PurchaseOrderController : ControllerBase
         purchaseOrder.VerificationStatus = string.IsNullOrWhiteSpace(request.VerificationStatus)
             ? purchaseOrder.VerificationStatus
             : request.VerificationStatus;
-        purchaseOrder.VerifiedBy = string.IsNullOrWhiteSpace(request.VerifiedBy) ? null : request.VerifiedBy.Trim();
+        purchaseOrder.VerifiedBy = request.VerifiedBy;
         purchaseOrder.VerifiedAt = ParseNullableDate(request.VerifiedAt);
         purchaseOrder.VerificationNotes = string.IsNullOrWhiteSpace(request.VerificationNotes)
             ? request.Notes
             : request.VerificationNotes;
-        purchaseOrder.UploadedBy = string.IsNullOrWhiteSpace(request.UploadedBy) ? null : request.UploadedBy.Trim();
+        purchaseOrder.UploadedBy = request.UploadedBy;
         purchaseOrder.ReceivedAt = ParseNullableDate(request.ReceivedAt);
 
         _db.PurchaseOrderItems.RemoveRange(purchaseOrder.Items);
@@ -377,6 +404,556 @@ public class PurchaseOrderController : ControllerBase
         }).ToList();
 
         return Ok(response);
+    }
+
+    [HttpGet("quotations-for-po")]
+    [Authorize]
+    public async Task<ActionResult<List<object>>> GetQuotationsForPo()
+    {
+        // Return accepted quotations that are not already linked to a PO
+        var linkedQuotationIds = await _db.PurchaseOrders
+            .Where(po => !string.IsNullOrWhiteSpace(po.QuotationId))
+            .Select(po => po.QuotationId!)
+            .ToListAsync();
+
+        var availableQuotations = await _db.Quotations
+            .AsNoTracking()
+            .Where(q => !linkedQuotationIds.Contains(q.Id))
+            .Select(q => new
+            {
+                q.Id,
+                q.QuotationNo,
+                q.OrganizationName,
+                q.FinalPrice,
+                q.Date,
+                q.ValidationDate,
+                q.QuotationToName,
+                q.QuotationToEmail
+            })
+            .ToListAsync();
+
+        return Ok(availableQuotations);
+    }
+
+    [HttpGet("{id:int}/file")]
+    [Authorize]
+    public async Task<IActionResult> GetFile(int id)
+    {
+        var po = await _db.PurchaseOrders
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == id);
+
+        if (po is null || string.IsNullOrWhiteSpace(po.UploadedFilePath))
+        {
+            return NotFound(new { error = "File not found." });
+        }
+
+        var filePath = po.UploadedFilePath;
+        if (!System.IO.File.Exists(filePath))
+        {
+            return NotFound(new { error = "File not found on server." });
+        }
+
+        var contentType = string.IsNullOrWhiteSpace(po.FileContentType) ? "application/octet-stream" : po.FileContentType;
+        var fileStream = System.IO.File.OpenRead(filePath);
+
+        return File(fileStream, contentType);
+    }
+
+    [HttpPost("{id:int}/file")]
+    [Authorize]
+    public async Task<IActionResult> UploadFile(int id, IFormFile file)
+    {
+        var po = await _db.PurchaseOrders.FirstOrDefaultAsync(p => p.Id == id);
+        if (po is null)
+        {
+            return NotFound(new { error = "Purchase order not found." });
+        }
+
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { error = "No file uploaded." });
+        }
+
+        // Create uploads directory if it doesn't exist
+        var uploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "uploads", "purchase-orders");
+        if (!Directory.Exists(uploadsDir))
+        {
+            Directory.CreateDirectory(uploadsDir);
+        }
+
+        // Generate unique filename
+        var extension = Path.GetExtension(file.FileName);
+        var uniqueFileName = $"{Guid.NewGuid()}{extension}";
+        var filePath = Path.Combine(uploadsDir, uniqueFileName);
+
+        // Save file
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream);
+        }
+
+        // Update PO with file info
+        var currentUserId = GetCurrentUserId();
+        po.UploadedFilePath = filePath;
+        po.UploadedFileName = file.FileName;
+        po.FileContentType = file.ContentType;
+        po.UploadedBy = currentUserId > 0 ? currentUserId.ToString() : null;
+
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            id = po.Id,
+            fileName = po.UploadedFileName,
+            contentType = po.FileContentType,
+            filePath = po.UploadedFilePath
+        });
+    }
+
+    [HttpGet("{id:int}/verification")]
+    [Authorize]
+    public async Task<ActionResult<PoVerificationResponse>> GetVerification(int id)
+    {
+        var po = await _db.PurchaseOrders
+            .Include(p => p.Items)
+            .FirstOrDefaultAsync(p => p.Id == id);
+
+        if (po is null)
+        {
+            return NotFound(new { error = "Purchase order not found." });
+        }
+
+        var quotation = !string.IsNullOrWhiteSpace(po.QuotationId)
+            ? await _db.Quotations.AsNoTracking().FirstOrDefaultAsync(q => q.Id == po.QuotationId)
+            : null;
+
+        var createdByUser = po.CreatedBy.HasValue
+            ? await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == po.CreatedBy.Value)
+            : null;
+
+        var verifiedByUser = !string.IsNullOrEmpty(po.VerifiedBy) && int.TryParse(po.VerifiedBy, out var verifiedById)
+            ? await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == verifiedById)
+            : null;
+
+        // Build quotation items string
+        var quotationItems = quotation?.AdditionalScopes != null && quotation.AdditionalScopes.Any()
+            ? string.Join("; ", quotation.AdditionalScopes.Select(s => $"{s.Requirement} ({s.Modules})"))
+            : "";
+
+        // Build quotation terms from quotation modules
+        var quotationTerms = quotation != null
+            ? await _db.QuotationModules
+                .Where(qm => qm.QuotationId == quotation.Id)
+                .Select(qm => qm.ModuleName)
+                .ToListAsync()
+            : new List<string>();
+
+        var quotationTermsStr = string.Join(", ", quotationTerms);
+
+        var response = new PoVerificationResponse
+        {
+            Id = po.Id,
+            PoNo = po.PoNo,
+            VerificationStatus = po.VerificationStatus,
+            VerificationNotes = po.VerificationNotes,
+            CreatedBy = po.CreatedBy,
+            CreatedByName = createdByUser != null ? $"{createdByUser.FirstName} {createdByUser.LastName}".Trim() : null,
+            VerifiedBy = po.VerifiedBy,
+            VerifiedByName = verifiedByUser != null ? $"{verifiedByUser.FirstName} {verifiedByUser.LastName}".Trim() : null,
+            VerifiedAt = po.VerifiedAt,
+            UploadedFilePath = po.UploadedFilePath,
+            UploadedFileName = po.UploadedFileName,
+            FileContentType = po.FileContentType,
+            ReceivedFromEmail = po.ReceivedFromEmail,
+            QuotationRefNo = po.QuotationRefNo,
+            QuotationRefDate = po.QuotationRefDate,
+            QuotationAmount = quotation?.FinalPrice ?? 0,
+            QuotationItems = quotationItems,
+            QuotationTerms = quotationTermsStr,
+            ClientPoNumber = po.ClientPoNumber,
+            ClientPoDate = po.ClientPoDate,
+            ClientPoAmount = po.ClientPoAmount,
+            ClientPoItems = po.ClientPoItems,
+            ClientPoTerms = po.ClientPoTerms,
+        };
+
+        // Compute match
+        var amountMatch = po.ClientPoAmount.HasValue && quotation?.FinalPrice.HasValue == true
+            ? Math.Abs(po.ClientPoAmount.Value - quotation.FinalPrice.Value) < 0.01m
+            : false;
+
+        var itemsMatch = !string.IsNullOrWhiteSpace(po.ClientPoItems) && !string.IsNullOrWhiteSpace(quotationItems)
+            ? NormalizeText(po.ClientPoItems) == NormalizeText(quotationItems)
+            : false;
+
+        var termsMatch = !string.IsNullOrWhiteSpace(po.ClientPoTerms) && !string.IsNullOrWhiteSpace(quotationTermsStr)
+            ? NormalizeText(po.ClientPoTerms) == NormalizeText(quotationTermsStr)
+            : false;
+
+        response.AmountMatches = amountMatch;
+        response.ItemsMatch = itemsMatch;
+        response.TermsMatch = termsMatch;
+        response.MismatchCount = (amountMatch ? 0 : 1) + (itemsMatch ? 0 : 1) + (termsMatch ? 0 : 1);
+
+        return Ok(response);
+    }
+
+    [HttpPut("{id:int}/client-details")]
+    [Authorize]
+    public async Task<ActionResult<object>> UpdateClientDetails(int id, [FromBody] PoClientDetailsRequest request)
+    {
+        if (request is null)
+        {
+            return BadRequest(new { error = "Client PO details are required." });
+        }
+
+        var po = await _db.PurchaseOrders.FirstOrDefaultAsync(p => p.Id == id);
+        if (po is null)
+        {
+            return NotFound(new { error = "Purchase order not found." });
+        }
+
+        // Only allow editing in Draft or PendingReview status
+        if (po.VerificationStatus is "Approved" or "ApprovedWithMismatch" or "Rejected")
+        {
+            return BadRequest(new { error = "Cannot modify client details after approval or rejection." });
+        }
+
+        var currentUserId = GetCurrentUserId();
+
+        // Track changes for audit log
+        var changes = new List<string>();
+        if (po.ClientPoNumber != request.ClientPoNumber) changes.Add($"ClientPoNumber: '{po.ClientPoNumber}' -> '{request.ClientPoNumber}'");
+        if (po.ClientPoDate != ParseNullableDate(request.ClientPoDate)) changes.Add($"ClientPoDate: '{po.ClientPoDate}' -> '{request.ClientPoDate}'");
+        if (po.ClientPoAmount != request.ClientPoAmount) changes.Add($"ClientPoAmount: '{po.ClientPoAmount}' -> '{request.ClientPoAmount}'");
+        if (po.ClientPoItems != request.ClientPoItems) changes.Add("ClientPoItems changed");
+        if (po.ClientPoTerms != request.ClientPoTerms) changes.Add("ClientPoTerms changed");
+
+        po.ClientPoNumber = request.ClientPoNumber;
+        po.ClientPoDate = ParseNullableDate(request.ClientPoDate);
+        po.ClientPoAmount = request.ClientPoAmount;
+        po.ClientPoItems = request.ClientPoItems;
+        po.ClientPoTerms = request.ClientPoTerms;
+
+        await _db.SaveChangesAsync();
+
+        // Write audit log if there were changes
+        if (changes.Any() && currentUserId > 0)
+        {
+            _db.PoAuditLogs.Add(new PoAuditLogEntity
+            {
+                PoId = po.Id,
+                Action = "ClientDetailsUpdated",
+                ChangedBy = currentUserId,
+                ChangedAt = DateTime.UtcNow,
+                Notes = string.Join("; ", changes)
+            });
+            await _db.SaveChangesAsync();
+        }
+
+        // If PO was submitted and now edited, move back to PendingReview
+        if (po.VerificationStatus == "PendingReview" || po.VerificationStatus == "Approved" || po.VerificationStatus == "ApprovedWithMismatch" || po.VerificationStatus == "Rejected")
+        {
+            // Only move back from PendingReview if it was already submitted
+            // Don't move back from Approved/Rejected states
+        }
+        else if (po.VerificationStatus == "pending")
+        {
+            // Stay in Draft
+        }
+
+        return Ok(new
+        {
+            id = po.Id,
+            clientPoNumber = po.ClientPoNumber,
+            clientPoDate = po.ClientPoDate,
+            clientPoAmount = po.ClientPoAmount,
+            clientPoItems = po.ClientPoItems,
+            clientPoTerms = po.ClientPoTerms,
+        });
+    }
+
+    [HttpPost("{id:int}/reopen")]
+    [Authorize]
+    public async Task<ActionResult<object>> Reopen(int id, [FromBody] PoReopenRequest request)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == 0)
+        {
+            return Unauthorized(new { error = "User not authenticated." });
+        }
+
+        var po = await _db.PurchaseOrders.FirstOrDefaultAsync(p => p.Id == id);
+        if (po is null)
+        {
+            return NotFound(new { error = "Purchase order not found." });
+        }
+
+        // Rule: Only allow reopen for Approved, ApprovedWithMismatch, Rejected
+        var allowedReopenStatuses = new[] { "Approved", "ApprovedWithMismatch", "Rejected" };
+        if (!allowedReopenStatuses.Contains(po.VerificationStatus))
+        {
+            return BadRequest(new { error = "Only purchase orders with status Approved, ApprovedWithMismatch, or Rejected can be reopened." });
+        }
+
+        // Check if PO has been used to generate an invoice
+        var hasInvoice = await _db.Invoices.AnyAsync(i => i.PoId == po.Id);
+        if (hasInvoice)
+        {
+            return BadRequest(new { error = "Cannot reopen a purchase order that has already been invoiced." });
+        }
+
+        // Reason required
+        if (string.IsNullOrWhiteSpace(request?.Reason))
+        {
+            return BadRequest(new { error = "Reason is required to reopen a purchase order." });
+        }
+
+        var previousStatus = po.VerificationStatus;
+        po.VerificationStatus = "pending";
+        po.VerifiedBy = null;
+        po.VerifiedAt = null;
+        po.VerificationNotes = request.Reason.Trim();
+
+        await _db.SaveChangesAsync();
+
+        // Audit log
+        _db.PoAuditLogs.Add(new PoAuditLogEntity
+        {
+            PoId = po.Id,
+            Action = "Reopened",
+            ChangedBy = currentUserId,
+            ChangedAt = DateTime.UtcNow,
+            Notes = $"Reopened from {previousStatus}. Reason: {request.Reason.Trim()}"
+        });
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            id = po.Id,
+            verificationStatus = po.VerificationStatus,
+            message = "Purchase order reopened successfully."
+        });
+    }
+
+    [HttpPost("{id:int}/approve")]
+    [Authorize]
+    public async Task<ActionResult<object>> Approve(int id, [FromBody] PoApproveRequest request)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == 0)
+        {
+            return Unauthorized(new { error = "User not authenticated." });
+        }
+
+        var po = await _db.PurchaseOrders
+            .Include(p => p.Items)
+            .FirstOrDefaultAsync(p => p.Id == id);
+
+        if (po is null)
+        {
+            return NotFound(new { error = "Purchase order not found." });
+        }
+
+        // Rule: Status must be pending or PendingReview (treat PendingReview same as Draft)
+        if (po.VerificationStatus != "pending" && po.VerificationStatus != "PendingReview")
+        {
+            return BadRequest(new { error = "Only purchase orders in pending or PendingReview status can be approved." });
+        }
+
+        // Validate required fields
+        var missingFields = new List<string>();
+        if (string.IsNullOrWhiteSpace(po.UploadedFilePath)) missingFields.Add("uploaded file");
+        if (string.IsNullOrWhiteSpace(po.ReceivedFromEmail)) missingFields.Add("reference email");
+        if (string.IsNullOrWhiteSpace(po.ClientPoNumber)) missingFields.Add("client PO number");
+        if (!po.ClientPoDate.HasValue) missingFields.Add("client PO date");
+        if (!po.ClientPoAmount.HasValue) missingFields.Add("client PO amount");
+        if (string.IsNullOrWhiteSpace(po.ClientPoItems)) missingFields.Add("client PO items");
+        if (string.IsNullOrWhiteSpace(po.ClientPoTerms)) missingFields.Add("client PO terms");
+
+        if (missingFields.Count > 0)
+        {
+            return BadRequest(new { error = $"Missing required fields: {string.Join(", ", missingFields)}" });
+        }
+
+        // Reload quotation and client values from database (don't trust frontend)
+        var quotation = !string.IsNullOrWhiteSpace(po.QuotationId)
+            ? await _db.Quotations.AsNoTracking().FirstOrDefaultAsync(q => q.Id == po.QuotationId)
+            : null;
+
+        var quotationItems = quotation?.AdditionalScopes != null && quotation.AdditionalScopes.Any()
+            ? string.Join("; ", quotation.AdditionalScopes.Select(s => $"{s.Requirement} ({s.Modules})"))
+            : "";
+
+        var quotationTermsList = quotation != null
+            ? await _db.QuotationModules
+                .Where(qm => qm.QuotationId == quotation.Id)
+                .Select(qm => qm.ModuleName)
+                .ToListAsync()
+            : new List<string>();
+
+        var quotationTermsStr = string.Join(", ", quotationTermsList);
+
+        // Recompute match on server
+        var amountMatch = po.ClientPoAmount.HasValue && quotation?.FinalPrice.HasValue == true
+            ? Math.Abs(po.ClientPoAmount.Value - quotation.FinalPrice.Value) < 0.01m
+            : false;
+
+        var itemsMatch = !string.IsNullOrWhiteSpace(po.ClientPoItems) && !string.IsNullOrWhiteSpace(quotationItems)
+            ? NormalizeText(po.ClientPoItems) == NormalizeText(quotationItems)
+            : false;
+
+        var termsMatch = !string.IsNullOrWhiteSpace(po.ClientPoTerms) && !string.IsNullOrWhiteSpace(quotationTermsStr)
+            ? NormalizeText(po.ClientPoTerms) == NormalizeText(quotationTermsStr)
+            : false;
+
+        var allMatch = amountMatch && itemsMatch && termsMatch;
+
+        if (allMatch)
+        {
+            po.VerificationStatus = "Approved";
+        }
+        else
+        {
+            // Notes are mandatory when there's a mismatch
+            if (string.IsNullOrWhiteSpace(request?.Notes))
+            {
+                return BadRequest(new { error = "Notes are required when there is a mismatch between client PO and quotation." });
+            }
+            po.VerificationStatus = "ApprovedWithMismatch";
+        }
+
+        po.VerifiedBy = currentUserId.ToString();
+        po.VerifiedAt = DateTime.UtcNow;
+        po.VerificationNotes = request?.Notes?.Trim();
+
+        await _db.SaveChangesAsync();
+
+        // Build mismatch details for audit log
+        var mismatchDetails = new List<string>();
+        if (!amountMatch) mismatchDetails.Add("Amount");
+        if (!itemsMatch) mismatchDetails.Add("Items/Qty");
+        if (!termsMatch) mismatchDetails.Add("Payment Terms");
+
+        // Audit log
+        _db.PoAuditLogs.Add(new PoAuditLogEntity
+        {
+            PoId = po.Id,
+            Action = allMatch ? "Approved" : "ApprovedWithMismatch",
+            ChangedBy = currentUserId,
+            ChangedAt = DateTime.UtcNow,
+            Notes = request?.Notes?.Trim() ?? (allMatch ? "All fields match" : $"Approved with mismatch in: {string.Join(", ", mismatchDetails)}")
+        });
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            id = po.Id,
+            verificationStatus = po.VerificationStatus,
+            verifiedBy = po.VerifiedBy,
+            verifiedAt = po.VerifiedAt,
+            verificationNotes = po.VerificationNotes,
+            amountMatch,
+            itemsMatch,
+            termsMatch,
+        });
+    }
+
+    [HttpPost("{id:int}/reject")]
+    [Authorize]
+    public async Task<ActionResult<object>> Reject(int id, [FromBody] PoRejectRequest request)
+    {
+        var currentUserId = GetCurrentUserId();
+        if (currentUserId == 0)
+        {
+            return Unauthorized(new { error = "User not authenticated." });
+        }
+
+        var po = await _db.PurchaseOrders.FirstOrDefaultAsync(p => p.Id == id);
+        if (po is null)
+        {
+            return NotFound(new { error = "Purchase order not found." });
+        }
+
+        // Rule: Status must be pending or PendingReview (treat PendingReview same as Draft)
+        if (po.VerificationStatus != "pending" && po.VerificationStatus != "PendingReview")
+        {
+            return BadRequest(new { error = "Only purchase orders in pending or PendingReview status can be rejected." });
+        }
+
+        // Notes required for rejection
+        if (string.IsNullOrWhiteSpace(request?.Notes))
+        {
+            return BadRequest(new { error = "Notes are required when rejecting a purchase order." });
+        }
+
+        po.VerificationStatus = "Rejected";
+        po.VerifiedBy = currentUserId.ToString();
+        po.VerifiedAt = DateTime.UtcNow;
+        po.VerificationNotes = request.Notes.Trim();
+
+        await _db.SaveChangesAsync();
+
+        // Audit log
+        _db.PoAuditLogs.Add(new PoAuditLogEntity
+        {
+            PoId = po.Id,
+            Action = "Rejected",
+            ChangedBy = currentUserId,
+            ChangedAt = DateTime.UtcNow,
+            Notes = request.Notes.Trim()
+        });
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            id = po.Id,
+            verificationStatus = po.VerificationStatus,
+            verifiedBy = po.VerifiedBy,
+            verifiedAt = po.VerifiedAt,
+            verificationNotes = po.VerificationNotes,
+        });
+    }
+
+    [HttpGet("{id:int}/audit-log")]
+    [Authorize]
+    public async Task<ActionResult<List<PoAuditLogResponse>>> GetAuditLog(int id)
+    {
+        var po = await _db.PurchaseOrders.FirstOrDefaultAsync(p => p.Id == id);
+        if (po is null)
+        {
+            return NotFound(new { error = "Purchase order not found." });
+        }
+
+        var logs = await _db.PoAuditLogs
+            .Where(l => l.PoId == id)
+            .OrderByDescending(l => l.ChangedAt)
+            .ToListAsync();
+
+        var userIds = logs.Select(l => l.ChangedBy).Distinct().ToList();
+        var users = await _db.Users
+            .Where(u => userIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => $"{u.FirstName} {u.LastName}".Trim());
+
+        var response = logs.Select(l => new PoAuditLogResponse
+        {
+            Id = l.Id,
+            PoId = l.PoId,
+            Action = l.Action,
+            ChangedBy = l.ChangedBy,
+            ChangedByName = users.TryGetValue(l.ChangedBy, out var name) ? name : null,
+            ChangedAt = l.ChangedAt,
+            Notes = l.Notes
+        }).ToList();
+
+        return Ok(response);
+    }
+
+    private static string NormalizeText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        return string.Join(" ", text.Trim().ToLowerInvariant().Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries));
     }
 
     [HttpPatch("{id:int}/verification")]

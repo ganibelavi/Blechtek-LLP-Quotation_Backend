@@ -58,9 +58,10 @@ public class InvoiceController : ControllerBase
                 return BadRequest(new { error = "The referenced purchase order does not exist." });
             }
 
-            if (!string.Equals(purchaseOrder.VerificationStatus, "verified", StringComparison.OrdinalIgnoreCase))
+            var allowedStatuses = new[] { "Approved", "ApprovedWithMismatch" };
+            if (!allowedStatuses.Contains(purchaseOrder.VerificationStatus))
             {
-                return BadRequest(new { error = "Only verified purchase orders can be invoiced." });
+                return BadRequest(new { error = $"Only purchase orders with status 'Approved' or 'ApprovedWithMismatch' can be invoiced. Current status: {purchaseOrder.VerificationStatus}" });
             }
         }
 
@@ -408,9 +409,10 @@ public class InvoiceController : ControllerBase
                 return BadRequest(new { error = "The referenced purchase order does not exist." });
             }
 
-            if (!string.Equals(purchaseOrder.VerificationStatus, "verified", StringComparison.OrdinalIgnoreCase))
+            var allowedStatuses = new[] { "Approved", "ApprovedWithMismatch" };
+            if (!allowedStatuses.Contains(purchaseOrder.VerificationStatus))
             {
-                return BadRequest(new { error = "Only verified purchase orders can be invoiced." });
+                return BadRequest(new { error = $"Only purchase orders with status 'Approved' or 'ApprovedWithMismatch' can be invoiced. Current status: {purchaseOrder.VerificationStatus}" });
             }
         }
 

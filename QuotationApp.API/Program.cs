@@ -2,7 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.FileProviders;
 using System.Text;
+using System.IO;
 using QuotationApp.API.Data;
 using QuotationApp.API.Services;
 
@@ -354,6 +356,35 @@ IF COL_LENGTH(N'dbo.purchase_orders', N'uploaded_by') IS NULL
 IF COL_LENGTH(N'dbo.purchase_orders', N'received_at') IS NULL
     ALTER TABLE dbo.purchase_orders ADD received_at datetime2 NULL;
 
+-- New PO verification fields
+IF COL_LENGTH(N'dbo.purchase_orders', N'client_po_number') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD client_po_number nvarchar(100) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'client_po_date') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD client_po_date date NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'client_po_amount') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD client_po_amount decimal(18,2) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'client_po_items') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD client_po_items nvarchar(max) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'client_po_terms') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD client_po_terms nvarchar(max) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'uploaded_file_path') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD uploaded_file_path nvarchar(500) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'uploaded_file_name') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD uploaded_file_name nvarchar(255) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'file_content_type') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD file_content_type nvarchar(100) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'created_by') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD created_by int NULL;
+
+-- Update default for verification_status
+IF COL_LENGTH(N'dbo.purchase_orders', N'verification_status') IS NOT NULL
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.default_constraints WHERE parent_object_id = OBJECT_ID(N'dbo.purchase_orders') AND col_name(parent_object_id, parent_column_id) = 'verification_status')
+    BEGIN
+        ALTER TABLE dbo.purchase_orders ADD CONSTRAINT DF_purchase_orders_verification_status DEFAULT 'Draft' FOR verification_status;
+    END
+END
+
 DECLARE @auditForeignKeys nvarchar(max) = N'';
 SELECT @auditForeignKeys = @auditForeignKeys
     + N'ALTER TABLE ' + QUOTENAME(OBJECT_SCHEMA_NAME(fk.parent_object_id))
@@ -371,6 +402,98 @@ IF COL_LENGTH(N'dbo.purchase_orders', N'uploaded_by') IS NOT NULL
     ALTER TABLE dbo.purchase_orders ALTER COLUMN uploaded_by nvarchar(200) NULL;
 END";
     purchaseOrderSchemaCommand.ExecuteNonQuery();
+
+    // Create PoAuditLog table if not exists
+    using var poAuditLogCommand = connection.CreateCommand();
+    poAuditLogCommand.CommandText = @"
+IF OBJECT_ID(N'dbo.PoAuditLog', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.PoAuditLog
+    (
+        Id int IDENTITY(1,1) NOT NULL CONSTRAINT PK_PoAuditLog PRIMARY KEY,
+        PoId int NOT NULL,
+        Action nvarchar(50) NOT NULL,
+        ChangedBy int NOT NULL,
+        ChangedAt datetime2 NOT NULL,
+        Notes nvarchar(max) NULL,
+        CONSTRAINT FK_PoAuditLog_purchase_orders FOREIGN KEY (PoId) REFERENCES dbo.purchase_orders(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_PoAuditLog_PoId ON dbo.PoAuditLog(PoId);
+END
+ELSE
+BEGIN
+    -- Add missing columns if they don't exist (for existing tables with different schema)
+    IF COL_LENGTH(N'dbo.PoAuditLog', N'PoId') IS NULL
+        ALTER TABLE dbo.PoAuditLog ADD PoId int NOT NULL DEFAULT 0;
+    IF COL_LENGTH(N'dbo.PoAuditLog', N'ChangedBy') IS NULL
+        ALTER TABLE dbo.PoAuditLog ADD ChangedBy int NOT NULL DEFAULT 0;
+    IF COL_LENGTH(N'dbo.PoAuditLog', N'ChangedAt') IS NULL
+        ALTER TABLE dbo.PoAuditLog ADD ChangedAt datetime2 NOT NULL DEFAULT SYSUTCDATETIME();
+    IF COL_LENGTH(N'dbo.PoAuditLog', N'Action') IS NULL
+        ALTER TABLE dbo.PoAuditLog ADD Action nvarchar(50) NOT NULL DEFAULT '';
+    IF COL_LENGTH(N'dbo.PoAuditLog', N'Notes') IS NULL
+        ALTER TABLE dbo.PoAuditLog ADD Notes nvarchar(max) NULL;
+    -- Drop old columns if they exist with different naming
+    IF COL_LENGTH(N'dbo.PoAuditLog', N'po_id') IS NOT NULL
+        ALTER TABLE dbo.PoAuditLog DROP COLUMN po_id;
+    IF COL_LENGTH(N'dbo.PoAuditLog', N'changed_by') IS NOT NULL
+        ALTER TABLE dbo.PoAuditLog DROP COLUMN changed_by;
+    IF COL_LENGTH(N'dbo.PoAuditLog', N'changed_at') IS NOT NULL
+        ALTER TABLE dbo.PoAuditLog DROP COLUMN changed_at;
+    -- Ensure index exists
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_PoAuditLog_PoId' AND object_id = OBJECT_ID('dbo.PoAuditLog'))
+        CREATE INDEX IX_PoAuditLog_PoId ON dbo.PoAuditLog(PoId);
+END;
+";
+    poAuditLogCommand.ExecuteNonQuery();
+
+    // Create unique index on (customer_id, client_po_number) ignoring NULLs
+    using var uniqueIndexCommand = connection.CreateCommand();
+    uniqueIndexCommand.CommandText = @"
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UQ_purchase_orders_Customer_ClientPoNumber')
+BEGIN
+    CREATE UNIQUE NONCLUSTERED INDEX UQ_purchase_orders_Customer_ClientPoNumber
+    ON purchase_orders (customer_id, client_po_number)
+    WHERE client_po_number IS NOT NULL;
+END";
+    uniqueIndexCommand.ExecuteNonQuery();
+
+    // Update CHECK constraint on QuotationModules.ImplementationEffortUnit
+    using var quotationModuleConstraintCommand = connection.CreateCommand();
+    quotationModuleConstraintCommand.CommandText = @"
+IF OBJECT_ID(N'dbo.QuotationModules', N'U') IS NOT NULL
+BEGIN
+    -- Drop existing CHECK constraint if exists
+    DECLARE @constraintName NVARCHAR(128);
+    DECLARE @sql NVARCHAR(MAX);
+    SELECT @constraintName = name
+    FROM sys.check_constraints
+    WHERE parent_object_id = OBJECT_ID(N'dbo.QuotationModules')
+      AND name = 'CK_QuotationModules_ImplementationEffortUnit';
+    
+    IF @constraintName IS NOT NULL
+    BEGIN
+        SET @sql = N'ALTER TABLE dbo.QuotationModules DROP CONSTRAINT ' + QUOTENAME(@constraintName);
+        EXEC sp_executesql @sql;
+    END
+
+    -- Add new CHECK constraint with allowed values
+    ALTER TABLE dbo.QuotationModules
+    ADD CONSTRAINT CK_QuotationModules_ImplementationEffortUnit
+    CHECK (
+        ImplementationEffortUnit IS NULL
+        OR ImplementationEffortUnit IN (
+            N'1 Man Month',
+            N'0.5 Man Month',
+            N'2 Man Month',
+            N'1 Day',
+            N'2 Days',
+            N'1 Week'
+        )
+        OR ImplementationEffortUnit LIKE N'% Days'
+    );
+END";
+    quotationModuleConstraintCommand.ExecuteNonQuery();
 
     using var purchaseOrderItemSchemaCommand = connection.CreateCommand();
     purchaseOrderItemSchemaCommand.CommandText = @"
@@ -432,6 +555,10 @@ BEGIN
         ALTER TABLE dbo.invoices ADD ship_to_address nvarchar(1000) NULL;
     IF COL_LENGTH(N'dbo.invoices', N'gst_rate_id') IS NULL
         ALTER TABLE dbo.invoices ADD gst_rate_id int NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'terms_of_sale') IS NULL
+        ALTER TABLE dbo.invoices ADD terms_of_sale nvarchar(max) NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'time_of_issue') IS NULL
+        ALTER TABLE dbo.invoices ADD time_of_issue nvarchar(10) NULL;
 END";
     invoiceSchemaCommand.ExecuteNonQuery();
 }
@@ -449,6 +576,20 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
+
+// Create uploads directory if it doesn't exist
+var uploadsPath = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+if (!Directory.Exists(uploadsPath))
+{
+    Directory.CreateDirectory(uploadsPath);
+}
+
+// Serve uploaded files
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsPath),
+    RequestPath = "/uploads"
+});
 
 app.UseAuthentication();
 app.UseAuthorization();

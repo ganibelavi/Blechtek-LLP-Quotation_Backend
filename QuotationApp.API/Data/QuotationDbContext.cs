@@ -30,6 +30,7 @@ public class QuotationDbContext : DbContext
     public DbSet<ProductEntity> Products { get; set; }
     public DbSet<PurchaseOrderEntity> PurchaseOrders { get; set; }
     public DbSet<PurchaseOrderItemEntity> PurchaseOrderItems { get; set; }
+    public DbSet<PoAuditLogEntity> PoAuditLogs { get; set; }
     public DbSet<InvoiceEntity> Invoices { get; set; }
     public DbSet<InvoiceBankDetailEntity> InvoiceBankDetails { get; set; }
     public DbSet<InvoiceItemEntity> InvoiceItems { get; set; }
@@ -286,12 +287,28 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.PoDirection).HasMaxLength(20).HasColumnName("po_direction");
             entity.Property(e => e.ReceivedFromEmail).HasMaxLength(255).HasColumnName("received_from_email");
             entity.Property(e => e.AttachmentUrl).HasMaxLength(1000).HasColumnName("attachment_url");
-            entity.Property(e => e.VerificationStatus).HasMaxLength(30).HasColumnName("verification_status");
-            entity.Property(e => e.VerifiedBy).HasMaxLength(200).HasColumnName("verified_by");
+
+            // Client PO fields for manual verification
+            entity.Property(e => e.ClientPoNumber).HasMaxLength(100).HasColumnName("client_po_number");
+            entity.Property(e => e.ClientPoDate).HasColumnName("client_po_date");
+            entity.Property(e => e.ClientPoAmount).HasColumnType("decimal(18,2)").HasColumnName("client_po_amount");
+            entity.Property(e => e.ClientPoItems).HasColumnName("client_po_items");
+            entity.Property(e => e.ClientPoTerms).HasColumnName("client_po_terms");
+
+            // File upload fields
+            entity.Property(e => e.UploadedFilePath).HasMaxLength(500).HasColumnName("uploaded_file_path");
+            entity.Property(e => e.UploadedFileName).HasMaxLength(255).HasColumnName("uploaded_file_name");
+            entity.Property(e => e.FileContentType).HasMaxLength(100).HasColumnName("file_content_type");
+
+            // Verification workflow
+            entity.Property(e => e.VerificationStatus).IsRequired().HasMaxLength(30).HasColumnName("verification_status").HasDefaultValue("pending");
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+            entity.Property(e => e.VerifiedBy).HasColumnName("verified_by");
             entity.Property(e => e.VerifiedAt).HasColumnName("verified_at");
             entity.Property(e => e.VerificationNotes).HasColumnName("verification_notes");
             entity.Property(e => e.UploadedBy).HasMaxLength(200).HasColumnName("uploaded_by");
             entity.Property(e => e.ReceivedAt).HasColumnName("received_at");
+
             entity.HasIndex(e => e.PoNo).IsUnique();
             entity.ToTable("purchase_orders", table => table.HasTrigger("trg_po_verification_history"));
 
@@ -304,6 +321,24 @@ public class QuotationDbContext : DbContext
                 .WithMany(s => s.PurchaseOrders)
                 .HasForeignKey(e => e.SupplierId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<PoAuditLogEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id);
+            entity.Property(e => e.PoId).IsRequired();
+            entity.Property(e => e.Action).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.ChangedBy).IsRequired();
+            entity.Property(e => e.ChangedAt).IsRequired();
+            entity.Property(e => e.Notes);
+            entity.HasIndex(e => e.PoId);
+            entity.ToTable("PoAuditLog");
+
+            entity.HasOne(e => e.PurchaseOrder)
+                .WithMany()
+                .HasForeignKey(e => e.PoId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<PurchaseOrderItemEntity>(entity =>
@@ -367,7 +402,7 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.ShipToAddress).HasMaxLength(1000).HasColumnName("ship_to_address");
             entity.Property(e => e.GstRateId).HasColumnName("gst_rate_id");
             entity.HasIndex(e => e.InvoiceNo).IsUnique();
-            entity.ToTable("invoices", table => table.HasTrigger("trg_invoice_requires_verified_po"));
+            entity.ToTable("invoices");
 
             entity.HasOne<CustomerEntity>()
                 .WithMany(c => c.Invoices)

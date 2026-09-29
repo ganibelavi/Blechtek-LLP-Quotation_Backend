@@ -103,7 +103,22 @@ public class PurchaseOrderEntity
     public string? PoDirection { get; set; }
     public string? ReceivedFromEmail { get; set; }
     public string? AttachmentUrl { get; set; }
-    public string? VerificationStatus { get; set; } = "pending";
+
+    // Client PO fields for manual verification
+    public string? ClientPoNumber { get; set; }
+    public DateTime? ClientPoDate { get; set; }
+    public decimal? ClientPoAmount { get; set; }
+    public string? ClientPoItems { get; set; }
+    public string? ClientPoTerms { get; set; }
+
+    // File upload fields
+    public string? UploadedFilePath { get; set; }
+    public string? UploadedFileName { get; set; }
+    public string? FileContentType { get; set; }
+
+    // Verification workflow
+    public string VerificationStatus { get; set; } = "pending";
+    public int? CreatedBy { get; set; }
     public string? VerifiedBy { get; set; }
     public DateTime? VerifiedAt { get; set; }
     public string? VerificationNotes { get; set; }
@@ -111,6 +126,18 @@ public class PurchaseOrderEntity
     public DateTime? ReceivedAt { get; set; }
 
     public ICollection<PurchaseOrderItemEntity> Items { get; set; } = new List<PurchaseOrderItemEntity>();
+}
+
+public class PoAuditLogEntity
+{
+    public int Id { get; set; }
+    public int PoId { get; set; }
+    public string Action { get; set; } = string.Empty;
+    public int ChangedBy { get; set; }
+    public DateTime ChangedAt { get; set; } = DateTime.UtcNow;
+    public string? Notes { get; set; }
+
+    public PurchaseOrderEntity? PurchaseOrder { get; set; }
 }
 
 public class PurchaseOrderItemEntity
@@ -259,6 +286,78 @@ public class UpdatePurchaseOrderVerificationRequest
 {
     public string? VerificationStatus { get; set; }
     public string? VerificationNotes { get; set; }
+}
+
+public class PoClientDetailsRequest
+{
+    public string? ClientPoNumber { get; set; }
+    public string? ClientPoDate { get; set; }
+    public decimal? ClientPoAmount { get; set; }
+    public string? ClientPoItems { get; set; }
+    public string? ClientPoTerms { get; set; }
+}
+
+public class PoApproveRequest
+{
+    public string? Notes { get; set; }
+}
+
+public class PoReopenRequest
+{
+    public string? Reason { get; set; }
+}
+
+public class PoRejectRequest
+{
+    public string? Notes { get; set; }
+}
+
+public class PoVerificationResponse
+{
+    public int Id { get; set; }
+    public string PoNo { get; set; } = string.Empty;
+    public string VerificationStatus { get; set; } = string.Empty;
+    public string? VerificationNotes { get; set; }
+    public int? CreatedBy { get; set; }
+    public string? CreatedByName { get; set; }
+    public string? VerifiedBy { get; set; }
+    public string? VerifiedByName { get; set; }
+    public DateTime? VerifiedAt { get; set; }
+    public string? UploadedFilePath { get; set; }
+    public string? UploadedFileName { get; set; }
+    public string? FileContentType { get; set; }
+    public string? ReceivedFromEmail { get; set; }
+
+    // Quotation values (read-only)
+    public string? QuotationRefNo { get; set; }
+    public DateTime? QuotationRefDate { get; set; }
+    public decimal QuotationAmount { get; set; }
+    public string? QuotationItems { get; set; }
+    public string? QuotationTerms { get; set; }
+
+    // Client PO values (editable in Draft/PendingReview)
+    public string? ClientPoNumber { get; set; }
+    public DateTime? ClientPoDate { get; set; }
+    public decimal? ClientPoAmount { get; set; }
+    public string? ClientPoItems { get; set; }
+    public string? ClientPoTerms { get; set; }
+
+    // Comparison results
+    public bool AmountMatches { get; set; }
+    public bool ItemsMatch { get; set; }
+    public bool TermsMatch { get; set; }
+    public int MismatchCount { get; set; }
+}
+
+public class PoAuditLogResponse
+{
+    public int Id { get; set; }
+    public int PoId { get; set; }
+    public string Action { get; set; } = string.Empty;
+    public int ChangedBy { get; set; }
+    public string? ChangedByName { get; set; }
+    public DateTime ChangedAt { get; set; }
+    public string? Notes { get; set; }
 }
 
 public class CreateInvoiceRequest
