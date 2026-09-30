@@ -1442,6 +1442,10 @@ public class SqlQuotationService : IQuotationService
         var moduleNames = request.SelectedModules.ToList();
         int rowNum = 1;
 
+        // Get the parent table for insertion (once, before the loop)
+        var parentTable = templateRows[0].Ancestors<Table>().FirstOrDefault();
+        if (parentTable == null) return;
+
         // Accumulate the true combined total from the same per-module figures being
         // rendered in the rows below, so the overall total always matches what the
         // module rows actually display.
@@ -1481,10 +1485,6 @@ public class SqlQuotationService : IQuotationService
                 ["{{MODULE_FINAL}}"] = $"{moduleFinalPrice:N2}"
             };
 
-            // Get the parent table for insertion
-            var parentTable = templateRows[0].Ancestors<Table>().FirstOrDefault();
-            if (parentTable == null) return;
-
             // Clone all 3 rows for this module
             foreach (var templateRow in templateRows)
             {
@@ -1493,25 +1493,39 @@ public class SqlQuotationService : IQuotationService
                 templateRows[0].InsertBeforeSelf(clonedRow);
             }
 
-            // If no discount, remove any cloned rows that contain "Discount" text
-            if (discountPercentage <= 0)
-            {
-                var rowsToRemove = parentTable.Elements<TableRow>()
-                    .Where(row => row.Descendants<Text>().Any(t => t.Text.Contains("Discount", StringComparison.OrdinalIgnoreCase)))
-                    .ToList();
-                foreach (var row in rowsToRemove)
-                {
-                    row.Remove();
-                }
-            }
-
             rowNum++;
         }
 
         // Remove the template block
-        foreach (var templateRow in templateRows)
+foreach (var templateRow in templateRows)
+            {
+                templateRow.Remove();
+            }
+
+        // If no discount, remove only the discount-specific rows (not rows that also contain module info)
+        if (discountPercentage <= 0 && parentTable != null)
         {
-            templateRow.Remove();
+            var discountRowsToRemove = parentTable.Elements<TableRow>()
+                .Where(row =>
+                {
+                    var rowText = string.Concat(row.Descendants<Text>().Select(t => t.Text));
+                    // Only remove rows that are primarily discount rows (contain Discount but NOT module info)
+                    var hasDiscount = rowText.Contains("Discount", StringComparison.OrdinalIgnoreCase);
+                    var hasModuleInfo = rowText.Contains("MODULE_NAME", StringComparison.OrdinalIgnoreCase) ||
+                                        rowText.Contains("NO_OF_USERS", StringComparison.OrdinalIgnoreCase) ||
+                                        rowText.Contains("MODULE_PRICE", StringComparison.OrdinalIgnoreCase) ||
+                                        rowText.Contains("MODULE_SUBTOTAL", StringComparison.OrdinalIgnoreCase) ||
+                                        rowText.Contains("IMPL_TOTAL", StringComparison.OrdinalIgnoreCase) ||
+                                        rowText.Contains("IMPL_RATE", StringComparison.OrdinalIgnoreCase) ||
+                                        rowText.Contains("IMPL_EFFORT", StringComparison.OrdinalIgnoreCase) ||
+                                        rowText.Contains("LICENSE_RENEWAL", StringComparison.OrdinalIgnoreCase);
+                    return hasDiscount && !hasModuleInfo;
+                })
+                .ToList();
+            foreach (var row in discountRowsToRemove)
+            {
+                row.Remove();
+            }
         }
 
         var overallValueRow = body
