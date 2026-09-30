@@ -402,7 +402,7 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.ShipToAddress).HasMaxLength(1000).HasColumnName("ship_to_address");
             entity.Property(e => e.GstRateId).HasColumnName("gst_rate_id");
             entity.HasIndex(e => e.InvoiceNo).IsUnique();
-            entity.ToTable("invoices");
+            entity.ToTable("invoices", table => table.HasTrigger("trg_invoice_requires_verified_po"));
 
             entity.HasOne<CustomerEntity>()
                 .WithMany(c => c.Invoices)

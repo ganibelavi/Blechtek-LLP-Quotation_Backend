@@ -517,7 +517,7 @@ BEGIN
         FROM inserted AS i
         INNER JOIN purchase_orders AS po ON po.id = i.po_id
         WHERE i.po_id IS NOT NULL
-          AND ISNULL(po.verification_status, '') <> 'verified'
+          AND ISNULL(po.verification_status, '') NOT IN ('Approved', 'ApprovedWithMismatch', 'verified')
     )
     BEGIN
         RAISERROR(
