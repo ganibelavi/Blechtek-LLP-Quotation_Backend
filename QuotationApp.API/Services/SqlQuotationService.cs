@@ -1816,6 +1816,10 @@ public class SqlQuotationService : IQuotationService
         // Get template cells for formatting reference (before removing placeholder rows)
         var templateCells = templateRow.Elements<TableCell>().ToList();
 
+        // Also get header row for consistent formatting across all columns
+        var headerRow = rows[0];
+        var headerCells = headerRow.Elements<TableCell>().ToList();
+
         // Remove existing placeholder data rows EXCEPT the template row (keep rows[1] as template)
         for (int i = rows.Count - 1; i >= 2; i--)
         {
@@ -1857,27 +1861,30 @@ public class SqlQuotationService : IQuotationService
             var cells = clonedRow.Elements<TableCell>().ToList();
             if (cells.Count >= 9 && templateCells.Count >= 9)
             {
+                // Use header row cells as formatting source for ALL data columns to ensure consistency
+                var formatSourceCell = headerCells.Count >= 9 ? headerCells[0] : templateCells[0];
+
                 // Cell 0: Product Platform - Format as "CQUAL {{MODULE_NAME}}"
                 var moduleDisplayName = $"CQUAL {moduleName}";
-                ReplaceCellTextPreservingFormat(cells[0], moduleDisplayName, templateCells[0]);
+                ReplaceCellTextPreservingFormat(cells[0], moduleDisplayName, formatSourceCell, templateRow);
 
                 // Cell 1: No of Users
-                ReplaceCellTextPreservingFormat(cells[1], noOfUsers.ToString(), templateCells[1]);
+                ReplaceCellTextPreservingFormat(cells[1], noOfUsers.ToString(), formatSourceCell, templateRow);
 
                 // Cell 2: Y1
-                ReplaceCellTextPreservingFormat(cells[2], $"{y1:N2}", templateCells[2]);
+                ReplaceCellTextPreservingFormat(cells[2], $"{y1:N2}", formatSourceCell, templateRow);
                 // Cell 3: Y2
-                ReplaceCellTextPreservingFormat(cells[3], $"{y2:N2}", templateCells[3]);
+                ReplaceCellTextPreservingFormat(cells[3], $"{y2:N2}", formatSourceCell, templateRow);
                 // Cell 4: Y3
-                ReplaceCellTextPreservingFormat(cells[4], $"{y3:N2}", templateCells[4]);
+                ReplaceCellTextPreservingFormat(cells[4], $"{y3:N2}", formatSourceCell, templateRow);
                 // Cell 5: Y4
-                ReplaceCellTextPreservingFormat(cells[5], $"{y4:N2}", templateCells[5]);
+                ReplaceCellTextPreservingFormat(cells[5], $"{y4:N2}", formatSourceCell, templateRow);
                 // Cell 6: Y5
-                ReplaceCellTextPreservingFormat(cells[6], $"{y5:N2}", templateCells[6]);
+                ReplaceCellTextPreservingFormat(cells[6], $"{y5:N2}", formatSourceCell, templateRow);
                 // Cell 7: Avg Cost/Year
-                ReplaceCellTextPreservingFormat(cells[7], $"{avgCostPerYear:N2}", templateCells[7]);
+                ReplaceCellTextPreservingFormat(cells[7], $"{avgCostPerYear:N2}", formatSourceCell, templateRow);
                 // Cell 8: Cost/User/Year
-                ReplaceCellTextPreservingFormat(cells[8], $"{costPerUserPerYear:N2}", templateCells[8]);
+                ReplaceCellTextPreservingFormat(cells[8], $"{costPerUserPerYear:N2}", formatSourceCell, templateRow);
             }
 
             // Insert before the template row (which will be removed after loop)
@@ -1888,7 +1895,7 @@ public class SqlQuotationService : IQuotationService
         templateRow.Remove();
     }
 
-    private static void ReplaceCellTextPreservingFormat(TableCell cell, string newText, TableCell templateCell = null)
+    private static void ReplaceCellTextPreservingFormat(TableCell cell, string newText, TableCell templateCell = null, TableRow templateRow = null)
     {
         // Try to replace text in existing runs to preserve font formatting
         foreach (var paragraph in cell.Elements<Paragraph>())
@@ -1903,8 +1910,7 @@ public class SqlQuotationService : IQuotationService
             }
         }
 
-        // If no existing text found, create a new run preserving any run properties from the first run in the cell
-        // or from the template's first paragraph/run
+        // If no existing text found, create a new run preserving any run properties
         var firstParagraph = cell.Elements<Paragraph>().FirstOrDefault();
         if (firstParagraph == null)
         {
@@ -1912,20 +1918,64 @@ public class SqlQuotationService : IQuotationService
             cell.AppendChild(firstParagraph);
         }
 
-        // Get run properties from template cell
+        // Get run properties from template cell (copy run AND paragraph properties)
         RunProperties runProps = null;
+        ParagraphProperties paraProps = null;
+
+        // First try: template cell itself
         if (templateCell != null)
         {
             var templateFirstPara = templateCell.Elements<Paragraph>().FirstOrDefault();
-            var templateFirstRun = templateFirstPara?.Elements<Run>().FirstOrDefault();
-            if (templateFirstRun?.RunProperties != null)
+            if (templateFirstPara != null)
             {
-                runProps = (RunProperties)templateFirstRun.RunProperties.CloneNode(true);
+                // Copy paragraph properties (spacing, alignment, etc.)
+                if (templateFirstPara.ParagraphProperties != null)
+                {
+                    paraProps = (ParagraphProperties)templateFirstPara.ParagraphProperties.CloneNode(true);
+                }
+                var templateFirstRun = templateFirstPara.Elements<Run>().FirstOrDefault();
+                if (templateFirstRun?.RunProperties != null)
+                {
+                    runProps = (RunProperties)templateFirstRun.RunProperties.CloneNode(true);
+                }
             }
         }
-        else
+
+        // Fallback: if template cell has no formatting, use first cell in template row that has formatting
+        if ((runProps == null || paraProps == null) && templateRow != null)
         {
-            // Fallback to current cell's first run
+            foreach (var tc in templateRow.Elements<TableCell>())
+            {
+                var tp = tc.Elements<Paragraph>().FirstOrDefault();
+                if (tp != null)
+                {
+                    if (paraProps == null && tp.ParagraphProperties != null)
+                    {
+                        paraProps = (ParagraphProperties)tp.ParagraphProperties.CloneNode(true);
+                    }
+                    var tr = tp.Elements<Run>().FirstOrDefault();
+                    if (runProps == null && tr?.RunProperties != null)
+                    {
+                        runProps = (RunProperties)tr.RunProperties.CloneNode(true);
+                    }
+                    if (runProps != null && paraProps != null) break;
+                }
+            }
+        }
+
+        // Apply paragraph properties
+        if (paraProps != null)
+        {
+            if (firstParagraph.ParagraphProperties != null)
+            {
+                firstParagraph.ParagraphProperties.Remove();
+            }
+            firstParagraph.ParagraphProperties = paraProps;
+        }
+
+        // Last fallback: current cell's first run
+        if (runProps == null)
+        {
             var firstRun = firstParagraph.Elements<Run>().FirstOrDefault();
             if (firstRun?.RunProperties != null)
             {
