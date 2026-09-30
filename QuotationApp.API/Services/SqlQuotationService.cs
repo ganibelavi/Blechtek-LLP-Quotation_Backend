@@ -1032,8 +1032,8 @@ public class SqlQuotationService : IQuotationService
                     ["{{SelectedModules}}"] = string.Join(", ", request.SelectedModules),
                     ["{{MODULE_LIST}}"] = string.Join(", ", request.SelectedModules),
                     ["{{MODULE_REQUIREMENTS}}"] = FormatModuleRequirements(
-                        request.SelectedModules,
-                        request.ModuleDetails),
+                                        request.SelectedModules,
+                                        request.ModuleDetails),
                     ["{{MODULE_DETAILS}}"] = string.Empty,
                     ["{{MODULE_PRICING}}"] = string.Empty,
                     ["{{OVERALL_PRICING}}"] = string.Empty,
@@ -1049,11 +1049,20 @@ public class SqlQuotationService : IQuotationService
                     ["{{MODULE_PRICE}}"] = $"Module Price: {modulePriceTotal:N2}",
                     ["{{IMPLEMENTATION_TOTAL}}"] = $"Implementation Total: {implementationPriceTotal:N2}",
                     ["{{SUBTOTAL}}"] = $"Subtotal: {subtotal:N2}",
-                    ["{{DiscountPercentage}}"] = $"Discount Percentage: {discountPercentage:N2}%",
-                    ["{{DiscountAmount}}"] = $"Discount Amount: {discountAmount:N2}",
                     ["{{FinalPrice}}"] = $"Final Price: {finalPrice:N2}",
                     ["{{IMPLEMENTATION_PRICE}}"] = $"Implementation Price: {implementationPriceTotal:N2}"
                 };
+
+                if (discountPercentage > 0 && discountAmount > 0)
+                {
+                    replacements["{{DiscountPercentage}}"] = $"Discount Percentage: {discountPercentage:N2}%";
+                    replacements["{{DiscountAmount}}"] = $"Discount Amount: {discountAmount:N2}";
+                }
+                else
+                {
+                    replacements["{{DiscountPercentage}}"] = string.Empty;
+                    replacements["{{DiscountAmount}}"] = string.Empty;
+                }
 
                 PopulateScopeTable(body, modules, request.SelectedModules);
                 PopulatePricingTableFromTemplate(body, request, modulePrices, discountPercentage, subtotal, implementationPriceTotal, modulePriceTotal, discountAmount, finalPrice);
@@ -1166,20 +1175,27 @@ public class SqlQuotationService : IQuotationService
 
         const string licenseRenewalText = "The License renewal would be required to be done every Year These renewal fees will facilitate to have the Product Upgrades, which would cover improvements, bug fixes, and changes in AIAG VDA compliances. Support of 7 Man days is included in this price.";
 
+        var discountLine = discountPercentage > 0 ? $"Discount ({discountPercentage:N2}%):" : string.Empty;
+
         return string.Join(
             Environment.NewLine + Environment.NewLine,
             selectedModules.Select(moduleName =>
             {
                 detailsByModule.TryGetValue(moduleName.Trim(), out var detail);
-                return string.Join(
-                    Environment.NewLine,
+                var lines = new List<string>
+                {
                     $"{moduleName}:",
                     licenseRenewalText,
                     "Module Price:",
                     "Implementation Total:",
-                    "Module Subtotal:",
-                    $"Discount ({discountPercentage:N2}%):",
-                    "Module Final Price:");
+                    "Module Subtotal:"
+                };
+                if (!string.IsNullOrEmpty(discountLine))
+                {
+                    lines.Add(discountLine);
+                }
+                lines.Add("Module Final Price:");
+                return string.Join(Environment.NewLine, lines);
             }));
     }
 
@@ -1221,7 +1237,10 @@ public class SqlQuotationService : IQuotationService
                 lines.Add($"{modulePrice:N2}");
                 lines.Add($"{implementationTotal:N2}");
                 lines.Add($"{moduleSubtotal:N2}");
-                lines.Add($"{moduleDiscount:N2}");
+                if (discountPercentage > 0)
+                {
+                    lines.Add($"{moduleDiscount:N2}");
+                }
                 lines.Add($"{moduleFinalPrice:N2}");
                 if (index < moduleNames.Count - 1)
                 {
@@ -1235,14 +1254,22 @@ public class SqlQuotationService : IQuotationService
 
     private static string FormatOverallPricingParticulars(decimal discountPercentage)
     {
-        return string.Join(
-            Environment.NewLine,
+        var lines = new List<string>
+        {
             "Overall Calculation:",
             "Module Price:",
             "Implementation Total:",
-            "Subtotal:",
-            $"Discount ({discountPercentage:N2}%):",
-            "Final Price:");
+            "Subtotal:"
+        };
+
+        if (discountPercentage > 0)
+        {
+            lines.Add($"Discount ({discountPercentage:N2}%):");
+        }
+
+        lines.Add("Final Price:");
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     private static string FormatOverallPricingValues(
@@ -1253,14 +1280,22 @@ public class SqlQuotationService : IQuotationService
         decimal discountAmount,
         decimal finalPrice)
     {
-        return string.Join(
-            Environment.NewLine,
+        var lines = new List<string>
+        {
             "",
             $"{modulePriceTotal:N2}",
             $"{implementationPriceTotal:N2}",
-            $"{subtotal:N2}",
-            $"{discountAmount:N2}",
-            $"{finalPrice:N2}");
+            $"{subtotal:N2}"
+        };
+
+        if (discountPercentage > 0)
+        {
+            lines.Add($"{discountAmount:N2}");
+        }
+
+        lines.Add($"{finalPrice:N2}");
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     private static void PopulateScopeTable(
@@ -1441,10 +1476,14 @@ public class SqlQuotationService : IQuotationService
                 ["{{IMPL_RATE}}"] = $"{implementationRate:N2}",
                 ["{{IMPL_TOTAL}}"] = $"{implementationTotal:N2}",
                 ["{{MODULE_SUBTOTAL}}"] = $"{moduleSubtotal:N2}",
-                ["{{MODULE_DISCOUNT_PCT}}"] = $"{discountPercentage:N2}",
-                ["{{MODULE_DISCOUNT}}"] = $"{moduleDiscount:N2}",
+                ["{{MODULE_DISCOUNT_PCT}}"] = discountPercentage > 0 ? $"{discountPercentage:N2}" : string.Empty,
+                ["{{MODULE_DISCOUNT}}"] = discountPercentage > 0 ? $"{moduleDiscount:N2}" : string.Empty,
                 ["{{MODULE_FINAL}}"] = $"{moduleFinalPrice:N2}"
             };
+
+            // Get the parent table for insertion
+            var parentTable = templateRows[0].Ancestors<Table>().FirstOrDefault();
+            if (parentTable == null) return;
 
             // Clone all 3 rows for this module
             foreach (var templateRow in templateRows)
@@ -1453,6 +1492,19 @@ public class SqlQuotationService : IQuotationService
                 ReplaceRowPlaceholders(clonedRow, moduleReplacements);
                 templateRows[0].InsertBeforeSelf(clonedRow);
             }
+
+            // If no discount, remove any cloned rows that contain "Discount" text
+            if (discountPercentage <= 0)
+            {
+                var rowsToRemove = parentTable.Elements<TableRow>()
+                    .Where(row => row.Descendants<Text>().Any(t => t.Text.Contains("Discount", StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+                foreach (var row in rowsToRemove)
+                {
+                    row.Remove();
+                }
+            }
+
             rowNum++;
         }
 
@@ -1491,14 +1543,19 @@ public class SqlQuotationService : IQuotationService
 
         if (overallTemplateRow != null)
         {
-            var overallRows = new[]
+            var overallRows = new List<(string label, string value)>
             {
                 ("Module Price:", $"{modulePriceTotal:N2}"),
                 ("Implementation Total:", $"{implementationPriceTotal:N2}"),
-                ("Subtotal:", $"{subtotal:N2}"),
-                ($"Discount ({discountPercentage:N2}%):", $"{discountAmount:N2}"),
-                ("Total of All Modules Final Price:", $"{finalPrice:N2}")
+                ("Subtotal:", $"{subtotal:N2}")
             };
+
+            if (discountPercentage > 0 && discountAmount > 0)
+            {
+                overallRows.Add(($"Discount ({discountPercentage:N2}%):", $"{discountAmount:N2}"));
+            }
+
+            overallRows.Add(("Total of All Modules Final Price:", $"{finalPrice:N2}"));
 
             foreach (var (label, value) in overallRows)
             {
