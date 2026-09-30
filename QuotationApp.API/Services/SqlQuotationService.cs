@@ -1008,7 +1008,7 @@ public class SqlQuotationService : IQuotationService
                     finalPrice);
                 var pricingParticularsText = string.Join(
                     Environment.NewLine,
-                    "CQUAL {{MODULE_LIST}} Product License applicable for single site - Users{{MODULE_DETAILS}}",
+                    "CQUAL {{MODULE_LIST}}",
                     moduleParticularsText,
                     string.Empty,
                     overallPricingParticularsText);
@@ -1070,6 +1070,8 @@ public class SqlQuotationService : IQuotationService
                 NormalizeStandardPricingRows(body);
 
                 PopulateAdditionalScopeTable(body, request.AdditionalScopes);
+
+                PopulatePriceSummaryTable(body, request.SelectedModules, request.ModuleDetails, modulePrices);
 
                 foreach (var paragraph in body.Descendants<Paragraph>())
                 {
@@ -1497,10 +1499,10 @@ public class SqlQuotationService : IQuotationService
         }
 
         // Remove the template block
-foreach (var templateRow in templateRows)
-            {
-                templateRow.Remove();
-            }
+        foreach (var templateRow in templateRows)
+        {
+            templateRow.Remove();
+        }
 
         // If no discount, remove only the discount-specific rows (not rows that also contain module info)
         if (discountPercentage <= 0 && parentTable != null)
@@ -1768,6 +1770,176 @@ foreach (var templateRow in templateRows)
         }
 
         templateRow.Remove();
+    }
+
+    private static void PopulatePriceSummaryTable(
+        Body body,
+        IEnumerable<string> selectedModules,
+        IEnumerable<QuotationModuleRequest>? moduleDetails,
+        IReadOnlyDictionary<string, ModuleItem> modulePrices)
+    {
+        var moduleNames = selectedModules?.ToList() ?? new List<string>();
+        if (moduleNames.Count == 0) return;
+
+        var detailsByModule = (moduleDetails ?? Enumerable.Empty<QuotationModuleRequest>())
+            .ToDictionary(d => d.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
+
+        // Find the price summary table by looking for the header row
+        var priceSummaryTable = body
+            .Descendants<Table>()
+            .FirstOrDefault(table =>
+            {
+                var headerRow = table.Elements<TableRow>().FirstOrDefault();
+                if (headerRow == null) return false;
+                var headerText = string.Concat(headerRow.Descendants<Text>().Select(t => t.Text));
+                return headerText.Contains("CQUAL Product Platform", StringComparison.OrdinalIgnoreCase) &&
+                       headerText.Contains("No of Users", StringComparison.OrdinalIgnoreCase) &&
+                       headerText.Contains("Y1", StringComparison.OrdinalIgnoreCase) &&
+                       headerText.Contains("Y2", StringComparison.OrdinalIgnoreCase) &&
+                       headerText.Contains("Y3", StringComparison.OrdinalIgnoreCase) &&
+                       headerText.Contains("Y4", StringComparison.OrdinalIgnoreCase) &&
+                       headerText.Contains("Y5", StringComparison.OrdinalIgnoreCase) &&
+                       headerText.Contains("Avg Cost/ Year", StringComparison.OrdinalIgnoreCase) &&
+                       headerText.Contains("Cost/User /Year", StringComparison.OrdinalIgnoreCase);
+            });
+
+        if (priceSummaryTable == null) return;
+
+        // Get all rows in the table
+        var rows = priceSummaryTable.Elements<TableRow>().ToList();
+        if (rows.Count < 2) return; // Need at least header + 1 data row
+
+        // The template has header row (index 0) and 3 placeholder data rows (index 1, 2, 3)
+        // We'll use the first data row as template and clone for each module
+        var templateRow = rows[1]; // First data row after header
+
+        // Get template cells for formatting reference (before removing placeholder rows)
+        var templateCells = templateRow.Elements<TableCell>().ToList();
+
+        // Remove existing placeholder data rows EXCEPT the template row (keep rows[1] as template)
+        for (int i = rows.Count - 1; i >= 2; i--)
+        {
+            rows[i].Remove();
+        }
+
+        const decimal annualIncrementRate = 0.07m; // 7% annual increment
+        const decimal y1Percentage = 0.20m; // 20% of module price for Y1
+
+        foreach (var moduleName in moduleNames)
+        {
+            modulePrices.TryGetValue(moduleName, out var module);
+            detailsByModule.TryGetValue(moduleName.Trim(), out var detail);
+
+            var modulePrice = module?.Price ?? 0m;
+            var noOfUsers = detail?.NoOfUsers ?? 1;
+
+            // Calculate Y1-Y5
+            // Y1 = 20% of module price
+            var y1 = modulePrice * y1Percentage;
+            // Y2 = Y1 + 7% increment
+            var y2 = y1 * (1 + annualIncrementRate);
+            // Y3 = Y2 + 7% increment
+            var y3 = y2 * (1 + annualIncrementRate);
+            // Y4 = Y3 + 7% increment
+            var y4 = y3 * (1 + annualIncrementRate);
+            // Y5 = Y4 + 7% increment
+            var y5 = y4 * (1 + annualIncrementRate);
+
+            // Avg Cost/Year = Average of Y1-Y5
+            var avgCostPerYear = (y1 + y2 + y3 + y4 + y5) / 5m;
+
+            // Cost/User/Year = Avg Cost/Year / No of Users
+            var costPerUserPerYear = noOfUsers > 0 ? avgCostPerYear / noOfUsers : 0m;
+
+            var clonedRow = (TableRow)templateRow.CloneNode(true);
+
+            // Replace cell contents by index for ALL cells while preserving formatting
+            var cells = clonedRow.Elements<TableCell>().ToList();
+            if (cells.Count >= 9 && templateCells.Count >= 9)
+            {
+                // Cell 0: Product Platform - Format as "CQUAL {{MODULE_NAME}}"
+                var moduleDisplayName = $"CQUAL {moduleName}";
+                ReplaceCellTextPreservingFormat(cells[0], moduleDisplayName, templateCells[0]);
+
+                // Cell 1: No of Users
+                ReplaceCellTextPreservingFormat(cells[1], noOfUsers.ToString(), templateCells[1]);
+
+                // Cell 2: Y1
+                ReplaceCellTextPreservingFormat(cells[2], $"{y1:N2}", templateCells[2]);
+                // Cell 3: Y2
+                ReplaceCellTextPreservingFormat(cells[3], $"{y2:N2}", templateCells[3]);
+                // Cell 4: Y3
+                ReplaceCellTextPreservingFormat(cells[4], $"{y3:N2}", templateCells[4]);
+                // Cell 5: Y4
+                ReplaceCellTextPreservingFormat(cells[5], $"{y4:N2}", templateCells[5]);
+                // Cell 6: Y5
+                ReplaceCellTextPreservingFormat(cells[6], $"{y5:N2}", templateCells[6]);
+                // Cell 7: Avg Cost/Year
+                ReplaceCellTextPreservingFormat(cells[7], $"{avgCostPerYear:N2}", templateCells[7]);
+                // Cell 8: Cost/User/Year
+                ReplaceCellTextPreservingFormat(cells[8], $"{costPerUserPerYear:N2}", templateCells[8]);
+            }
+
+            // Insert before the template row (which will be removed after loop)
+            templateRow.InsertBeforeSelf(clonedRow);
+        }
+
+        // Remove the template row
+        templateRow.Remove();
+    }
+
+    private static void ReplaceCellTextPreservingFormat(TableCell cell, string newText, TableCell templateCell = null)
+    {
+        // Try to replace text in existing runs to preserve font formatting
+        foreach (var paragraph in cell.Elements<Paragraph>())
+        {
+            foreach (var run in paragraph.Elements<Run>())
+            {
+                foreach (var text in run.Elements<Text>())
+                {
+                    text.Text = newText;
+                    return;
+                }
+            }
+        }
+
+        // If no existing text found, create a new run preserving any run properties from the first run in the cell
+        // or from the template's first paragraph/run
+        var firstParagraph = cell.Elements<Paragraph>().FirstOrDefault();
+        if (firstParagraph == null)
+        {
+            firstParagraph = new Paragraph();
+            cell.AppendChild(firstParagraph);
+        }
+
+        // Get run properties from template cell
+        RunProperties runProps = null;
+        if (templateCell != null)
+        {
+            var templateFirstPara = templateCell.Elements<Paragraph>().FirstOrDefault();
+            var templateFirstRun = templateFirstPara?.Elements<Run>().FirstOrDefault();
+            if (templateFirstRun?.RunProperties != null)
+            {
+                runProps = (RunProperties)templateFirstRun.RunProperties.CloneNode(true);
+            }
+        }
+        else
+        {
+            // Fallback to current cell's first run
+            var firstRun = firstParagraph.Elements<Run>().FirstOrDefault();
+            if (firstRun?.RunProperties != null)
+            {
+                runProps = (RunProperties)firstRun.RunProperties.CloneNode(true);
+            }
+        }
+
+        var newRun = new Run(new Text(newText));
+        if (runProps != null)
+        {
+            newRun.RunProperties = runProps;
+        }
+
+        firstParagraph.AppendChild(newRun);
     }
 
     private static void ReplaceParagraphText(
