@@ -1442,6 +1442,28 @@ public class SqlQuotationService : IQuotationService
 
         if (templateRows.Count == 0) return;
 
+        // Inject {{MODULE_FINAL}} placeholder into the template row that contains {{MODULE_SUBTOTAL}}
+        // Replace {{MODULE_SUBTOTAL}} with {{MODULE_FINAL}} when there's a discount, otherwise keep subtotal
+        foreach (var templateRow in templateRows)
+        {
+            foreach (var cell in templateRow.Elements<TableCell>())
+            {
+                var cellText = string.Concat(cell.Descendants<Text>().Select(t => t.Text));
+                if (cellText.Contains("{{MODULE_SUBTOTAL}}", StringComparison.Ordinal))
+                {
+                    // Replace {{MODULE_SUBTOTAL}} with {{MODULE_FINAL}} in the cell text
+                    foreach (var text in cell.Descendants<Text>())
+                    {
+                        if (text.Text.Contains("{{MODULE_SUBTOTAL}}", StringComparison.Ordinal))
+                        {
+                            text.Text = text.Text.Replace("{{MODULE_SUBTOTAL}}", "{{MODULE_FINAL}}");
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
         var moduleNames = request.SelectedModules.ToList();
         int rowNum = 1;
 
@@ -1554,6 +1576,41 @@ public class SqlQuotationService : IQuotationService
             ReplaceRowPlaceholders(overallValueRow, overallValueReplacements);
         }
 
+        // Handle overall summary rows - find rows with static labels and {{OVERALL_VALUE}} placeholder
+        var overallSummaryLabels = new Dictionary<string, string>
+        {
+            ["Module Price:"] = $"{modulePriceTotal:N2}",
+            ["Implementation Total:"] = $"{implementationPriceTotal:N2}",
+            ["Subtotal:"] = $"{subtotal:N2}"
+        };
+
+        var overallDiscountPct = subtotal > 0 ? (discountAmount / subtotal) * 100m : 0m;
+        if (anyModuleHasDiscount && discountAmount > 0)
+        {
+            overallSummaryLabels[$"Discount ({overallDiscountPct:N2}%):"] = $"{discountAmount:N2}";
+        }
+        overallSummaryLabels["Total of All Modules Final Price:"] = $"{finalPrice:N2}";
+
+        var allRowsForSummary = body.Descendants<TableRow>().ToList();
+        foreach (var row in allRowsForSummary)
+        {
+            var rowText = string.Concat(row.Descendants<Text>().Select(t => t.Text));
+            foreach (var kvp in overallSummaryLabels)
+            {
+                if (rowText.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase) && rowText.Contains("{{OVERALL_VALUE}}", StringComparison.Ordinal))
+                {
+                    var replacements = new Dictionary<string, string>
+                    {
+                        ["{{OVERALL_VALUE}}"] = kvp.Value,
+                        ["{{OVERALL_LABEL}}"] = string.Empty
+                    };
+                    ReplaceRowPlaceholders(row, replacements);
+                    break;
+                }
+            }
+        }
+
+        // Remove any remaining template row with both placeholders
         var overallTemplateRow = body
             .Descendants<TableRow>()
             .FirstOrDefault(row =>
@@ -1565,34 +1622,6 @@ public class SqlQuotationService : IQuotationService
 
         if (overallTemplateRow != null)
         {
-            var overallRows = new List<(string label, string value)>
-            {
-                ("Module Price:", $"{modulePriceTotal:N2}"),
-                ("Implementation Total:", $"{implementationPriceTotal:N2}"),
-                ("Subtotal:", $"{subtotal:N2}")
-            };
-
-            var overallDiscountPct = subtotal > 0 ? (discountAmount / subtotal) * 100m : 0m;
-
-            if (anyModuleHasDiscount && discountAmount > 0)
-            {
-                overallRows.Add(($"Discount ({overallDiscountPct:N2}%):", $"{discountAmount:N2}"));
-            }
-
-            overallRows.Add(("Total of All Modules Final Price:", $"{finalPrice:N2}"));
-
-            foreach (var (label, value) in overallRows)
-            {
-                var row = (TableRow)overallTemplateRow.CloneNode(true);
-                var replacements = new Dictionary<string, string>
-                {
-                    ["{{OVERALL_LABEL}}"] = label,
-                    ["{{OVERALL_VALUE}}"] = value
-                };
-                ReplaceRowPlaceholders(row, replacements);
-                overallTemplateRow.InsertBeforeSelf(row);
-            }
-
             overallTemplateRow.Remove();
         }
     }
