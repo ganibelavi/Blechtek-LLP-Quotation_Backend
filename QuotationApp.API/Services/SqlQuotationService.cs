@@ -606,7 +606,7 @@ public class SqlQuotationService : IQuotationService
             var implementationPrice = implementationUnitPrice * implementationMultiplier;
             var moduleSubtotal = modulePrice + implementationPrice;
             var discount = Math.Clamp(detail?.DiscountPercentage ?? discountPercentage, 0m, 100m);
-            var discountAmount = moduleSubtotal * discount / 100m;
+            var discountAmount = modulePrice * discount / 100m;
 
             return new QuotationModulePricing
             {
@@ -1232,7 +1232,7 @@ public class SqlQuotationService : IQuotationService
                     GetEffortMultiplier(detail?.ImplementationEffortUnit);
                 var moduleSubtotal = modulePrice + implementationTotal;
                 var moduleDiscountPct = modulePricing?.DiscountPercentage ?? 0m;
-                var moduleDiscount = moduleSubtotal * moduleDiscountPct / 100m;
+                var moduleDiscount = modulePrice * moduleDiscountPct / 100m;
                 var moduleFinalPrice = moduleSubtotal - moduleDiscount;
 
                 lines.AddRange(Enumerable.Repeat(string.Empty, 5));
@@ -1492,7 +1492,7 @@ public class SqlQuotationService : IQuotationService
             var implementationTotal = noOfUsers * implementationRate;
             var moduleSubtotal = modulePrice + implementationTotal;
             var moduleDiscountPct = modulePricing?.DiscountPercentage ?? 0m;
-            var moduleDiscount = moduleSubtotal * moduleDiscountPct / 100m;
+            var moduleDiscount = modulePrice * moduleDiscountPct / 100m;
             var moduleFinalPrice = moduleSubtotal - moduleDiscount;
 
             // Accumulate into the running overall total.
