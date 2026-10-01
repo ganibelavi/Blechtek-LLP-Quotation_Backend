@@ -37,6 +37,14 @@ public class QuotationRequest
     /// <summary>Discount percentage to apply on module prices (0-100).</summary>
     [Range(0, 100, ErrorMessage = "Discount must be between 0 and 100.")]
     public decimal DiscountPercentage { get; set; } = 0;
+
+    /// <summary>Renewal percentage (e.g., 20 for 20%) to apply on module price for renewal years.</summary>
+    [Range(0, 100, ErrorMessage = "Renewal percentage must be between 0 and 100.")]
+    public decimal RenewalPercentage { get; set; }
+
+    /// <summary>Annual escalation percentage (e.g., 7 for 7%) applied from 3rd renewal year onwards.</summary>
+    [Range(0, 100, ErrorMessage = "Annual escalation percentage must be between 0 and 100.")]
+    public decimal AnnualEscalationPercentage { get; set; }
 }
 
 public class QuotationModuleRequest

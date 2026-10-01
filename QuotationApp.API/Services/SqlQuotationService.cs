@@ -1071,7 +1071,7 @@ public class SqlQuotationService : IQuotationService
 
                 PopulateAdditionalScopeTable(body, request.AdditionalScopes);
 
-                PopulatePriceSummaryTable(body, request.SelectedModules, request.ModuleDetails, modulePrices);
+                PopulatePriceSummaryTable(body, request.SelectedModules, request.ModuleDetails, modulePrices, request.RenewalPercentage, request.AnnualEscalationPercentage);
 
                 foreach (var paragraph in body.Descendants<Paragraph>())
                 {
@@ -1776,7 +1776,9 @@ public class SqlQuotationService : IQuotationService
         Body body,
         IEnumerable<string> selectedModules,
         IEnumerable<QuotationModuleRequest>? moduleDetails,
-        IReadOnlyDictionary<string, ModuleItem> modulePrices)
+        IReadOnlyDictionary<string, ModuleItem> modulePrices,
+        decimal renewalPercentage = 20m,
+        decimal annualEscalationPercentage = 7m)
     {
         var moduleNames = selectedModules?.ToList() ?? new List<string>();
         if (moduleNames.Count == 0) return;
@@ -1826,8 +1828,13 @@ public class SqlQuotationService : IQuotationService
             rows[i].Remove();
         }
 
-        const decimal annualIncrementRate = 0.07m; // 7% annual increment
-        const decimal y1Percentage = 0.20m; // 20% of module price for Y1
+        // Use defaults (20% renewal, 7% escalation) if not provided from subscription settings
+        var effectiveRenewalPercentage = renewalPercentage > 0 ? renewalPercentage : 20m;
+        var effectiveEscalationPercentage = annualEscalationPercentage > 0 ? annualEscalationPercentage : 7m;
+
+        // Convert percentages to decimal rates (e.g., 20 -> 0.20, 7 -> 0.07)
+        var renewalRate = effectiveRenewalPercentage / 100m;
+        var escalationRate = effectiveEscalationPercentage / 100m;
 
         foreach (var moduleName in moduleNames)
         {
@@ -1837,17 +1844,17 @@ public class SqlQuotationService : IQuotationService
             var modulePrice = module?.Price ?? 0m;
             var noOfUsers = detail?.NoOfUsers ?? 1;
 
-            // Calculate Y1-Y5
-            // Y1 = 20% of module price
-            var y1 = modulePrice * y1Percentage;
-            // Y2 = Y1 + 7% increment
-            var y2 = y1 * (1 + annualIncrementRate);
-            // Y3 = Y2 + 7% increment
-            var y3 = y2 * (1 + annualIncrementRate);
-            // Y4 = Y3 + 7% increment
-            var y4 = y3 * (1 + annualIncrementRate);
-            // Y5 = Y4 + 7% increment
-            var y5 = y4 * (1 + annualIncrementRate);
+            // Calculate Y1-Y5 renewal prices
+            // Y1 = RenewalPercentage% of module price (1st year renewal)
+            var y1 = modulePrice * renewalRate;
+            // Y2 = Y1 + AnnualEscalationPercentage% increment (2nd year - increment starts from Y2)
+            var y2 = y1 * (1 + escalationRate);
+            // Y3 = Y2 + AnnualEscalationPercentage% increment (3rd year)
+            var y3 = y2 * (1 + escalationRate);
+            // Y4 = Y3 + AnnualEscalationPercentage% increment (4th year)
+            var y4 = y3 * (1 + escalationRate);
+            // Y5 = Y4 + AnnualEscalationPercentage% increment (5th year)
+            var y5 = y4 * (1 + escalationRate);
 
             // Avg Cost/Year = Average of Y1-Y5
             var avgCostPerYear = (y1 + y2 + y3 + y4 + y5) / 5m;
@@ -1870,7 +1877,6 @@ public class SqlQuotationService : IQuotationService
 
                 // Cell 1: No of Users
                 ReplaceCellTextPreservingFormat(cells[1], noOfUsers.ToString(), formatSourceCell, templateRow);
-
                 // Cell 2: Y1
                 ReplaceCellTextPreservingFormat(cells[2], $"{y1:N2}", formatSourceCell, templateRow);
                 // Cell 3: Y2
