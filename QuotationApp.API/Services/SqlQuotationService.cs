@@ -980,32 +980,29 @@ public class SqlQuotationService : IQuotationService
                 var modulePriceTotal = pricing.Sum(p => p.ModulePrice);
                 var implementationPriceTotal = pricing.Sum(p => p.ImplementationPrice);
                 var subtotal = pricing.Sum(p => p.ModuleSubtotal);
-                var discountPercentage = request.DiscountPercentage > 0
-                    ? request.DiscountPercentage
-                    : (pricing.Any(p => p.DiscountPercentage > 0)
-                        ? pricing.Where(p => p.DiscountPercentage > 0).Average(p => p.DiscountPercentage)
-                        : 0m);
-                var discountAmount = subtotal * discountPercentage / 100m;
-                var finalPrice = subtotal - discountAmount;
+                var discountAmount = pricing.Sum(p => p.DiscountAmount);
+                var finalPrice = pricing.Sum(p => p.FinalPrice);
+                var overallDiscountPct = subtotal > 0 ? (discountAmount / subtotal) * 100m : 0m;
+                var anyModuleHasDiscount = pricing.Any(p => p.DiscountPercentage > 0);
                 var moduleParticularsText = FormatModuleParticulars(
                     request.SelectedModules,
                     request.ModuleDetails,
-                    discountPercentage);
+                    pricing);
                 var modulePricingValuesText = FormatModulePricingValues(
                     request.SelectedModules,
                     request.ModuleDetails,
                     modulePrices,
-                    discountPercentage,
-                    subtotal);
+                    pricing);
                 var overallPricingParticularsText = FormatOverallPricingParticulars(
-                    discountPercentage);
+                    overallDiscountPct, anyModuleHasDiscount);
                 var overallPricingValuesText = FormatOverallPricingValues(
                     modulePriceTotal,
                     implementationPriceTotal,
                     subtotal,
-                    discountPercentage,
+                    overallDiscountPct,
                     discountAmount,
-                    finalPrice);
+                    finalPrice,
+                    anyModuleHasDiscount);
                 var pricingParticularsText = string.Join(
                     Environment.NewLine,
                     "CQUAL {{MODULE_LIST}}",
@@ -1053,9 +1050,9 @@ public class SqlQuotationService : IQuotationService
                     ["{{IMPLEMENTATION_PRICE}}"] = $"Implementation Price: {implementationPriceTotal:N2}"
                 };
 
-                if (discountPercentage > 0 && discountAmount > 0)
+                if (anyModuleHasDiscount && discountAmount > 0)
                 {
-                    replacements["{{DiscountPercentage}}"] = $"Discount Percentage: {discountPercentage:N2}%";
+                    replacements["{{DiscountPercentage}}"] = $"Discount Percentage: {overallDiscountPct:N2}%";
                     replacements["{{DiscountAmount}}"] = $"Discount Amount: {discountAmount:N2}";
                 }
                 else
@@ -1065,7 +1062,7 @@ public class SqlQuotationService : IQuotationService
                 }
 
                 PopulateScopeTable(body, modules, request.SelectedModules);
-                PopulatePricingTableFromTemplate(body, request, modulePrices, discountPercentage, subtotal, implementationPriceTotal, modulePriceTotal, discountAmount, finalPrice);
+                PopulatePricingTableFromTemplate(body, request, modulePrices, pricing, subtotal, implementationPriceTotal, modulePriceTotal, discountAmount, finalPrice);
                 PopulateLicenseRenewalModuleRows(body, request.SelectedModules);
                 NormalizeStandardPricingRows(body);
 
@@ -1168,22 +1165,25 @@ public class SqlQuotationService : IQuotationService
     private static string FormatModuleParticulars(
         IEnumerable<string> selectedModules,
         IEnumerable<QuotationModuleRequest>? moduleDetails,
-        decimal discountPercentage)
+        List<QuotationModulePricing> pricing)
     {
         var detailsByModule = (moduleDetails ?? Enumerable.Empty<QuotationModuleRequest>())
             .ToDictionary(
                 detail => detail.ModuleName.Trim(),
                 StringComparer.OrdinalIgnoreCase);
+        var pricingByModule = pricing.ToDictionary(p => p.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
 
         const string licenseRenewalText = "The License renewal would be required to be done every Year These renewal fees will facilitate to have the Product Upgrades, which would cover improvements, bug fixes, and changes in AIAG VDA compliances. Support of 7 Man days is included in this price.";
-
-        var discountLine = discountPercentage > 0 ? $"Discount ({discountPercentage:N2}%):" : string.Empty;
 
         return string.Join(
             Environment.NewLine + Environment.NewLine,
             selectedModules.Select(moduleName =>
             {
                 detailsByModule.TryGetValue(moduleName.Trim(), out var detail);
+                pricingByModule.TryGetValue(moduleName.Trim(), out var modulePricing);
+                var moduleDiscountPct = modulePricing?.DiscountPercentage ?? 0m;
+                var discountLine = moduleDiscountPct > 0 ? $"Discount ({moduleDiscountPct:N2}%):" : string.Empty;
+
                 var lines = new List<string>
                 {
                     $"{moduleName}:",
@@ -1205,13 +1205,13 @@ public class SqlQuotationService : IQuotationService
         IEnumerable<string> selectedModules,
         IEnumerable<QuotationModuleRequest>? moduleDetails,
         IReadOnlyDictionary<string, ModuleItem> modulePrices,
-        decimal discountPercentage,
-        decimal quotationSubtotal)
+        List<QuotationModulePricing> pricing)
     {
         var detailsByModule = (moduleDetails ?? Enumerable.Empty<QuotationModuleRequest>())
             .ToDictionary(
                 detail => detail.ModuleName.Trim(),
                 StringComparer.OrdinalIgnoreCase);
+        var pricingByModule = pricing.ToDictionary(p => p.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
 
         var lines = new List<string>
         {
@@ -1225,21 +1225,21 @@ public class SqlQuotationService : IQuotationService
             {
                 modulePrices.TryGetValue(moduleName, out var module);
                 detailsByModule.TryGetValue(moduleName.Trim(), out var detail);
+                pricingByModule.TryGetValue(moduleName.Trim(), out var modulePricing);
 
                 var modulePrice = module?.Price ?? 0m;
                 var implementationTotal = (module?.ImplementationEffortCost ?? 0m) *
                     GetEffortMultiplier(detail?.ImplementationEffortUnit);
                 var moduleSubtotal = modulePrice + implementationTotal;
-                var moduleDiscount = quotationSubtotal == 0m
-                    ? 0m
-                    : moduleSubtotal * discountPercentage / 100m;
+                var moduleDiscountPct = modulePricing?.DiscountPercentage ?? 0m;
+                var moduleDiscount = moduleSubtotal * moduleDiscountPct / 100m;
                 var moduleFinalPrice = moduleSubtotal - moduleDiscount;
 
                 lines.AddRange(Enumerable.Repeat(string.Empty, 5));
                 lines.Add($"{modulePrice:N2}");
                 lines.Add($"{implementationTotal:N2}");
                 lines.Add($"{moduleSubtotal:N2}");
-                if (discountPercentage > 0)
+                if (moduleDiscountPct > 0)
                 {
                     lines.Add($"{moduleDiscount:N2}");
                 }
@@ -1254,7 +1254,7 @@ public class SqlQuotationService : IQuotationService
         return string.Join(Environment.NewLine, lines);
     }
 
-    private static string FormatOverallPricingParticulars(decimal discountPercentage)
+    private static string FormatOverallPricingParticulars(decimal overallDiscountPct, bool anyModuleHasDiscount)
     {
         var lines = new List<string>
         {
@@ -1264,9 +1264,9 @@ public class SqlQuotationService : IQuotationService
             "Subtotal:"
         };
 
-        if (discountPercentage > 0)
+        if (anyModuleHasDiscount && overallDiscountPct > 0)
         {
-            lines.Add($"Discount ({discountPercentage:N2}%):");
+            lines.Add($"Discount ({overallDiscountPct:N2}%):");
         }
 
         lines.Add("Final Price:");
@@ -1278,9 +1278,10 @@ public class SqlQuotationService : IQuotationService
         decimal modulePriceTotal,
         decimal implementationPriceTotal,
         decimal subtotal,
-        decimal discountPercentage,
+        decimal overallDiscountPct,
         decimal discountAmount,
-        decimal finalPrice)
+        decimal finalPrice,
+        bool anyModuleHasDiscount)
     {
         var lines = new List<string>
         {
@@ -1290,7 +1291,7 @@ public class SqlQuotationService : IQuotationService
             $"{subtotal:N2}"
         };
 
-        if (discountPercentage > 0)
+        if (anyModuleHasDiscount && overallDiscountPct > 0)
         {
             lines.Add($"{discountAmount:N2}");
         }
@@ -1392,7 +1393,7 @@ public class SqlQuotationService : IQuotationService
         Body body,
         QuotationRequest request,
         IReadOnlyDictionary<string, ModuleItem> modulePrices,
-        decimal discountPercentage,
+        List<QuotationModulePricing> pricing,
         decimal subtotal,
         decimal implementationPriceTotal,
         decimal modulePriceTotal,
@@ -1454,10 +1455,13 @@ public class SqlQuotationService : IQuotationService
         decimal totalModuleSubtotalAcrossModules = 0m;
         decimal totalModuleFinalAcrossModules = 0m;
 
+        var pricingByModule = pricing.ToDictionary(p => p.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
+
         foreach (var moduleName in moduleNames)
         {
             modulePrices.TryGetValue(moduleName, out var module);
             var detail = request.ModuleDetails?.FirstOrDefault(d => string.Equals(d.ModuleName, moduleName, StringComparison.OrdinalIgnoreCase));
+            pricingByModule.TryGetValue(moduleName.Trim(), out var modulePricing);
 
             var modulePrice = module?.Price ?? 0m;
             var implementationEffort = GetEffortMultiplier(detail?.ImplementationEffortUnit);
@@ -1465,7 +1469,8 @@ public class SqlQuotationService : IQuotationService
             var noOfUsers = detail?.NoOfUsers ?? 0;
             var implementationTotal = noOfUsers * implementationRate;
             var moduleSubtotal = modulePrice + implementationTotal;
-            var moduleDiscount = moduleSubtotal * discountPercentage / 100m;
+            var moduleDiscountPct = modulePricing?.DiscountPercentage ?? 0m;
+            var moduleDiscount = moduleSubtotal * moduleDiscountPct / 100m;
             var moduleFinalPrice = moduleSubtotal - moduleDiscount;
 
             // Accumulate into the running overall total.
@@ -1482,8 +1487,8 @@ public class SqlQuotationService : IQuotationService
                 ["{{IMPL_RATE}}"] = $"{implementationRate:N2}",
                 ["{{IMPL_TOTAL}}"] = $"{implementationTotal:N2}",
                 ["{{MODULE_SUBTOTAL}}"] = $"{moduleSubtotal:N2}",
-                ["{{MODULE_DISCOUNT_PCT}}"] = discountPercentage > 0 ? $"{discountPercentage:N2}" : string.Empty,
-                ["{{MODULE_DISCOUNT}}"] = discountPercentage > 0 ? $"{moduleDiscount:N2}" : string.Empty,
+                ["{{MODULE_DISCOUNT_PCT}}"] = moduleDiscountPct > 0 ? $"{moduleDiscountPct:N2}" : string.Empty,
+                ["{{MODULE_DISCOUNT}}"] = moduleDiscountPct > 0 ? $"{moduleDiscount:N2}" : string.Empty,
                 ["{{MODULE_FINAL}}"] = $"{moduleFinalPrice:N2}"
             };
 
@@ -1505,7 +1510,8 @@ public class SqlQuotationService : IQuotationService
         }
 
         // If no discount, remove only the discount-specific rows (not rows that also contain module info)
-        if (discountPercentage <= 0 && parentTable != null)
+        var anyModuleHasDiscount = pricing.Any(p => p.DiscountPercentage > 0);
+        if (!anyModuleHasDiscount && parentTable != null)
         {
             var discountRowsToRemove = parentTable.Elements<TableRow>()
                 .Where(row =>
@@ -1566,9 +1572,11 @@ public class SqlQuotationService : IQuotationService
                 ("Subtotal:", $"{subtotal:N2}")
             };
 
-            if (discountPercentage > 0 && discountAmount > 0)
+            var overallDiscountPct = subtotal > 0 ? (discountAmount / subtotal) * 100m : 0m;
+
+            if (anyModuleHasDiscount && discountAmount > 0)
             {
-                overallRows.Add(($"Discount ({discountPercentage:N2}%):", $"{discountAmount:N2}"));
+                overallRows.Add(($"Discount ({overallDiscountPct:N2}%):", $"{discountAmount:N2}"));
             }
 
             overallRows.Add(("Total of All Modules Final Price:", $"{finalPrice:N2}"));
