@@ -1164,6 +1164,7 @@ public class SqlQuotationService : IQuotationService
         if (body == null) return;
 
         Table? timeEstimateTable = null;
+        TableRow? moduleHeaderTemplate = null;
         List<TableRow>? templateRows = null;
         foreach (var table in body.Descendants<Table>())
         {
@@ -1178,6 +1179,14 @@ public class SqlQuotationService : IQuotationService
                 {
                     timeEstimateTable = table;
                     templateRows = rows.Skip(rowIndex).Take(TimeEstimateHelper.Stages.Length).ToList();
+                    if (rowIndex > 0)
+                    {
+                        var previousRow = rows[rowIndex - 1];
+                        var previousRowText = string.Concat(
+                            previousRow.Descendants<Text>().Select(text => text.Text));
+                        if (previousRowText.Contains("{{MODULE_NAME}}", StringComparison.Ordinal))
+                            moduleHeaderTemplate = previousRow;
+                    }
                     break;
                 }
             }
@@ -1211,6 +1220,22 @@ public class SqlQuotationService : IQuotationService
             if (!estimatesByModule.TryGetValue(moduleName, out var moduleEstimates))
                 throw new InvalidOperationException($"Missing time estimate for module '{moduleName}'.");
 
+            if (moduleHeaderTemplate != null)
+            {
+                var moduleHeader = moduleIndex == 0
+                    ? moduleHeaderTemplate
+                    : (TableRow)moduleHeaderTemplate.CloneNode(true);
+                if (moduleIndex > 0)
+                {
+                    timeEstimateTable.InsertAfter(moduleHeader, insertionPoint);
+                    insertionPoint = moduleHeader;
+                }
+
+                var moduleHeaderCell = moduleHeader.Elements<TableCell>().FirstOrDefault()
+                    ?? throw new InvalidOperationException("Module heading row in the Time Estimate table has no cells.");
+                SetTableCellText(moduleHeaderCell, moduleName);
+            }
+
             for (var stageIndex = 0; stageIndex < stageKeys.Length; stageIndex++)
             {
                 var stageKey = stageKeys[stageIndex];
@@ -1230,7 +1255,10 @@ public class SqlQuotationService : IQuotationService
                 if (cells.Count < TimeEstimateHelper.TotalWeeks + 1)
                     throw new InvalidOperationException($"Time Estimate table row for stage '{stageKey}' has only {cells.Count} cells, expected at least {TimeEstimateHelper.TotalWeeks + 1} (template problem).");
 
-                SetTableCellText(cells[0], $"{moduleName} - {TimeEstimateHelper.GetStageLabel(stageKey)}");
+                var stageLabel = TimeEstimateHelper.GetStageLabel(stageKey);
+                SetTableCellText(
+                    cells[0],
+                    moduleHeaderTemplate == null ? $"{moduleName} - {stageLabel}" : stageLabel);
 
                 for (var week = 1; week <= TimeEstimateHelper.TotalWeeks; week++)
                 {
