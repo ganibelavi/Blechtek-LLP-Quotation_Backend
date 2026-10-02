@@ -16,6 +16,7 @@ public class QuotationDbContext : DbContext
     public DbSet<ModuleEntity> Modules { get; set; }
     public DbSet<QuotationEntity> Quotations { get; set; }
     public DbSet<QuotationModuleEntity> QuotationModules { get; set; }
+    public DbSet<QuotationTimeEstimateEntity> QuotationTimeEstimates { get; set; }
     public DbSet<AdditionalScope> AdditionalScopes { get; set; }
     public DbSet<UserEntity> Users { get; set; }
     public DbSet<LoginHistoryEntity> LoginHistory { get; set; }
@@ -175,6 +176,21 @@ public class QuotationDbContext : DbContext
                 .HasForeignKey(e => e.ModulesId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.ToTable("AdditionalScopes");
+        });
+
+        modelBuilder.Entity<QuotationTimeEstimateEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.QuotationId).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.StageKey).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.StartWeek).IsRequired().HasColumnType("tinyint");
+            entity.Property(e => e.EndWeek).IsRequired().HasColumnType("tinyint");
+            entity.HasIndex(e => new { e.QuotationId, e.StageKey }).IsUnique();
+            entity.HasOne<QuotationEntity>()
+                .WithMany(q => q.QuotationTimeEstimates)
+                .HasForeignKey(e => e.QuotationId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.ToTable("QuotationTimeEstimates");
         });
 
         modelBuilder.Entity<CustomerEntity>(entity =>
@@ -591,6 +607,7 @@ public class QuotationEntity
 
     public List<QuotationModuleEntity> QuotationModules { get; set; } = new();
     public List<AdditionalScope> AdditionalScopes { get; set; } = new();
+    public List<QuotationTimeEstimateEntity> QuotationTimeEstimates { get; set; } = new();
 }
 
 /// <summary>
@@ -661,4 +678,16 @@ public class QuotationHistoryEntity
     public decimal? DiscountPercentage { get; set; }
     public DateTime ChangedAt { get; set; }
     public string ChangeType { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Database entity for Quotation Time Estimate stages.
+/// </summary>
+public class QuotationTimeEstimateEntity
+{
+    public int Id { get; set; }
+    public string QuotationId { get; set; } = string.Empty;
+    public string StageKey { get; set; } = string.Empty;
+    public byte StartWeek { get; set; }
+    public byte EndWeek { get; set; }
 }

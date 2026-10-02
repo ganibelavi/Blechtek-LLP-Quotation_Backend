@@ -52,6 +52,12 @@ public class SqlQuotationService : IQuotationService
         ValidateModuleDetails(request);
         await ValidateAdditionalScopesAsync(request.AdditionalScopes);
 
+        if (request.TimeEstimate == null || request.TimeEstimate.Count == 0)
+        {
+            request.TimeEstimate = TimeEstimateHelper.Defaults();
+        }
+        TimeEstimateHelper.Validate(request.TimeEstimate);
+
         var quotationId = $"Q-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8]}";
 
         // Auto-generate QuotationNo if not provided
@@ -249,6 +255,12 @@ public class SqlQuotationService : IQuotationService
         if (quotation is null)
             return null;
 
+        // Load time estimates separately to avoid FK dependency issues
+        var timeEstimates = await _dbContext.QuotationTimeEstimates
+            .AsNoTracking()
+            .Where(t => t.QuotationId == quotationId)
+            .ToListAsync();
+
         var modulePrices = await _dbContext.Modules
             .AsNoTracking()
             .ToDictionaryAsync(m => m.ModuleName, m => m.Price ?? 0m, StringComparer.OrdinalIgnoreCase);
@@ -300,7 +312,15 @@ public class SqlQuotationService : IQuotationService
                 .ToList(),
             AdditionalScopes = quotation.AdditionalScopes.ToList(),
             GeneratedAt = quotation.GeneratedAt,
-            DiscountPercentage = totalSubtotal > 0 ? (totalDiscountAmount / totalSubtotal) * 100m : 0m
+            DiscountPercentage = totalSubtotal > 0 ? (totalDiscountAmount / totalSubtotal) * 100m : 0m,
+            TimeEstimate = timeEstimates
+                .Select(t => new TimeEstimateStageResponse
+                {
+                    StageKey = t.StageKey,
+                    StartWeek = t.StartWeek,
+                    EndWeek = t.EndWeek
+                })
+                .ToList()
         };
     }
 
@@ -576,7 +596,14 @@ public class SqlQuotationService : IQuotationService
                         Price = scope.NoOfManpower * scope.NoOfDays * scope.Rate
                     };
                 })
-                .ToList()
+                .ToList(),
+            QuotationTimeEstimates = request.TimeEstimate.Select(t => new QuotationTimeEstimateEntity
+            {
+                QuotationId = result.QuotationId,
+                StageKey = t.StageKey,
+                StartWeek = (byte)t.StartWeek,
+                EndWeek = (byte)t.EndWeek
+            }).ToList()
         };
 
         _dbContext.Quotations.Add(quotation);
@@ -723,6 +750,10 @@ public class SqlQuotationService : IQuotationService
         if (quotation == null)
             return null;
 
+        var timeEstimates = await _dbContext.QuotationTimeEstimates
+            .Where(t => t.QuotationId == quotationId)
+            .ToListAsync();
+
         // Update discount percentage on module level
         await ApplyPricingSnapshotAsync(quotation, quotation.QuotationModules, discountPercentage);
         AddHistorySnapshot(quotation, "DiscountUpdated");
@@ -762,7 +793,15 @@ public class SqlQuotationService : IQuotationService
                 ContactNo = quotation.QuotationToContactNo,
                 Email = quotation.QuotationToEmail
             },
-            DiscountPercentage = discountPercentage
+            DiscountPercentage = discountPercentage,
+            TimeEstimate = timeEstimates.Any()
+                ? timeEstimates.Select(t => new TimeEstimateStageRequest
+                {
+                    StageKey = t.StageKey,
+                    StartWeek = t.StartWeek,
+                    EndWeek = t.EndWeek
+                }).ToList()
+                : TimeEstimateHelper.Defaults()
         };
 
         // Regenerate documents with new discount
@@ -786,7 +825,7 @@ public class SqlQuotationService : IQuotationService
     /// <summary>
     /// Updates quotation details (validation date, modules, additional scopes) and regenerates documents.
     /// </summary>
-    public async Task<QuotationResult?> UpdateQuotationAsync(string quotationId, DateTime validationDate, List<string> selectedModules, List<QuotationModuleRequest> moduleDetails, List<AdditionalScopeRequest> additionalScopes)
+    public async Task<QuotationResult?> UpdateQuotationAsync(string quotationId, DateTime validationDate, List<string> selectedModules, List<QuotationModuleRequest> moduleDetails, List<AdditionalScopeRequest> additionalScopes, List<TimeEstimateStageRequest> timeEstimate)
     {
         var quotation = await _dbContext.Quotations
             .Include(q => q.QuotationModules)
@@ -796,7 +835,18 @@ public class SqlQuotationService : IQuotationService
         if (quotation == null)
             return null;
 
+        // Load existing time estimates for deletion
+        var existingTimeEstimates = await _dbContext.QuotationTimeEstimates
+            .Where(t => t.QuotationId == quotationId)
+            .ToListAsync();
+
         await ValidateModulesAsync(selectedModules);
+
+        if (timeEstimate == null || timeEstimate.Count == 0)
+        {
+            timeEstimate = TimeEstimateHelper.Defaults();
+        }
+        TimeEstimateHelper.Validate(timeEstimate);
 
         quotation.ValidationDate = validationDate;
 
@@ -851,6 +901,16 @@ public class SqlQuotationService : IQuotationService
             })
             .ToList();
 
+        // Update Time Estimates - delete existing, insert new
+        _dbContext.QuotationTimeEstimates.RemoveRange(existingTimeEstimates);
+        quotation.QuotationTimeEstimates = timeEstimate.Select(t => new QuotationTimeEstimateEntity
+        {
+            QuotationId = quotationId,
+            StageKey = t.StageKey,
+            StartWeek = (byte)t.StartWeek,
+            EndWeek = (byte)t.EndWeek
+        }).ToList();
+
         // Calculate discount percentage from module-level discounts
         var totalSubtotal = quotation.QuotationModules.Sum(m => m.ModuleSubtotal ?? 0m);
         var totalDiscountAmount = quotation.QuotationModules.Sum(m => m.DiscountAmount ?? 0m);
@@ -895,7 +955,8 @@ public class SqlQuotationService : IQuotationService
                 ContactNo = quotation.QuotationToContactNo,
                 Email = quotation.QuotationToEmail
             },
-            DiscountPercentage = discountPercentage
+            DiscountPercentage = discountPercentage,
+            TimeEstimate = timeEstimate
         };
 
         var docxPath = await GenerateWordDocumentAsync(request, quotationId);
@@ -1088,10 +1149,110 @@ public class SqlQuotationService : IQuotationService
                     }
 
                 }
+
+                PopulateTimeEstimateTable(doc, request);
             }
         }
 
         return outputPath;
+    }
+
+    private static void PopulateTimeEstimateTable(
+        WordprocessingDocument doc,
+        QuotationRequest request)
+    {
+        var body = doc.MainDocumentPart?.Document.Body;
+        if (body == null) return;
+
+        // Find the Time Estimate table: look for the row containing "Pre-Implementation Visits"
+        var allRows = body.Descendants<TableRow>().ToList();
+        int startRowIndex = -1;
+
+        for (int i = 0; i < allRows.Count; i++)
+        {
+            var firstCell = allRows[i].Elements<TableCell>().FirstOrDefault();
+            if (firstCell != null)
+            {
+                var cellText = string.Concat(firstCell.Descendants<Text>().Select(t => t.Text));
+                if (cellText.Trim().StartsWith("Pre-Implementation Visits", StringComparison.OrdinalIgnoreCase))
+                {
+                    startRowIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (startRowIndex == -1)
+        {
+            throw new InvalidOperationException("Time Estimate table not found in template. Expected a row starting with 'Pre-Implementation Visits'.");
+        }
+
+        // The 7 stage rows start at startRowIndex and go for 7 rows
+        var stageKeys = TimeEstimateHelper.Stages;
+        var timeEstimateDict = request.TimeEstimate?.ToDictionary(
+            t => t.StageKey.ToLowerInvariant(),
+            t => t,
+            StringComparer.OrdinalIgnoreCase) ?? new Dictionary<string, TimeEstimateStageRequest>();
+
+        for (int stageIdx = 0; stageIdx < stageKeys.Length; stageIdx++)
+        {
+            var rowIndex = startRowIndex + stageIdx;
+            if (rowIndex >= allRows.Count)
+            {
+                throw new InvalidOperationException($"Time Estimate table row for stage '{stageKeys[stageIdx]}' not found (template problem).");
+            }
+
+            var row = allRows[rowIndex];
+            var cells = row.Elements<TableCell>().ToList();
+
+            // Expect 9 cells: 1 label + 8 week cells
+            if (cells.Count < 9)
+            {
+                throw new InvalidOperationException($"Time Estimate table row for stage '{stageKeys[stageIdx]}' has only {cells.Count} cells, expected 9 (template problem).");
+            }
+
+            var stageKey = stageKeys[stageIdx];
+            if (!timeEstimateDict.TryGetValue(stageKey, out var stage))
+            {
+                throw new InvalidOperationException($"Missing time estimate for stage '{stageKey}'.");
+            }
+
+            var startWeek = stage.StartWeek;
+            var endWeek = stage.EndWeek;
+
+            // Week cells are cells[1] through cells[8] (0-indexed)
+            for (int week = 1; week <= TimeEstimateHelper.TotalWeeks; week++)
+            {
+                var cellIndex = week; // cells[1] = week 1, cells[8] = week 8
+                if (cellIndex >= cells.Count) continue;
+
+                var cell = cells[cellIndex];
+                var tcPr = cell.TableCellProperties;
+                if (tcPr == null)
+                {
+                    tcPr = new TableCellProperties();
+                    cell.PrependChild(tcPr);
+                }
+
+                var existingShading = tcPr.GetFirstChild<Shading>();
+                if (existingShading != null)
+                {
+                    existingShading.Remove();
+                }
+
+                if (startWeek <= week && week <= endWeek)
+                {
+                    var shading = new Shading
+                    {
+                        Val = ShadingPatternValues.Clear,
+                        Color = "auto",
+                        Fill = "4A90D9"
+                    };
+                    tcPr.PrependChild(shading);
+                }
+                // else leave unshaded (no shading element)
+            }
+        }
     }
 
     private static decimal GetEffortMultiplier(string? effortUnit)

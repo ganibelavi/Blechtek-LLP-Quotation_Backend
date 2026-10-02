@@ -31,6 +31,8 @@ public class QuotationRequest
 
     public List<AdditionalScopeRequest> AdditionalScopes { get; set; } = new();
 
+    public List<TimeEstimateStageRequest> TimeEstimate { get; set; } = new();
+
     [Required]
     public QuotationToInfo QuotationTo { get; set; } = new();
 
@@ -157,6 +159,7 @@ public class QuotationHistoryEntry
     public List<string> Modules { get; set; } = new();
     public List<QuotationModuleDetail> ModuleDetails { get; set; } = new();
     public List<AdditionalScope> AdditionalScopes { get; set; } = new();
+    public List<TimeEstimateStageResponse> TimeEstimate { get; set; } = new();
     public DateTime GeneratedAt { get; set; }
     public decimal? DiscountPercentage { get; set; }
 }
@@ -182,4 +185,27 @@ public class UpdateQuotationRequest
     public List<QuotationModuleRequest> ModuleDetails { get; set; } = new();
 
     public List<AdditionalScopeRequest> AdditionalScopes { get; set; } = new();
+
+    public List<TimeEstimateStageRequest> TimeEstimate { get; set; } = new();
+}
+
+/// <summary>Single stage time estimate request (From week / To week).</summary>
+public class TimeEstimateStageRequest
+{
+    [Required]
+    public string StageKey { get; set; } = string.Empty;
+
+    [Range(1, 8, ErrorMessage = "StartWeek must be between 1 and 8.")]
+    public int StartWeek { get; set; }
+
+    [Range(1, 8, ErrorMessage = "EndWeek must be between 1 and 8.")]
+    public int EndWeek { get; set; }
+}
+
+/// <summary>Time estimate for a stage in the response model.</summary>
+public class TimeEstimateStageResponse
+{
+    public string StageKey { get; set; } = string.Empty;
+    public int StartWeek { get; set; }
+    public int EndWeek { get; set; }
 }

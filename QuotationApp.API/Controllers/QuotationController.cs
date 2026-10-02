@@ -215,7 +215,7 @@ public class QuotationController : ControllerBase
 
         try
         {
-            var result = await _quotationService.UpdateQuotationAsync(quotationId, request.ValidationDate, request.SelectedModules, request.ModuleDetails, request.AdditionalScopes);
+            var result = await _quotationService.UpdateQuotationAsync(quotationId, request.ValidationDate, request.SelectedModules, request.ModuleDetails, request.AdditionalScopes, request.TimeEstimate);
             if (result is null) return NotFound(new { error = "Quotation not found." });
             return Ok(result);
         }
