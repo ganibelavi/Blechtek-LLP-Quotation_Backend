@@ -182,10 +182,11 @@ public class QuotationDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.QuotationId).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.ModuleName).IsRequired().HasMaxLength(200);
             entity.Property(e => e.StageKey).IsRequired().HasMaxLength(20);
             entity.Property(e => e.StartWeek).IsRequired().HasColumnType("tinyint");
             entity.Property(e => e.EndWeek).IsRequired().HasColumnType("tinyint");
-            entity.HasIndex(e => new { e.QuotationId, e.StageKey }).IsUnique();
+            entity.HasIndex(e => new { e.QuotationId, e.ModuleName, e.StageKey }).IsUnique();
             entity.HasOne<QuotationEntity>()
                 .WithMany(q => q.QuotationTimeEstimates)
                 .HasForeignKey(e => e.QuotationId)
@@ -687,6 +688,7 @@ public class QuotationTimeEstimateEntity
 {
     public int Id { get; set; }
     public string QuotationId { get; set; } = string.Empty;
+    public string ModuleName { get; set; } = string.Empty;
     public string StageKey { get; set; } = string.Empty;
     public byte StartWeek { get; set; }
     public byte EndWeek { get; set; }

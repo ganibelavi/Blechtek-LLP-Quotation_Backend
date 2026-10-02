@@ -87,6 +87,71 @@ using (var scope = app.Services.CreateScope())
         connection.Open();
     }
 
+    using var quotationTimeEstimateCommand = connection.CreateCommand();
+    quotationTimeEstimateCommand.CommandText = @"
+BEGIN TRY
+    BEGIN TRANSACTION;
+
+IF OBJECT_ID(N'dbo.QuotationTimeEstimates', N'U') IS NOT NULL
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM sys.indexes
+        WHERE object_id = OBJECT_ID(N'dbo.QuotationTimeEstimates')
+          AND name = N'IX_QuotationTimeEstimates_QuotationId_StageKey'
+    )
+        DROP INDEX IX_QuotationTimeEstimates_QuotationId_StageKey ON dbo.QuotationTimeEstimates;
+
+    IF COL_LENGTH(N'dbo.QuotationTimeEstimates', N'ModuleName') IS NULL
+    BEGIN
+        ALTER TABLE dbo.QuotationTimeEstimates ADD ModuleName nvarchar(200) NULL;
+
+        ;WITH FirstSelectedModule AS
+        (
+            SELECT QuotationId, MIN(ModuleName) AS ModuleName
+            FROM dbo.QuotationModules
+            GROUP BY QuotationId
+        )
+        UPDATE estimate
+        SET ModuleName = moduleChoice.ModuleName
+        FROM dbo.QuotationTimeEstimates estimate
+        INNER JOIN FirstSelectedModule moduleChoice
+            ON moduleChoice.QuotationId = estimate.QuotationId;
+
+        INSERT INTO dbo.QuotationTimeEstimates (QuotationId, ModuleName, StageKey, StartWeek, EndWeek)
+        SELECT estimate.QuotationId, quotationModule.ModuleName, estimate.StageKey, estimate.StartWeek, estimate.EndWeek
+        FROM dbo.QuotationTimeEstimates estimate
+        INNER JOIN dbo.QuotationModules quotationModule
+            ON quotationModule.QuotationId = estimate.QuotationId
+        WHERE quotationModule.ModuleName <> estimate.ModuleName;
+
+        IF EXISTS (SELECT 1 FROM dbo.QuotationTimeEstimates WHERE ModuleName IS NULL)
+        BEGIN
+            RAISERROR(N'Cannot migrate quotation time estimates without a selected module.', 16, 1);
+        END
+
+        ALTER TABLE dbo.QuotationTimeEstimates ALTER COLUMN ModuleName nvarchar(200) NOT NULL;
+    END;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM sys.indexes
+        WHERE object_id = OBJECT_ID(N'dbo.QuotationTimeEstimates')
+          AND name = N'IX_QuotationTimeEstimates_QuotationId_ModuleName_StageKey'
+    )
+        CREATE UNIQUE INDEX IX_QuotationTimeEstimates_QuotationId_ModuleName_StageKey
+            ON dbo.QuotationTimeEstimates (QuotationId, ModuleName, StageKey);
+END";
+    quotationTimeEstimateCommand.CommandText += @"
+
+    COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    THROW;
+END CATCH";
+    quotationTimeEstimateCommand.ExecuteNonQuery();
+
     using var purchaseOrderDiscountColumnsCommand = connection.CreateCommand();
     purchaseOrderDiscountColumnsCommand.CommandText = @"
 IF OBJECT_ID(N'dbo.po_items', N'U') IS NOT NULL

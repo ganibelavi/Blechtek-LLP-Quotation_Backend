@@ -189,9 +189,12 @@ public class UpdateQuotationRequest
     public List<TimeEstimateStageRequest> TimeEstimate { get; set; } = new();
 }
 
-/// <summary>Single stage time estimate request (From week / To week).</summary>
+/// <summary>One module's stage schedule (From week / To week).</summary>
 public class TimeEstimateStageRequest
 {
+    [StringLength(200)]
+    public string ModuleName { get; set; } = string.Empty;
+
     [Required]
     public string StageKey { get; set; } = string.Empty;
 
@@ -202,9 +205,10 @@ public class TimeEstimateStageRequest
     public int EndWeek { get; set; }
 }
 
-/// <summary>Time estimate for a stage in the response model.</summary>
+/// <summary>One module's stage schedule in the response model.</summary>
 public class TimeEstimateStageResponse
 {
+    public string ModuleName { get; set; } = string.Empty;
     public string StageKey { get; set; } = string.Empty;
     public int StartWeek { get; set; }
     public int EndWeek { get; set; }

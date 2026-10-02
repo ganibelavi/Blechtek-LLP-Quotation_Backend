@@ -52,11 +52,9 @@ public class SqlQuotationService : IQuotationService
         ValidateModuleDetails(request);
         await ValidateAdditionalScopesAsync(request.AdditionalScopes);
 
-        if (request.TimeEstimate == null || request.TimeEstimate.Count == 0)
-        {
-            request.TimeEstimate = TimeEstimateHelper.Defaults();
-        }
-        TimeEstimateHelper.Validate(request.TimeEstimate);
+        request.TimeEstimate = TimeEstimateHelper.PrepareForModules(
+            request.TimeEstimate,
+            request.SelectedModules);
 
         var quotationId = $"Q-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8]}";
 
@@ -316,6 +314,7 @@ public class SqlQuotationService : IQuotationService
             TimeEstimate = timeEstimates
                 .Select(t => new TimeEstimateStageResponse
                 {
+                    ModuleName = t.ModuleName,
                     StageKey = t.StageKey,
                     StartWeek = t.StartWeek,
                     EndWeek = t.EndWeek
@@ -600,6 +599,7 @@ public class SqlQuotationService : IQuotationService
             QuotationTimeEstimates = request.TimeEstimate.Select(t => new QuotationTimeEstimateEntity
             {
                 QuotationId = result.QuotationId,
+                ModuleName = t.ModuleName,
                 StageKey = t.StageKey,
                 StartWeek = (byte)t.StartWeek,
                 EndWeek = (byte)t.EndWeek
@@ -797,11 +797,13 @@ public class SqlQuotationService : IQuotationService
             TimeEstimate = timeEstimates.Any()
                 ? timeEstimates.Select(t => new TimeEstimateStageRequest
                 {
+                    ModuleName = t.ModuleName,
                     StageKey = t.StageKey,
                     StartWeek = t.StartWeek,
                     EndWeek = t.EndWeek
                 }).ToList()
-                : TimeEstimateHelper.Defaults()
+                : TimeEstimateHelper.Defaults(
+                    quotation.QuotationModules.Select(m => m.ModuleName).ToList())
         };
 
         // Regenerate documents with new discount
@@ -842,11 +844,7 @@ public class SqlQuotationService : IQuotationService
 
         await ValidateModulesAsync(selectedModules);
 
-        if (timeEstimate == null || timeEstimate.Count == 0)
-        {
-            timeEstimate = TimeEstimateHelper.Defaults();
-        }
-        TimeEstimateHelper.Validate(timeEstimate);
+        timeEstimate = TimeEstimateHelper.PrepareForModules(timeEstimate, selectedModules);
 
         quotation.ValidationDate = validationDate;
 
@@ -906,6 +904,7 @@ public class SqlQuotationService : IQuotationService
         quotation.QuotationTimeEstimates = timeEstimate.Select(t => new QuotationTimeEstimateEntity
         {
             QuotationId = quotationId,
+            ModuleName = t.ModuleName,
             StageKey = t.StageKey,
             StartWeek = (byte)t.StartWeek,
             EndWeek = (byte)t.EndWeek
@@ -1164,95 +1163,115 @@ public class SqlQuotationService : IQuotationService
         var body = doc.MainDocumentPart?.Document.Body;
         if (body == null) return;
 
-        // Find the Time Estimate table: look for the row containing "Pre-Implementation Visits"
-        var allRows = body.Descendants<TableRow>().ToList();
-        int startRowIndex = -1;
-
-        for (int i = 0; i < allRows.Count; i++)
+        Table? timeEstimateTable = null;
+        List<TableRow>? templateRows = null;
+        foreach (var table in body.Descendants<Table>())
         {
-            var firstCell = allRows[i].Elements<TableCell>().FirstOrDefault();
-            if (firstCell != null)
+            var rows = table.Elements<TableRow>().ToList();
+            for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
             {
-                var cellText = string.Concat(firstCell.Descendants<Text>().Select(t => t.Text));
+                var firstCell = rows[rowIndex].Elements<TableCell>().FirstOrDefault();
+                var cellText = firstCell == null
+                    ? string.Empty
+                    : string.Concat(firstCell.Descendants<Text>().Select(text => text.Text));
                 if (cellText.Trim().StartsWith("Pre-Implementation Visits", StringComparison.OrdinalIgnoreCase))
                 {
-                    startRowIndex = i;
+                    timeEstimateTable = table;
+                    templateRows = rows.Skip(rowIndex).Take(TimeEstimateHelper.Stages.Length).ToList();
                     break;
                 }
             }
+
+            if (timeEstimateTable != null)
+                break;
         }
 
-        if (startRowIndex == -1)
+        if (timeEstimateTable == null || templateRows == null)
         {
             throw new InvalidOperationException("Time Estimate table not found in template. Expected a row starting with 'Pre-Implementation Visits'.");
         }
 
-        // The 7 stage rows start at startRowIndex and go for 7 rows
         var stageKeys = TimeEstimateHelper.Stages;
-        var timeEstimateDict = request.TimeEstimate?.ToDictionary(
-            t => t.StageKey.ToLowerInvariant(),
-            t => t,
-            StringComparer.OrdinalIgnoreCase) ?? new Dictionary<string, TimeEstimateStageRequest>();
+        if (templateRows.Count != stageKeys.Length)
+            throw new InvalidOperationException($"Time Estimate table has {templateRows.Count} stage rows, expected {stageKeys.Length}.");
 
-        for (int stageIdx = 0; stageIdx < stageKeys.Length; stageIdx++)
+        var estimatesByModule = request.TimeEstimate
+            .GroupBy(estimate => estimate.ModuleName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.ToDictionary(
+                    estimate => estimate.StageKey,
+                    StringComparer.OrdinalIgnoreCase),
+                StringComparer.OrdinalIgnoreCase);
+
+        var insertionPoint = templateRows[^1];
+        for (var moduleIndex = 0; moduleIndex < request.SelectedModules.Count; moduleIndex++)
         {
-            var rowIndex = startRowIndex + stageIdx;
-            if (rowIndex >= allRows.Count)
+            var moduleName = request.SelectedModules[moduleIndex];
+            if (!estimatesByModule.TryGetValue(moduleName, out var moduleEstimates))
+                throw new InvalidOperationException($"Missing time estimate for module '{moduleName}'.");
+
+            for (var stageIndex = 0; stageIndex < stageKeys.Length; stageIndex++)
             {
-                throw new InvalidOperationException($"Time Estimate table row for stage '{stageKeys[stageIdx]}' not found (template problem).");
-            }
+                var stageKey = stageKeys[stageIndex];
+                if (!moduleEstimates.TryGetValue(stageKey, out var stage))
+                    throw new InvalidOperationException($"Missing time estimate for module '{moduleName}', stage '{stageKey}'.");
 
-            var row = allRows[rowIndex];
-            var cells = row.Elements<TableCell>().ToList();
-
-            // Expect 9 cells: 1 label + 8 week cells
-            if (cells.Count < 9)
-            {
-                throw new InvalidOperationException($"Time Estimate table row for stage '{stageKeys[stageIdx]}' has only {cells.Count} cells, expected 9 (template problem).");
-            }
-
-            var stageKey = stageKeys[stageIdx];
-            if (!timeEstimateDict.TryGetValue(stageKey, out var stage))
-            {
-                throw new InvalidOperationException($"Missing time estimate for stage '{stageKey}'.");
-            }
-
-            var startWeek = stage.StartWeek;
-            var endWeek = stage.EndWeek;
-
-            // Week cells are cells[1] through cells[8] (0-indexed)
-            for (int week = 1; week <= TimeEstimateHelper.TotalWeeks; week++)
-            {
-                var cellIndex = week; // cells[1] = week 1, cells[8] = week 8
-                if (cellIndex >= cells.Count) continue;
-
-                var cell = cells[cellIndex];
-                var tcPr = cell.TableCellProperties;
-                if (tcPr == null)
+                var row = moduleIndex == 0
+                    ? templateRows[stageIndex]
+                    : (TableRow)templateRows[stageIndex].CloneNode(true);
+                if (moduleIndex > 0)
                 {
-                    tcPr = new TableCellProperties();
-                    cell.PrependChild(tcPr);
+                    timeEstimateTable.InsertAfter(row, insertionPoint);
+                    insertionPoint = row;
                 }
 
-                var existingShading = tcPr.GetFirstChild<Shading>();
-                if (existingShading != null)
-                {
-                    existingShading.Remove();
-                }
+                var cells = row.Elements<TableCell>().ToList();
+                if (cells.Count < TimeEstimateHelper.TotalWeeks + 1)
+                    throw new InvalidOperationException($"Time Estimate table row for stage '{stageKey}' has only {cells.Count} cells, expected at least {TimeEstimateHelper.TotalWeeks + 1} (template problem).");
 
-                if (startWeek <= week && week <= endWeek)
+                SetTableCellText(cells[0], $"{moduleName} - {TimeEstimateHelper.GetStageLabel(stageKey)}");
+
+                for (var week = 1; week <= TimeEstimateHelper.TotalWeeks; week++)
                 {
-                    var shading = new Shading
+                    var cell = cells[week];
+                    var tcPr = cell.TableCellProperties;
+                    if (tcPr == null)
                     {
-                        Val = ShadingPatternValues.Clear,
-                        Color = "auto",
-                        Fill = "4A90D9"
-                    };
-                    tcPr.PrependChild(shading);
+                        tcPr = new TableCellProperties();
+                        cell.PrependChild(tcPr);
+                    }
+
+                    var existingShading = tcPr.GetFirstChild<Shading>();
+                    existingShading?.Remove();
+
+                    if (stage.StartWeek <= week && week <= stage.EndWeek)
+                    {
+                        var shading = new Shading
+                        {
+                            Val = ShadingPatternValues.Clear,
+                            Color = "auto",
+                            Fill = "4A90D9"
+                        };
+                        tcPr.PrependChild(shading);
+                    }
                 }
-                // else leave unshaded (no shading element)
             }
         }
+    }
+
+    private static void SetTableCellText(TableCell cell, string value)
+    {
+        var textNodes = cell.Descendants<Text>().ToList();
+        if (textNodes.Count == 0)
+        {
+            cell.AppendChild(new Paragraph(new Run(new Text(value))));
+            return;
+        }
+
+        textNodes[0].Text = value;
+        foreach (var textNode in textNodes.Skip(1))
+            textNode.Text = string.Empty;
     }
 
     private static decimal GetEffortMultiplier(string? effortUnit)
