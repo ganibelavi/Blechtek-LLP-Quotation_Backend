@@ -310,6 +310,7 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.ClientPoDate).HasColumnName("client_po_date");
             entity.Property(e => e.ClientPoAmount).HasColumnType("decimal(18,2)").HasColumnName("client_po_amount");
             entity.Property(e => e.ClientPoItems).HasColumnName("client_po_items");
+            entity.Property(e => e.ClientPoAdditionalScopes).HasColumnName("client_po_additional_scopes");
             entity.Property(e => e.ClientPoTerms).HasColumnName("client_po_terms");
 
             // File upload fields
@@ -418,6 +419,7 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.BuyerGstn).HasMaxLength(20).HasColumnName("buyer_gstn");
             entity.Property(e => e.ShipToAddress).HasMaxLength(1000).HasColumnName("ship_to_address");
             entity.Property(e => e.GstRateId).HasColumnName("gst_rate_id");
+            entity.Property(e => e.AdditionalScopesJson).HasColumnName("additional_scopes_json");
             entity.HasIndex(e => e.InvoiceNo).IsUnique();
             entity.ToTable("invoices", table => table.HasTrigger("trg_invoice_requires_verified_po"));
 

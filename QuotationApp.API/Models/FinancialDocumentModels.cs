@@ -109,6 +109,7 @@ public class PurchaseOrderEntity
     public DateTime? ClientPoDate { get; set; }
     public decimal? ClientPoAmount { get; set; }
     public string? ClientPoItems { get; set; }
+    public string? ClientPoAdditionalScopes { get; set; }
     public string? ClientPoTerms { get; set; }
 
     // File upload fields
@@ -199,6 +200,7 @@ public class InvoiceEntity
     public ICollection<InvoiceItemEntity> Items { get; set; } = new List<InvoiceItemEntity>();
 
     public InvoiceBankDetailEntity? BankDetails { get; set; }
+    public string? AdditionalScopesJson { get; set; }
 }
 
 public class InvoiceBankDetailEntity
@@ -294,6 +296,7 @@ public class PoClientDetailsRequest
     public string? ClientPoDate { get; set; }
     public decimal? ClientPoAmount { get; set; }
     public string? ClientPoItems { get; set; }
+    public string? ClientPoAdditionalScopes { get; set; }
     public string? ClientPoTerms { get; set; }
 }
 
@@ -334,19 +337,32 @@ public class PoVerificationResponse
     public decimal QuotationAmount { get; set; }
     public string? QuotationItems { get; set; }
     public string? QuotationTerms { get; set; }
+    public List<PurchaseOrderAdditionalScopeResponse> AdditionalScopes { get; set; } = new();
 
     // Client PO values (editable in Draft/PendingReview)
     public string? ClientPoNumber { get; set; }
     public DateTime? ClientPoDate { get; set; }
     public decimal? ClientPoAmount { get; set; }
     public string? ClientPoItems { get; set; }
+    public string? ClientPoAdditionalScopes { get; set; }
     public string? ClientPoTerms { get; set; }
 
     // Comparison results
     public bool AmountMatches { get; set; }
     public bool ItemsMatch { get; set; }
+    public bool AdditionalScopesMatch { get; set; }
     public bool TermsMatch { get; set; }
     public int MismatchCount { get; set; }
+}
+
+public class PurchaseOrderAdditionalScopeResponse
+{
+    public string Requirement { get; set; } = string.Empty;
+    public string Modules { get; set; } = string.Empty;
+    public int NoOfManpower { get; set; }
+    public int NoOfDays { get; set; }
+    public decimal Rate { get; set; }
+    public decimal Amount { get; set; }
 }
 
 public class PoAuditLogResponse
@@ -418,6 +434,7 @@ public class CreateInvoiceRequest
     public decimal Insurance { get; set; }
     public decimal TotalAmount { get; set; }
     public List<InvoiceItemRequest> Items { get; set; } = new();
+    public List<InvoiceAdditionalScopeRequest> AdditionalScopes { get; set; } = new();
 }
 
 public class InvoiceItemRequest
@@ -429,6 +446,16 @@ public class InvoiceItemRequest
     public decimal Rate { get; set; }
     public decimal DiscountPercentage { get; set; }
     public decimal DiscountAmount { get; set; }
+}
+
+public class InvoiceAdditionalScopeRequest
+{
+    public string? Requirement { get; set; }
+    public string? Modules { get; set; }
+    public decimal NoOfManpower { get; set; }
+    public decimal NoOfDays { get; set; }
+    public decimal Rate { get; set; }
+    public decimal Amount { get; set; }
 }
 
 public class UpdateInvoiceStatusRequest

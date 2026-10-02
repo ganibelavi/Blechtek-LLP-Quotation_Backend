@@ -430,6 +430,8 @@ IF COL_LENGTH(N'dbo.purchase_orders', N'client_po_amount') IS NULL
     ALTER TABLE dbo.purchase_orders ADD client_po_amount decimal(18,2) NULL;
 IF COL_LENGTH(N'dbo.purchase_orders', N'client_po_items') IS NULL
     ALTER TABLE dbo.purchase_orders ADD client_po_items nvarchar(max) NULL;
+IF COL_LENGTH(N'dbo.purchase_orders', N'client_po_additional_scopes') IS NULL
+    ALTER TABLE dbo.purchase_orders ADD client_po_additional_scopes nvarchar(max) NULL;
 IF COL_LENGTH(N'dbo.purchase_orders', N'client_po_terms') IS NULL
     ALTER TABLE dbo.purchase_orders ADD client_po_terms nvarchar(max) NULL;
 IF COL_LENGTH(N'dbo.purchase_orders', N'uploaded_file_path') IS NULL
@@ -624,6 +626,8 @@ BEGIN
         ALTER TABLE dbo.invoices ADD terms_of_sale nvarchar(max) NULL;
     IF COL_LENGTH(N'dbo.invoices', N'time_of_issue') IS NULL
         ALTER TABLE dbo.invoices ADD time_of_issue nvarchar(10) NULL;
+    IF COL_LENGTH(N'dbo.invoices', N'additional_scopes_json') IS NULL
+        ALTER TABLE dbo.invoices ADD additional_scopes_json nvarchar(max) NULL;
 END";
     invoiceSchemaCommand.ExecuteNonQuery();
 }

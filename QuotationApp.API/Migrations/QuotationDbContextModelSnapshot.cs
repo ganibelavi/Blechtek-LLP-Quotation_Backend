@@ -714,6 +714,10 @@ namespace QuotationApp.API.Migrations
                         .HasColumnType("nvarchar(1000)")
                         .HasColumnName("amount_in_words");
 
+                    b.Property<string>("AdditionalScopesJson")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("additional_scopes_json");
+
                     b.Property<string>("BuyerAddress")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)")
@@ -1072,6 +1076,10 @@ namespace QuotationApp.API.Migrations
                     b.Property<string>("ClientPoItems")
                         .HasColumnType("nvarchar(max)")
                         .HasColumnName("client_po_items");
+
+                    b.Property<string>("ClientPoAdditionalScopes")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("client_po_additional_scopes");
 
                     b.Property<string>("ClientPoNumber")
                         .HasMaxLength(100)

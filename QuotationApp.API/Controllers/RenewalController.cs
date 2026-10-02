@@ -733,6 +733,7 @@ public sealed class RenewalController(QuotationDbContext db) : ControllerBase
         x.Id,
         CustomerName = x.Customer?.Name,
         ModuleName = x.Module?.ModuleName,
+        InitialPurchaseAmount = x.InitialPurchasePrice,
         QuotationId = x.QuotationId,
         InvoiceId = x.InvoiceId,
         RenewalPercentage = x.RenewalPercentage,

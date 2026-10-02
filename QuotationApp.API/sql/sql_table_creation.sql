@@ -198,6 +198,7 @@ CREATE TABLE purchase_orders (
     verified_by         NVARCHAR(200) NULL,
     verified_at         DATETIME2 NULL,
     verification_notes  NVARCHAR(MAX) NULL,
+    client_po_additional_scopes NVARCHAR(MAX) NULL,
     uploaded_by         NVARCHAR(200) NULL,
     received_at         DATETIME2 NULL,
     CONSTRAINT UQ_purchase_orders_PoNo UNIQUE (po_no),
@@ -279,6 +280,7 @@ CREATE TABLE invoices (
     buyer_gstn          NVARCHAR(20) NULL,
     ship_to_address     NVARCHAR(1000) NULL,
     gst_rate_id         INT NULL,
+    additional_scopes_json NVARCHAR(MAX) NULL,
     CONSTRAINT UQ_invoices_InvoiceNo UNIQUE (invoice_no),
     CONSTRAINT FK_invoices_customers
         FOREIGN KEY (customer_id) REFERENCES customers(id)

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuotationApp.API.Data;
 using QuotationApp.API.Models;
+using System.Text.Json;
 
 namespace QuotationApp.API.Controllers;
 
@@ -100,6 +101,7 @@ public class InvoiceController : ControllerBase
             IgstPct = request.IgstPct,
             TdsPct = request.TdsPct,
             Insurance = request.Insurance,
+            AdditionalScopesJson = JsonSerializer.Serialize(request.AdditionalScopes),
             ReverseCharge = !string.IsNullOrWhiteSpace(request.ReverseCharge) && request.ReverseCharge.Equals("Yes", StringComparison.OrdinalIgnoreCase),
             Subtotal = request.TotalAmount,
             GrandTotal = request.TotalAmount,
@@ -201,6 +203,7 @@ public class InvoiceController : ControllerBase
             poNoDate = request.PoNoDate,
             totalAmount = invoice.GrandTotal,
             items = request.Items,
+            additionalScopes = request.AdditionalScopes,
             invoice = new
             {
                 originalFor = request.OriginalFor,
@@ -272,7 +275,7 @@ public class InvoiceController : ControllerBase
             : await _db.Quotations.AsNoTracking().FirstOrDefaultAsync(q => q.Id == record.QuotationId);
         var bankDetails = await _db.InvoiceBankDetails.FirstOrDefaultAsync(b => b.InvoiceId == record.Id);
         var itemPricing = await GetItemPricingAsync(record);
-        var totalAmount = record.Items.Sum(item => item.Qty * item.Rate);
+        var totalAmount = CalculateInvoiceTotal(record);
 
         return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotation?.QuotationNo, quotation?.OrganizationName, itemPricing));
     }
@@ -328,7 +331,7 @@ public class InvoiceController : ControllerBase
             .Select(record =>
             {
                 var customer = customers.TryGetValue(record.CustomerId, out var matchedCustomer) ? matchedCustomer : null;
-                var totalAmount = record.Items.Sum(item => item.Qty * item.Rate);
+                var totalAmount = CalculateInvoiceTotal(record);
                 var bankDetails = bankDetailsByInvoiceId.TryGetValue(record.Id, out var matchedBank) ? matchedBank : null;
                 var quotationNo = record.QuotationId != null &&
                     quotationNumbers.TryGetValue(record.QuotationId, out var number)
@@ -447,6 +450,7 @@ public class InvoiceController : ControllerBase
         record.IgstPct = request.IgstPct;
         record.TdsPct = request.TdsPct;
         record.Insurance = request.Insurance;
+        record.AdditionalScopesJson = JsonSerializer.Serialize(request.AdditionalScopes);
         record.ReverseCharge = !string.IsNullOrWhiteSpace(request.ReverseCharge) && request.ReverseCharge.Equals("Yes", StringComparison.OrdinalIgnoreCase);
         record.Subtotal = request.TotalAmount;
         record.GrandTotal = request.TotalAmount;
@@ -521,7 +525,7 @@ public class InvoiceController : ControllerBase
 
         var updatedCustomer = await _db.Customers.FirstOrDefaultAsync(c => c.Id == updatedRecord.CustomerId);
         var updatedBankDetails = updatedRecord.BankDetails;
-        var updatedTotalAmount = updatedRecord.Items.Sum(item => item.Qty * item.Rate);
+        var updatedTotalAmount = CalculateInvoiceTotal(updatedRecord);
 
         return Ok(BuildInvoiceResponse(updatedRecord, updatedCustomer, updatedTotalAmount, updatedBankDetails, quotation?.QuotationNo, quotation?.OrganizationName));
     }
@@ -550,7 +554,9 @@ public class InvoiceController : ControllerBase
             });
         }
 
-        var record = await _db.Invoices.FirstOrDefaultAsync(i => i.Id == id);
+        var record = await _db.Invoices
+            .Include(i => i.Items)
+            .FirstOrDefaultAsync(i => i.Id == id);
         if (record is null)
         {
             return NotFound(new { error = "Invoice not found." });
@@ -604,7 +610,7 @@ public class InvoiceController : ControllerBase
         var quotation = string.IsNullOrWhiteSpace(record.QuotationId)
             ? null
             : await _db.Quotations.AsNoTracking().FirstOrDefaultAsync(q => q.Id == record.QuotationId);
-        var totalAmount = record.Items.Sum(item => item.Qty * item.Rate);
+        var totalAmount = CalculateInvoiceTotal(record);
 
         return Ok(BuildInvoiceResponse(record, customer, totalAmount, bankDetails, quotation?.QuotationNo, quotation?.OrganizationName));
     }
@@ -755,6 +761,15 @@ public class InvoiceController : ControllerBase
                 ? pricing.ImplementationPrice
                 : 0m,
         }).ToList();
+        var additionalScopes = ReadInvoiceAdditionalScopes(record).Select(scope => new
+        {
+            requirement = scope.Requirement ?? "",
+            modules = scope.Modules ?? "",
+            noOfManpower = scope.NoOfManpower,
+            noOfDays = scope.NoOfDays,
+            rate = scope.Rate,
+            amount = scope.Amount,
+        }).ToList();
 
         var bankName = bankDetails?.BankName ?? "";
         var accountNo = bankDetails?.AccountNo ?? "";
@@ -778,6 +793,7 @@ public class InvoiceController : ControllerBase
             status = record.Status,
             totalAmount = totalAmount,
             items = items,
+            additionalScopes = record.AdditionalScopesJson is null ? null : additionalScopes,
             invoice = new
             {
                 originalFor = "ORIGINAL FOR RECIPIENT",
@@ -848,6 +864,16 @@ public class InvoiceController : ControllerBase
             },
         };
     }
+
+    private static List<InvoiceAdditionalScopeRequest> ReadInvoiceAdditionalScopes(InvoiceEntity invoice) =>
+        string.IsNullOrWhiteSpace(invoice.AdditionalScopesJson)
+            ? new List<InvoiceAdditionalScopeRequest>()
+            : JsonSerializer.Deserialize<List<InvoiceAdditionalScopeRequest>>(invoice.AdditionalScopesJson)
+                ?? new List<InvoiceAdditionalScopeRequest>();
+
+    private static decimal CalculateInvoiceTotal(InvoiceEntity invoice) =>
+        invoice.Items.Sum(item => item.Qty * item.Rate) +
+        ReadInvoiceAdditionalScopes(invoice).Sum(scope => scope.Amount);
 
     private async Task<string> GenerateInvoiceNoAsync()
     {

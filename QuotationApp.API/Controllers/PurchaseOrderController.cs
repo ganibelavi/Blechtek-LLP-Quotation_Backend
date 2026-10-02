@@ -124,7 +124,8 @@ public class PurchaseOrderController : ControllerBase
             }
         }
 
-        var totalAmount = request.Items.Sum(item => item.Qty * item.Rate);
+        var additionalScopeTotal = await GetAdditionalScopeTotalAsync(purchaseOrder.QuotationId);
+        var totalAmount = request.Items.Sum(item => item.Qty * item.Rate) + additionalScopeTotal;
 
         var response = new
         {
@@ -240,7 +241,8 @@ public class PurchaseOrderController : ControllerBase
             poNo = purchaseOrder.PoNo,
             verificationNotes = purchaseOrder.VerificationNotes,
             notes = purchaseOrder.VerificationNotes,
-            totalAmount = lineItems.Sum(item => item.Qty * item.Rate),
+            totalAmount = lineItems.Sum(item => item.Qty * item.Rate)
+                + await GetAdditionalScopeTotalAsync(purchaseOrder.QuotationId),
         });
     }
 
@@ -261,6 +263,7 @@ public class PurchaseOrderController : ControllerBase
             ? await _db.Suppliers.FirstOrDefaultAsync(s => s.Id == record.SupplierId.Value)
             : null;
         var linkedQuotationNo = await GetLinkedQuotationNoAsync(record.QuotationId);
+        var additionalScopes = await GetAdditionalScopesAsync(record.QuotationId);
         var response = new
         {
             id = record.Id,
@@ -295,7 +298,9 @@ public class PurchaseOrderController : ControllerBase
             deliveryTerms = record.DeliveryTerms,
             paymentTerms = record.PaymentTerms,
             notes = record.VerificationNotes,
-            totalAmount = record.Items.Sum(i => i.Qty * i.Rate),
+            totalAmount = record.Items.Sum(i => i.Qty * i.Rate)
+                + additionalScopes.Sum(scope => scope.Amount),
+            additionalScopes,
             items = record.Items.Select(i => new
             {
                 id = i.Id,
@@ -334,7 +339,13 @@ public class PurchaseOrderController : ControllerBase
 
         var quotationLookup = await _db.Quotations
             .AsNoTracking()
-            .Select(q => new { q.Id, q.QuotationNo, q.OrganizationName })
+            .Select(q => new
+            {
+                q.Id,
+                q.QuotationNo,
+                q.OrganizationName,
+                AdditionalScopeTotal = q.AdditionalScopes.Sum(scope => (decimal?)scope.Amount) ?? 0m
+            })
             .ToListAsync();
 
         var response = records.Select(record =>
@@ -348,7 +359,11 @@ public class PurchaseOrderController : ControllerBase
                 ? quotationLookup.FirstOrDefault(q => q.Id == record.QuotationId)?.QuotationNo
                 : null;
 
-            var totalAmount = record.Items.Sum(i => i.Qty * i.Rate);
+            var quotation = !string.IsNullOrWhiteSpace(record.QuotationId)
+                ? quotationLookup.FirstOrDefault(q => q.Id == record.QuotationId)
+                : null;
+            var totalAmount = record.Items.Sum(i => i.Qty * i.Rate)
+                + (quotation?.AdditionalScopeTotal ?? 0m);
 
             return new
             {
@@ -525,7 +540,10 @@ public class PurchaseOrderController : ControllerBase
         }
 
         var quotation = !string.IsNullOrWhiteSpace(po.QuotationId)
-            ? await _db.Quotations.AsNoTracking().FirstOrDefaultAsync(q => q.Id == po.QuotationId)
+            ? await _db.Quotations
+                .AsNoTracking()
+                .Include(q => q.AdditionalScopes)
+                .FirstOrDefaultAsync(q => q.Id == po.QuotationId)
             : null;
 
         var createdByUser = po.CreatedBy.HasValue
@@ -576,24 +594,43 @@ public class PurchaseOrderController : ControllerBase
             ReceivedFromEmail = po.ReceivedFromEmail,
             QuotationRefNo = po.QuotationRefNo,
             QuotationRefDate = po.QuotationRefDate,
-            QuotationAmount = quotation?.FinalPrice ?? 0,
+            QuotationAmount = (quotation?.FinalPrice ?? 0)
+                + (quotation?.AdditionalScopes.Sum(scope => scope.Amount) ?? 0),
             QuotationItems = quotationItems,
             QuotationTerms = quotationTermsStr,
+            AdditionalScopes = quotation?.AdditionalScopes.Select(scope => new PurchaseOrderAdditionalScopeResponse
+            {
+                Requirement = scope.Requirement,
+                Modules = scope.Modules,
+                NoOfManpower = scope.NoOfManpower,
+                NoOfDays = scope.NoOfDays,
+                Rate = scope.Rate,
+                Amount = scope.Amount,
+            }).ToList() ?? new List<PurchaseOrderAdditionalScopeResponse>(),
             ClientPoNumber = po.ClientPoNumber,
             ClientPoDate = po.ClientPoDate,
             ClientPoAmount = po.ClientPoAmount,
             ClientPoItems = po.ClientPoItems,
+            ClientPoAdditionalScopes = po.ClientPoAdditionalScopes,
             ClientPoTerms = po.ClientPoTerms,
         };
 
         // Compute match
-        var amountMatch = po.ClientPoAmount.HasValue && quotation?.FinalPrice.HasValue == true
-            ? Math.Abs(po.ClientPoAmount.Value - quotation.FinalPrice.Value) < 0.01m
+        var quotationTotal = (quotation?.FinalPrice ?? 0m)
+            + (quotation?.AdditionalScopes.Sum(scope => scope.Amount) ?? 0m);
+        var amountMatch = po.ClientPoAmount.HasValue && quotation is not null
+            ? Math.Abs(po.ClientPoAmount.Value - quotationTotal) < 0.01m
             : false;
 
         var itemsMatch = !string.IsNullOrWhiteSpace(po.ClientPoItems) && !string.IsNullOrWhiteSpace(quotationItems)
             ? NormalizeText(po.ClientPoItems) == NormalizeText(quotationItems)
             : false;
+
+        var expectedScopes = FormatAdditionalScopes(quotation?.AdditionalScopes);
+        var scopesMatch = string.IsNullOrWhiteSpace(expectedScopes)
+            ? string.IsNullOrWhiteSpace(po.ClientPoAdditionalScopes)
+            : !string.IsNullOrWhiteSpace(po.ClientPoAdditionalScopes)
+                && NormalizeText(po.ClientPoAdditionalScopes) == NormalizeText(expectedScopes);
 
         var termsMatch = !string.IsNullOrWhiteSpace(po.ClientPoTerms) && !string.IsNullOrWhiteSpace(quotationTermsStr)
             ? NormalizeText(po.ClientPoTerms) == NormalizeText(quotationTermsStr)
@@ -601,8 +638,10 @@ public class PurchaseOrderController : ControllerBase
 
         response.AmountMatches = amountMatch;
         response.ItemsMatch = itemsMatch;
+        response.AdditionalScopesMatch = scopesMatch;
         response.TermsMatch = termsMatch;
-        response.MismatchCount = (amountMatch ? 0 : 1) + (itemsMatch ? 0 : 1) + (termsMatch ? 0 : 1);
+        response.MismatchCount = (amountMatch ? 0 : 1) + (itemsMatch ? 0 : 1)
+            + (scopesMatch ? 0 : 1) + (termsMatch ? 0 : 1);
 
         return Ok(response);
     }
@@ -636,12 +675,14 @@ public class PurchaseOrderController : ControllerBase
         if (po.ClientPoDate != ParseNullableDate(request.ClientPoDate)) changes.Add($"ClientPoDate: '{po.ClientPoDate}' -> '{request.ClientPoDate}'");
         if (po.ClientPoAmount != request.ClientPoAmount) changes.Add($"ClientPoAmount: '{po.ClientPoAmount}' -> '{request.ClientPoAmount}'");
         if (po.ClientPoItems != request.ClientPoItems) changes.Add("ClientPoItems changed");
+        if (po.ClientPoAdditionalScopes != request.ClientPoAdditionalScopes) changes.Add("ClientPoAdditionalScopes changed");
         if (po.ClientPoTerms != request.ClientPoTerms) changes.Add("ClientPoTerms changed");
 
         po.ClientPoNumber = request.ClientPoNumber;
         po.ClientPoDate = ParseNullableDate(request.ClientPoDate);
         po.ClientPoAmount = request.ClientPoAmount;
         po.ClientPoItems = request.ClientPoItems;
+        po.ClientPoAdditionalScopes = request.ClientPoAdditionalScopes;
         po.ClientPoTerms = request.ClientPoTerms;
 
         await _db.SaveChangesAsync();
@@ -678,6 +719,7 @@ public class PurchaseOrderController : ControllerBase
             clientPoDate = po.ClientPoDate,
             clientPoAmount = po.ClientPoAmount,
             clientPoItems = po.ClientPoItems,
+            clientPoAdditionalScopes = po.ClientPoAdditionalScopes,
             clientPoTerms = po.ClientPoTerms,
         });
     }
@@ -778,6 +820,11 @@ public class PurchaseOrderController : ControllerBase
         if (!po.ClientPoDate.HasValue) missingFields.Add("client PO date");
         if (!po.ClientPoAmount.HasValue) missingFields.Add("client PO amount");
         if (string.IsNullOrWhiteSpace(po.ClientPoItems)) missingFields.Add("client PO items");
+        if (await HasQuotationAdditionalScopesAsync(po.QuotationId)
+            && string.IsNullOrWhiteSpace(po.ClientPoAdditionalScopes))
+        {
+            missingFields.Add("client PO additional scope");
+        }
         if (string.IsNullOrWhiteSpace(po.ClientPoTerms)) missingFields.Add("client PO terms");
 
         if (missingFields.Count > 0)
@@ -787,7 +834,10 @@ public class PurchaseOrderController : ControllerBase
 
         // Reload quotation and client values from database (don't trust frontend)
         var quotation = !string.IsNullOrWhiteSpace(po.QuotationId)
-            ? await _db.Quotations.AsNoTracking().FirstOrDefaultAsync(q => q.Id == po.QuotationId)
+            ? await _db.Quotations
+                .AsNoTracking()
+                .Include(q => q.AdditionalScopes)
+                .FirstOrDefaultAsync(q => q.Id == po.QuotationId)
             : null;
 
         // Build quotation items from modules with quantities (same as verification endpoint)
@@ -813,19 +863,27 @@ public class PurchaseOrderController : ControllerBase
         var quotationTermsStr = string.Join(", ", quotationTermsList);
 
         // Recompute match on server
-        var amountMatch = po.ClientPoAmount.HasValue && quotation?.FinalPrice.HasValue == true
-            ? Math.Abs(po.ClientPoAmount.Value - quotation.FinalPrice.Value) < 0.01m
+        var quotationTotal = (quotation?.FinalPrice ?? 0m)
+            + (quotation?.AdditionalScopes.Sum(scope => scope.Amount) ?? 0m);
+        var amountMatch = po.ClientPoAmount.HasValue && quotation is not null
+            ? Math.Abs(po.ClientPoAmount.Value - quotationTotal) < 0.01m
             : false;
 
         var itemsMatch = !string.IsNullOrWhiteSpace(po.ClientPoItems) && !string.IsNullOrWhiteSpace(quotationItems)
             ? NormalizeText(po.ClientPoItems) == NormalizeText(quotationItems)
             : false;
 
+        var expectedScopes = FormatAdditionalScopes(quotation?.AdditionalScopes);
+        var scopesMatch = string.IsNullOrWhiteSpace(expectedScopes)
+            ? string.IsNullOrWhiteSpace(po.ClientPoAdditionalScopes)
+            : !string.IsNullOrWhiteSpace(po.ClientPoAdditionalScopes)
+                && NormalizeText(po.ClientPoAdditionalScopes) == NormalizeText(expectedScopes);
+
         var termsMatch = !string.IsNullOrWhiteSpace(po.ClientPoTerms) && !string.IsNullOrWhiteSpace(quotationTermsStr)
             ? NormalizeText(po.ClientPoTerms) == NormalizeText(quotationTermsStr)
             : false;
 
-        var allMatch = amountMatch && itemsMatch && termsMatch;
+        var allMatch = amountMatch && itemsMatch && scopesMatch && termsMatch;
 
         if (allMatch)
         {
@@ -971,6 +1029,34 @@ public class PurchaseOrderController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(text)) return "";
         return string.Join(" ", text.Trim().ToLowerInvariant().Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private async Task<bool> HasQuotationAdditionalScopesAsync(string? quotationId)
+    {
+        if (string.IsNullOrWhiteSpace(quotationId))
+        {
+            return false;
+        }
+
+        return await _db.AdditionalScopes
+            .AsNoTracking()
+            .AnyAsync(scope => scope.QuotationId == quotationId);
+    }
+
+    private static string FormatAdditionalScopes(IEnumerable<AdditionalScope>? scopes)
+    {
+        if (scopes is null)
+        {
+            return string.Empty;
+        }
+
+        return string.Join("; ", scopes.Select(scope => string.Join(" | ",
+            scope.Requirement,
+            scope.Modules,
+            $"Manpower: {scope.NoOfManpower}",
+            $"Days: {scope.NoOfDays}",
+            $"Rate: {scope.Rate.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}",
+            $"Amount: {scope.Amount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}")));
     }
 
     [HttpPatch("{id:int}/verification")]
@@ -1152,6 +1238,41 @@ public class PurchaseOrderController : ControllerBase
             .Where(q => q.Id == quotationId)
             .Select(q => q.QuotationNo)
             .FirstOrDefaultAsync();
+    }
+
+    private async Task<List<PurchaseOrderAdditionalScopeResponse>> GetAdditionalScopesAsync(string? quotationId)
+    {
+        if (string.IsNullOrWhiteSpace(quotationId))
+        {
+            return new List<PurchaseOrderAdditionalScopeResponse>();
+        }
+
+        return await _db.AdditionalScopes
+            .AsNoTracking()
+            .Where(scope => scope.QuotationId == quotationId)
+            .Select(scope => new PurchaseOrderAdditionalScopeResponse
+            {
+                Requirement = scope.Requirement,
+                Modules = scope.Modules,
+                NoOfManpower = scope.NoOfManpower,
+                NoOfDays = scope.NoOfDays,
+                Rate = scope.Rate,
+                Amount = scope.Amount,
+            })
+            .ToListAsync();
+    }
+
+    private async Task<decimal> GetAdditionalScopeTotalAsync(string? quotationId)
+    {
+        if (string.IsNullOrWhiteSpace(quotationId))
+        {
+            return 0m;
+        }
+
+        return await _db.AdditionalScopes
+            .AsNoTracking()
+            .Where(scope => scope.QuotationId == quotationId)
+            .SumAsync(scope => (decimal?)scope.Amount) ?? 0m;
     }
 
     private static string? GetQuotationRefNo(string? quotationId, string? requestQuotationRefNo)
