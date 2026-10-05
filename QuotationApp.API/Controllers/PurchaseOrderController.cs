@@ -626,11 +626,9 @@ public class PurchaseOrderController : ControllerBase
             ? NormalizeText(po.ClientPoItems) == NormalizeText(quotationItems)
             : false;
 
-        var expectedScopes = FormatAdditionalScopes(quotation?.AdditionalScopes);
-        var scopesMatch = string.IsNullOrWhiteSpace(expectedScopes)
-            ? string.IsNullOrWhiteSpace(po.ClientPoAdditionalScopes)
-            : !string.IsNullOrWhiteSpace(po.ClientPoAdditionalScopes)
-                && NormalizeText(po.ClientPoAdditionalScopes) == NormalizeText(expectedScopes);
+        var scopesMatch = AdditionalScopeAmountMatches(
+            quotation?.AdditionalScopes,
+            po.ClientPoAdditionalScopes);
 
         var termsMatch = !string.IsNullOrWhiteSpace(po.ClientPoTerms) && !string.IsNullOrWhiteSpace(quotationTermsStr)
             ? NormalizeText(po.ClientPoTerms) == NormalizeText(quotationTermsStr)
@@ -873,17 +871,20 @@ public class PurchaseOrderController : ControllerBase
             ? NormalizeText(po.ClientPoItems) == NormalizeText(quotationItems)
             : false;
 
-        var expectedScopes = FormatAdditionalScopes(quotation?.AdditionalScopes);
-        var scopesMatch = string.IsNullOrWhiteSpace(expectedScopes)
-            ? string.IsNullOrWhiteSpace(po.ClientPoAdditionalScopes)
-            : !string.IsNullOrWhiteSpace(po.ClientPoAdditionalScopes)
-                && NormalizeText(po.ClientPoAdditionalScopes) == NormalizeText(expectedScopes);
+        var scopesMatch = AdditionalScopeAmountMatches(
+            quotation?.AdditionalScopes,
+            po.ClientPoAdditionalScopes);
 
         var termsMatch = !string.IsNullOrWhiteSpace(po.ClientPoTerms) && !string.IsNullOrWhiteSpace(quotationTermsStr)
             ? NormalizeText(po.ClientPoTerms) == NormalizeText(quotationTermsStr)
             : false;
 
         var allMatch = amountMatch && itemsMatch && scopesMatch && termsMatch;
+        var mismatchDetails = new List<string>();
+        if (!amountMatch) mismatchDetails.Add("Amount");
+        if (!itemsMatch) mismatchDetails.Add("Items/Qty");
+        if (!scopesMatch) mismatchDetails.Add("Additional scope amount");
+        if (!termsMatch) mismatchDetails.Add("Selected Modules");
 
         if (allMatch)
         {
@@ -905,12 +906,6 @@ public class PurchaseOrderController : ControllerBase
 
         await _db.SaveChangesAsync();
 
-        // Build mismatch details for audit log
-        var mismatchDetails = new List<string>();
-        if (!amountMatch) mismatchDetails.Add("Amount");
-        if (!itemsMatch) mismatchDetails.Add("Items/Qty");
-        if (!termsMatch) mismatchDetails.Add("Payment Terms");
-
         // Audit log
         _db.PoAuditLogs.Add(new PoAuditLogEntity
         {
@@ -931,7 +926,9 @@ public class PurchaseOrderController : ControllerBase
             verificationNotes = po.VerificationNotes,
             amountMatch,
             itemsMatch,
+            scopesMatch,
             termsMatch,
+            mismatchFields = mismatchDetails,
         });
     }
 
@@ -1043,20 +1040,27 @@ public class PurchaseOrderController : ControllerBase
             .AnyAsync(scope => scope.QuotationId == quotationId);
     }
 
-    private static string FormatAdditionalScopes(IEnumerable<AdditionalScope>? scopes)
+    private static bool AdditionalScopeAmountMatches(
+        IEnumerable<AdditionalScope>? scopes,
+        string? clientAmount)
     {
-        if (scopes is null)
+        var scopeList = scopes?.ToList() ?? new List<AdditionalScope>();
+        if (scopeList.Count == 0)
         {
-            return string.Empty;
+            return string.IsNullOrWhiteSpace(clientAmount);
         }
 
-        return string.Join("; ", scopes.Select(scope => string.Join(" | ",
-            scope.Requirement,
-            scope.Modules,
-            $"Manpower: {scope.NoOfManpower}",
-            $"Days: {scope.NoOfDays}",
-            $"Rate: {scope.Rate.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}",
-            $"Amount: {scope.Amount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}")));
+        if (!decimal.TryParse(
+                clientAmount,
+                System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var parsedClientAmount))
+        {
+            return false;
+        }
+
+        var quotationTotal = scopeList.Sum(scope => scope.Amount);
+        return Math.Abs(quotationTotal - parsedClientAmount) < 0.01m;
     }
 
     [HttpPatch("{id:int}/verification")]
