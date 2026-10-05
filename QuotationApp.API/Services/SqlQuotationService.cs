@@ -1042,6 +1042,9 @@ public class SqlQuotationService : IQuotationService
                 var subtotal = pricing.Sum(p => p.ModuleSubtotal);
                 var discountAmount = pricing.Sum(p => p.DiscountAmount);
                 var finalPrice = pricing.Sum(p => p.FinalPrice);
+                var additionalScopeSubtotal =
+                    request.AdditionalScopes?.Sum(CalculateAdditionalScopeAmount) ?? 0m;
+                var overallFinalPrice = finalPrice + additionalScopeSubtotal;
                 var overallDiscountPct = subtotal > 0 ? (discountAmount / subtotal) * 100m : 0m;
                 var anyModuleHasDiscount = pricing.Any(p => p.DiscountPercentage > 0);
                 var moduleParticularsText = FormatModuleParticulars(
@@ -1061,7 +1064,7 @@ public class SqlQuotationService : IQuotationService
                     subtotal,
                     overallDiscountPct,
                     discountAmount,
-                    finalPrice,
+                    overallFinalPrice,
                     anyModuleHasDiscount);
                 var pricingParticularsText = string.Join(
                     Environment.NewLine,
@@ -1106,7 +1109,7 @@ public class SqlQuotationService : IQuotationService
                     ["{{MODULE_PRICE}}"] = $"Module Price: {modulePriceTotal:N2}",
                     ["{{IMPLEMENTATION_TOTAL}}"] = $"Implementation Total: {implementationPriceTotal:N2}",
                     ["{{SUBTOTAL}}"] = $"Subtotal: {subtotal:N2}",
-                    ["{{FinalPrice}}"] = $"Final Price: {finalPrice:N2}",
+                    ["{{FinalPrice}}"] = $"Final Price: {overallFinalPrice:N2}",
                     ["{{IMPLEMENTATION_PRICE}}"] = $"Implementation Price: {implementationPriceTotal:N2}"
                 };
 
@@ -1122,11 +1125,15 @@ public class SqlQuotationService : IQuotationService
                 }
 
                 PopulateScopeTable(body, modules, request.SelectedModules);
-                PopulatePricingTableFromTemplate(body, request, modulePrices, pricing, subtotal, implementationPriceTotal, modulePriceTotal, discountAmount, finalPrice);
+                PopulatePricingTableFromTemplate(body, request, modulePrices, pricing, subtotal, implementationPriceTotal, modulePriceTotal, discountAmount, overallFinalPrice);
                 PopulateLicenseRenewalModuleRows(body, request.SelectedModules);
                 NormalizeStandardPricingRows(body);
 
                 PopulateAdditionalScopeTable(body, request.AdditionalScopes);
+                PopulateAdditionalScopeSubtotalRow(
+                    body,
+                    request.AdditionalScopes,
+                    additionalScopeSubtotal);
 
                 PopulatePriceSummaryTable(body, request.SelectedModules, request.ModuleDetails, modulePrices, request.RenewalPercentage, request.AnnualEscalationPercentage);
 
@@ -1435,13 +1442,17 @@ public class SqlQuotationService : IQuotationService
                 detailsByModule.TryGetValue(moduleName.Trim(), out var detail);
                 pricingByModule.TryGetValue(moduleName.Trim(), out var modulePricing);
 
-                var modulePrice = module?.Price ?? 0m;
-                var implementationTotal = (module?.ImplementationEffortCost ?? 0m) *
+                var modulePrice = modulePricing?.ModulePrice ?? module?.Price ?? 0m;
+                var implementationTotal = modulePricing?.ImplementationPrice ??
+                    (module?.ImplementationEffortCost ?? 0m) *
                     GetEffortMultiplier(detail?.ImplementationEffortUnit);
-                var moduleSubtotal = modulePrice + implementationTotal;
+                var moduleSubtotal = modulePricing?.ModuleSubtotal ??
+                    modulePrice + implementationTotal;
                 var moduleDiscountPct = modulePricing?.DiscountPercentage ?? 0m;
-                var moduleDiscount = modulePrice * moduleDiscountPct / 100m;
-                var moduleFinalPrice = moduleSubtotal - moduleDiscount;
+                var moduleDiscount = modulePricing?.DiscountAmount ??
+                    modulePrice * moduleDiscountPct / 100m;
+                var moduleFinalPrice = modulePricing?.FinalPrice ??
+                    moduleSubtotal - moduleDiscount;
 
                 lines.AddRange(Enumerable.Repeat(string.Empty, 5));
                 lines.Add($"{modulePrice:N2}");
@@ -1606,7 +1617,7 @@ public class SqlQuotationService : IQuotationService
         decimal implementationPriceTotal,
         decimal modulePriceTotal,
         decimal discountAmount,
-        decimal finalPrice)
+        decimal overallFinalPrice)
     {
         const string licenseRenewalText = "The License renewal would be required to be done every Year These renewal fees will facilitate to have the Product Upgrades, which would cover improvements, bug fixes, and changes in AIAG VDA compliances. Support of 7 Man days is included in this price.";
 
@@ -1639,7 +1650,9 @@ public class SqlQuotationService : IQuotationService
                 rowText.Contains("TBD", StringComparison.OrdinalIgnoreCase);
             var isOverallValueRow =
                 rowText.Contains("{{OVERALL_VALUE}}", StringComparison.Ordinal);
-            if (isCustomizationTbdRow || isOverallValueRow)
+            var isAdditionalScopeSubtotalRow =
+                rowText.Contains("Additional Scope:", StringComparison.OrdinalIgnoreCase);
+            if (isCustomizationTbdRow || isOverallValueRow || isAdditionalScopeSubtotalRow)
             {
                 break;
             }
@@ -1679,12 +1692,6 @@ public class SqlQuotationService : IQuotationService
         var parentTable = templateRows[0].Ancestors<Table>().FirstOrDefault();
         if (parentTable == null) return;
 
-        // Accumulate the true combined total from the same per-module figures being
-        // rendered in the rows below, so the overall total always matches what the
-        // module rows actually display.
-        decimal totalModuleSubtotalAcrossModules = 0m;
-        decimal totalModuleFinalAcrossModules = 0m;
-
         var pricingByModule = pricing.ToDictionary(p => p.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
 
         foreach (var moduleName in moduleNames)
@@ -1693,19 +1700,19 @@ public class SqlQuotationService : IQuotationService
             var detail = request.ModuleDetails?.FirstOrDefault(d => string.Equals(d.ModuleName, moduleName, StringComparison.OrdinalIgnoreCase));
             pricingByModule.TryGetValue(moduleName.Trim(), out var modulePricing);
 
-            var modulePrice = module?.Price ?? 0m;
+            var modulePrice = modulePricing?.ModulePrice ?? module?.Price ?? 0m;
             var implementationEffort = GetEffortMultiplier(detail?.ImplementationEffortUnit);
             var implementationRate = module?.ImplementationEffortCost ?? 0m;
             var noOfUsers = detail?.NoOfUsers ?? 0;
-            var implementationTotal = noOfUsers * implementationRate;
-            var moduleSubtotal = modulePrice + implementationTotal;
+            var implementationTotal = modulePricing?.ImplementationPrice ??
+                noOfUsers * implementationRate;
+            var moduleSubtotal = modulePricing?.ModuleSubtotal ??
+                modulePrice + implementationTotal;
             var moduleDiscountPct = modulePricing?.DiscountPercentage ?? 0m;
-            var moduleDiscount = modulePrice * moduleDiscountPct / 100m;
-            var moduleFinalPrice = moduleSubtotal - moduleDiscount;
-
-            // Accumulate into the running overall total.
-            totalModuleSubtotalAcrossModules += moduleSubtotal;
-            totalModuleFinalAcrossModules += moduleFinalPrice;
+            var moduleDiscount = modulePricing?.DiscountAmount ??
+                modulePrice * moduleDiscountPct / 100m;
+            var moduleFinalPrice = modulePricing?.FinalPrice ??
+                moduleSubtotal - moduleDiscount;
 
             var moduleReplacements = new Dictionary<string, string>
             {
@@ -1779,7 +1786,7 @@ public class SqlQuotationService : IQuotationService
 
             var overallValueReplacements = new Dictionary<string, string>
             {
-                ["{{OVERALL_VALUE}}"] = $"{totalModuleFinalAcrossModules:N2}"
+                ["{{OVERALL_VALUE}}"] = $"{overallFinalPrice:N2}"
             };
             ReplaceRowPlaceholders(overallValueRow, overallValueReplacements);
         }
@@ -1797,7 +1804,7 @@ public class SqlQuotationService : IQuotationService
         {
             overallSummaryLabels[$"Discount ({overallDiscountPct:N2}%):"] = $"{discountAmount:N2}";
         }
-        overallSummaryLabels["Total of All Modules Final Price:"] = $"{finalPrice:N2}";
+        overallSummaryLabels["Total of All Modules Final Price:"] = $"{overallFinalPrice:N2}";
 
         var allRowsForSummary = body.Descendants<TableRow>().ToList();
         foreach (var row in allRowsForSummary)
@@ -2005,7 +2012,7 @@ public class SqlQuotationService : IQuotationService
                 ["{{ADD_SCOPE_MANPOWER}}"] = scope.NoOfManpower.ToString(),
                 ["{{ADD_SCOPE_DAYS}}"] = scope.NoOfDays.ToString(),
                 ["{{ADD_SCOPE_RATE}}"] = scope.Rate.ToString("N2"),
-                ["{{ADD_SCOPE_AMOUNT}}"] = scope.Amount.ToString("N2")
+                ["{{ADD_SCOPE_AMOUNT}}"] = CalculateAdditionalScopeAmount(scope).ToString("N2")
             };
             foreach (var paragraph in row.Descendants<Paragraph>())
             {
@@ -2015,6 +2022,85 @@ public class SqlQuotationService : IQuotationService
         }
 
         templateRow.Remove();
+    }
+
+    private static decimal CalculateAdditionalScopeAmount(
+        AdditionalScopeRequest scope) =>
+        scope.NoOfManpower * scope.NoOfDays * scope.Rate;
+
+    private static void PopulateAdditionalScopeSubtotalRow(
+        Body body,
+        IEnumerable<AdditionalScopeRequest> additionalScopes,
+        decimal additionalScopeSubtotal)
+    {
+        var hasAdditionalScopes = additionalScopes?.Any() == true;
+        var subtotalRow = body
+            .Descendants<TableRow>()
+            .FirstOrDefault(row =>
+                row.Elements<TableCell>().Any(cell =>
+                    cell.InnerText.Trim().Equals(
+                        "Additional Scope:",
+                        StringComparison.OrdinalIgnoreCase)));
+
+        if (subtotalRow is null) return;
+
+        if (!hasAdditionalScopes)
+        {
+            subtotalRow.Remove();
+            return;
+        }
+
+        var cells = subtotalRow.Elements<TableCell>().ToList();
+        var labelCellIndex = cells.FindIndex(cell =>
+            cell.InnerText.Trim().Equals(
+                "Additional Scope:",
+                StringComparison.OrdinalIgnoreCase));
+        if (labelCellIndex < 0 || labelCellIndex + 1 >= cells.Count)
+        {
+            throw new InvalidOperationException(
+                "The Additional Scope summary row must have a value cell after its label.");
+        }
+
+        var amountCell = cells[labelCellIndex + 1];
+        var amountText = $"{additionalScopeSubtotal:N2}";
+        const string amountPlaceholder = "{{ADDITIONAL_SCOPE_SUBTOTAL}}";
+        if (amountCell.InnerText.Contains(amountPlaceholder, StringComparison.Ordinal))
+        {
+            var replacements = new Dictionary<string, string>
+            {
+                [amountPlaceholder] = amountText
+            };
+            foreach (var paragraph in amountCell.Descendants<Paragraph>())
+            {
+                ReplaceParagraphText(paragraph, replacements);
+            }
+            return;
+        }
+
+        var overallTotalRow = body
+            .Descendants<TableRow>()
+            .FirstOrDefault(row =>
+                row.Elements<TableCell>().Any(cell =>
+                    cell.InnerText.Contains(
+                        "Total of All Modules Final Price:",
+                        StringComparison.OrdinalIgnoreCase)));
+        var overallCells = overallTotalRow?.Elements<TableCell>().ToList();
+        var overallLabelCellIndex = overallCells?.FindIndex(cell =>
+            cell.InnerText.Contains(
+                "Total of All Modules Final Price:",
+                StringComparison.OrdinalIgnoreCase)) ?? -1;
+        var overallAmountCell = overallLabelCellIndex >= 0 &&
+            overallCells is not null &&
+            overallLabelCellIndex + 1 < overallCells.Count
+                ? overallCells[overallLabelCellIndex + 1]
+                : null;
+
+        amountCell.RemoveAllChildren<Paragraph>();
+        ReplaceCellTextPreservingFormat(
+            amountCell,
+            amountText,
+            overallAmountCell,
+            overallTotalRow);
     }
 
     private static void PopulatePriceSummaryTable(
