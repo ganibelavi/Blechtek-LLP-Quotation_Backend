@@ -1097,6 +1097,7 @@ public class SqlQuotationService : IQuotationService
                     ["{{MODULE_DETAILS}}"] = string.Empty,
                     ["{{MODULE_PRICING}}"] = string.Empty,
                     ["{{OVERALL_PRICING}}"] = string.Empty,
+                    ["{{ADDITIONAL_SCOPE_SUBTOTAL}}"] = $"{additionalScopeSubtotal:N2}",
                     // Template placeholders (from temp_template)
                     ["{{CONTACT_NAME}}"] = request.QuotationTo?.Name ?? "",
                     ["{{CONTACT_ADDRESS}}"] = request.QuotationTo?.Address ?? "",
@@ -1130,10 +1131,9 @@ public class SqlQuotationService : IQuotationService
                 NormalizeStandardPricingRows(body);
 
                 PopulateAdditionalScopeTable(body, request.AdditionalScopes);
-                PopulateAdditionalScopeSubtotalRow(
+                RemoveAdditionalScopeSubtotalRowWhenEmpty(
                     body,
-                    request.AdditionalScopes,
-                    additionalScopeSubtotal);
+                    request.AdditionalScopes);
 
                 PopulatePriceSummaryTable(body, request.SelectedModules, request.ModuleDetails, modulePrices, request.RenewalPercentage, request.AnnualEscalationPercentage);
 
@@ -2028,12 +2028,13 @@ public class SqlQuotationService : IQuotationService
         AdditionalScopeRequest scope) =>
         scope.NoOfManpower * scope.NoOfDays * scope.Rate;
 
-    private static void PopulateAdditionalScopeSubtotalRow(
+    private static void RemoveAdditionalScopeSubtotalRowWhenEmpty(
         Body body,
-        IEnumerable<AdditionalScopeRequest> additionalScopes,
-        decimal additionalScopeSubtotal)
+        IEnumerable<AdditionalScopeRequest> additionalScopes)
     {
         var hasAdditionalScopes = additionalScopes?.Any() == true;
+        if (hasAdditionalScopes) return;
+
         var subtotalRow = body
             .Descendants<TableRow>()
             .FirstOrDefault(row =>
@@ -2043,64 +2044,7 @@ public class SqlQuotationService : IQuotationService
                         StringComparison.OrdinalIgnoreCase)));
 
         if (subtotalRow is null) return;
-
-        if (!hasAdditionalScopes)
-        {
-            subtotalRow.Remove();
-            return;
-        }
-
-        var cells = subtotalRow.Elements<TableCell>().ToList();
-        var labelCellIndex = cells.FindIndex(cell =>
-            cell.InnerText.Trim().Equals(
-                "Additional Scope:",
-                StringComparison.OrdinalIgnoreCase));
-        if (labelCellIndex < 0 || labelCellIndex + 1 >= cells.Count)
-        {
-            throw new InvalidOperationException(
-                "The Additional Scope summary row must have a value cell after its label.");
-        }
-
-        var amountCell = cells[labelCellIndex + 1];
-        var amountText = $"{additionalScopeSubtotal:N2}";
-        const string amountPlaceholder = "{{ADDITIONAL_SCOPE_SUBTOTAL}}";
-        if (amountCell.InnerText.Contains(amountPlaceholder, StringComparison.Ordinal))
-        {
-            var replacements = new Dictionary<string, string>
-            {
-                [amountPlaceholder] = amountText
-            };
-            foreach (var paragraph in amountCell.Descendants<Paragraph>())
-            {
-                ReplaceParagraphText(paragraph, replacements);
-            }
-            return;
-        }
-
-        var overallTotalRow = body
-            .Descendants<TableRow>()
-            .FirstOrDefault(row =>
-                row.Elements<TableCell>().Any(cell =>
-                    cell.InnerText.Contains(
-                        "Total of All Modules Final Price:",
-                        StringComparison.OrdinalIgnoreCase)));
-        var overallCells = overallTotalRow?.Elements<TableCell>().ToList();
-        var overallLabelCellIndex = overallCells?.FindIndex(cell =>
-            cell.InnerText.Contains(
-                "Total of All Modules Final Price:",
-                StringComparison.OrdinalIgnoreCase)) ?? -1;
-        var overallAmountCell = overallLabelCellIndex >= 0 &&
-            overallCells is not null &&
-            overallLabelCellIndex + 1 < overallCells.Count
-                ? overallCells[overallLabelCellIndex + 1]
-                : null;
-
-        amountCell.RemoveAllChildren<Paragraph>();
-        ReplaceCellTextPreservingFormat(
-            amountCell,
-            amountText,
-            overallAmountCell,
-            overallTotalRow);
+        subtotalRow.Remove();
     }
 
     private static void PopulatePriceSummaryTable(
