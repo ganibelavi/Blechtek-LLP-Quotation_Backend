@@ -1733,6 +1733,22 @@ public class SqlQuotationService : IQuotationService
             foreach (var templateRow in templateRows)
             {
                 var clonedRow = (TableRow)templateRow.CloneNode(true);
+                if (rowNum > 1 || templateRow != templateRows[0])
+                {
+                    var serialNumberCell = clonedRow.Elements<TableCell>().FirstOrDefault();
+                    var serialNumber = serialNumberCell is null
+                        ? string.Empty
+                        : string.Concat(serialNumberCell.Descendants<Text>().Select(t => t.Text)).Trim();
+
+                    if (serialNumberCell is not null && (serialNumber is "1" or "1.1"))
+                    {
+                        foreach (var text in serialNumberCell.Descendants<Text>())
+                        {
+                            text.Text = string.Empty;
+                        }
+                    }
+                }
+
                 ReplaceRowPlaceholders(clonedRow, moduleReplacements);
                 templateRows[0].InsertBeforeSelf(clonedRow);
             }
