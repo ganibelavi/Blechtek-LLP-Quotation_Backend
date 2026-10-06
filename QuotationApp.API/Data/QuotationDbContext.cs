@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using QuotationApp.API.Models;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace QuotationApp.API.Data;
 
@@ -31,6 +32,12 @@ public class QuotationDbContext : DbContext
     public DbSet<ProductEntity> Products { get; set; }
     public DbSet<PurchaseOrderEntity> PurchaseOrders { get; set; }
     public DbSet<PurchaseOrderItemEntity> PurchaseOrderItems { get; set; }
+    public DbSet<SalesOrderEntity> SalesOrders { get; set; }
+    public DbSet<SalesOrderItemEntity> SalesOrderItems { get; set; }
+    public DbSet<SalesOrderBillingScheduleEntity> SalesOrderBillingSchedule { get; set; }
+    public DbSet<SalesOrderDocumentEntity> SalesOrderDocuments { get; set; }
+    public DbSet<SalesOrderStatusHistoryEntity> SalesOrderStatusHistory { get; set; }
+    public DbSet<SalesOrderNumberSeriesEntity> SalesOrderNumberSeries { get; set; }
     public DbSet<PoAuditLogEntity> PoAuditLogs { get; set; }
     public DbSet<InvoiceEntity> Invoices { get; set; }
     public DbSet<InvoiceBankDetailEntity> InvoiceBankDetails { get; set; }
@@ -387,7 +394,12 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.CustomerId).IsRequired().HasColumnName("customer_id");
             entity.Property(e => e.PoId).HasColumnName("po_id");
+            entity.Property(e => e.SalesOrderId).HasColumnName("sales_order_id");
             entity.Property(e => e.QuotationId).HasMaxLength(50).HasColumnType("nvarchar(50)").HasColumnName("quotation_id");
+            entity.HasOne<SalesOrderEntity>()
+                .WithMany(s => s.Invoices)
+                .HasForeignKey(e => e.SalesOrderId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.Property(e => e.InvoiceNo).IsRequired().HasMaxLength(50).HasColumnName("invoice_no");
             entity.Property(e => e.InvoiceDate).IsRequired().HasColumnName("invoice_date");
             entity.Property(e => e.TimeOfIssue).HasMaxLength(10).HasColumnName("time_of_issue");
@@ -497,6 +509,7 @@ public class QuotationDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.QuotationId).HasMaxLength(50);
+            entity.Property(e => e.SalesOrderId).HasColumnName("SalesOrderId");
             entity.Property(e => e.InvoiceId).HasColumnName("InvoiceId");
             entity.Property(e => e.PurchaseDate).HasColumnType("date");
             entity.Property(e => e.SubscriptionStartDate).HasColumnType("date");
@@ -504,12 +517,20 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.InitialPurchasePrice).HasColumnType("decimal(12,2)");
             entity.Property(e => e.RenewalPercentage).HasColumnType("decimal(5,2)");
             entity.Property(e => e.AnnualEscalationPercentage).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.BillingCycle).HasMaxLength(15);
+            entity.Property(e => e.RenewalTermMonths);
+            entity.Property(e => e.AutoRenew);
+            entity.Property(e => e.RenewalReminderDays);
             entity.Property(e => e.Status).HasMaxLength(20);
             entity.Property(e => e.NextRenewalDate).HasColumnType("date");
             entity.ToTable("CustomerModuleSubscription");
             entity.HasOne(e => e.Customer).WithMany().HasForeignKey(e => e.CustomerId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Module).WithMany().HasForeignKey(e => e.ModuleId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<SalesOrderEntity>()
+                .WithMany(s => s.Subscriptions)
+                .HasForeignKey(e => e.SalesOrderId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<InvoiceEntity>().WithMany().HasForeignKey(e => e.InvoiceId)
                 .OnDelete(DeleteBehavior.Restrict);
@@ -530,6 +551,147 @@ public class QuotationDbContext : DbContext
             entity.HasOne(e => e.Subscription).WithMany(s => s.Renewals)
                 .HasForeignKey(e => e.SubscriptionId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SalesOrderEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.SoNumber).IsRequired().HasMaxLength(30);
+            entity.Property(e => e.SoDate).IsRequired().HasColumnType("date");
+            entity.Property(e => e.QuotationId).HasMaxLength(50);
+            entity.Property(e => e.CustomerPoNumber).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.CustomerPoDate).HasColumnType("date");
+            entity.Property(e => e.BillingAddress).HasMaxLength(500);
+            entity.Property(e => e.ShippingAddress).HasMaxLength(500);
+            entity.Property(e => e.CustomerGstin).HasMaxLength(15);
+            entity.Property(e => e.PlaceOfSupplyState).HasMaxLength(100);
+            entity.Property(e => e.CurrencyCode).IsRequired().HasMaxLength(3).HasDefaultValue("INR");
+            entity.Property(e => e.SubTotal).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.DiscountTotal).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.TaxableAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.CgstAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.SgstAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.IgstAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.RoundOff).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.GrandTotal).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.InvoicedAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.PaymentTermsText).HasMaxLength(300);
+            entity.Property(e => e.BillingType).IsRequired().HasMaxLength(20).HasDefaultValue("OneTime");
+            entity.Property(e => e.BankNameSnapshot).HasMaxLength(255);
+            entity.Property(e => e.BankAccountNoSnapshot).HasMaxLength(100);
+            entity.Property(e => e.BankAccountTypeSnapshot).HasMaxLength(100);
+            entity.Property(e => e.BankIfscSnapshot).HasMaxLength(50);
+            entity.Property(e => e.BankMsmeNoSnapshot).HasMaxLength(100);
+            entity.Property(e => e.TermsAndConditions);
+            entity.Property(e => e.SubscriptionStart).HasColumnType("date");
+            entity.Property(e => e.SubscriptionEnd).HasColumnType("date");
+            entity.Property(e => e.BillingCycle).HasMaxLength(15);
+            entity.Property(e => e.MismatchRemarks).HasMaxLength(1000);
+            entity.Property(e => e.VerificationRemarks).HasMaxLength(500);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(25).HasDefaultValue("Draft");
+            entity.Property(e => e.CancelReason).HasMaxLength(500);
+            entity.Property(e => e.InternalRemarks).HasMaxLength(1000);
+            entity.Property(e => e.CreatedOn).IsRequired();
+            entity.Property(e => e.RowVer).IsRowVersion();
+            entity.HasIndex(e => e.SoNumber).IsUnique();
+            entity.HasIndex(e => e.PurchaseOrderId)
+                .IsUnique()
+                .HasFilter("[Status] <> 'Cancelled' AND [IsDeleted] = 0");
+            entity.HasIndex(e => new { e.CustomerId, e.Status });
+            entity.HasIndex(e => e.SoDate);
+            entity.HasIndex(e => e.IsDeleted);
+            entity.ToTable("SalesOrders");
+
+            entity.HasOne(e => e.Quotation).WithMany(q => q.SalesOrders).HasForeignKey(e => e.QuotationId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.PurchaseOrder).WithMany(p => p.SalesOrders).HasForeignKey(e => e.PurchaseOrderId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Customer).WithMany(c => c.SalesOrders).HasForeignKey(e => e.CustomerId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.BankAccount).WithMany().HasForeignKey(e => e.BankAccountId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.TermsTemplate).WithMany().HasForeignKey(e => e.TermsTemplateId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.VerifiedByUser).WithMany().HasForeignKey(e => e.VerifiedBy).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.CreatedByUser).WithMany().HasForeignKey(e => e.CreatedBy).OnDelete(DeleteBehavior.Restrict);
+            entity.HasQueryFilter(e => !e.IsDeleted);
+        });
+
+        modelBuilder.Entity<SalesOrderItemEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ItemDescription).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.HsnSacCode).HasMaxLength(10);
+            entity.Property(e => e.Uom).HasMaxLength(20);
+            entity.Property(e => e.Quantity).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.QuotedUnitPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.PoUnitPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.DiscountPercent).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.TaxableAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.GstPercent).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.CgstAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.SgstAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.IgstAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.LineTotal).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.QtyInvoiced).HasColumnType("decimal(18,2)");
+            entity.HasIndex(e => e.SalesOrderId);
+            entity.HasIndex(e => new { e.SalesOrderId, e.LineNo }).IsUnique();
+            entity.ToTable("SalesOrderItems");
+            entity.HasOne(e => e.SalesOrder).WithMany(s => s.Items).HasForeignKey(e => e.SalesOrderId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Module).WithMany().HasForeignKey(e => e.ModuleId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.GstRate).WithMany().HasForeignKey(e => e.GstRateId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasQueryFilter(e => !e.SalesOrder!.IsDeleted);
+        });
+
+        modelBuilder.Entity<SalesOrderBillingScheduleEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.SequenceNo).IsRequired();
+            entity.Property(e => e.MilestoneName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Percentage).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.Amount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.DueDate).HasColumnType("date");
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(15).HasDefaultValue("Pending");
+            entity.HasIndex(e => new { e.SalesOrderId, e.SequenceNo }).IsUnique();
+            entity.ToTable("SalesOrderBillingSchedule");
+            entity.HasOne(e => e.SalesOrder).WithMany(s => s.BillingSchedule).HasForeignKey(e => e.SalesOrderId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Invoice).WithMany().HasForeignKey(e => e.InvoiceId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasQueryFilter(e => !e.SalesOrder!.IsDeleted);
+        });
+
+        modelBuilder.Entity<SalesOrderDocumentEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.DocumentType).IsRequired().HasMaxLength(30);
+            entity.Property(e => e.FileName).IsRequired().HasMaxLength(260);
+            entity.Property(e => e.FilePath).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.ContentType).HasMaxLength(100);
+            entity.Property(e => e.UploadedOn).IsRequired();
+            entity.ToTable("SalesOrderDocuments");
+            entity.HasOne(e => e.SalesOrder).WithMany(s => s.Documents).HasForeignKey(e => e.SalesOrderId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UploadedBy).OnDelete(DeleteBehavior.Restrict);
+            entity.HasQueryFilter(e => !e.SalesOrder!.IsDeleted);
+        });
+
+        modelBuilder.Entity<SalesOrderStatusHistoryEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.FromStatus).HasMaxLength(25);
+            entity.Property(e => e.ToStatus).IsRequired().HasMaxLength(25);
+            entity.Property(e => e.Remarks).HasMaxLength(500);
+            entity.Property(e => e.ChangedOn).IsRequired();
+            entity.ToTable("SalesOrderStatusHistory");
+            entity.HasIndex(e => new { e.SalesOrderId, e.ChangedOn });
+            entity.HasOne(e => e.SalesOrder).WithMany(s => s.StatusHistory).HasForeignKey(e => e.SalesOrderId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.ChangedByUser).WithMany().HasForeignKey(e => e.ChangedBy).OnDelete(DeleteBehavior.Restrict);
+            entity.HasQueryFilter(e => !e.SalesOrder!.IsDeleted);
+        });
+
+        modelBuilder.Entity<SalesOrderNumberSeriesEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.FinancialYear).IsRequired().HasMaxLength(9);
+            entity.Property(e => e.Prefix).IsRequired().HasMaxLength(10).HasDefaultValue("SO");
+            entity.Property(e => e.LastNumber).IsRequired();
+            entity.ToTable("SalesOrderNumberSeries");
+            entity.HasIndex(e => e.FinancialYear).IsUnique();
         });
 
         modelBuilder.Entity<SubscriptionPaymentHistoryEntity>(entity =>
@@ -611,6 +773,7 @@ public class QuotationEntity
     public List<QuotationModuleEntity> QuotationModules { get; set; } = new();
     public List<AdditionalScope> AdditionalScopes { get; set; } = new();
     public List<QuotationTimeEstimateEntity> QuotationTimeEstimates { get; set; } = new();
+    public List<SalesOrderEntity> SalesOrders { get; set; } = new();
 }
 
 /// <summary>

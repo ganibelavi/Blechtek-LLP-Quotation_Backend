@@ -281,9 +281,19 @@ public class InvoiceController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<object>>> GetAll()
+    public async Task<ActionResult<List<object>>> GetAll(
+        [FromQuery] bool excludeRenewalSubscriptionInvoices = false)
     {
-        var records = await _db.Invoices
+        var invoiceQuery = _db.Invoices.AsQueryable();
+        if (excludeRenewalSubscriptionInvoices)
+        {
+            invoiceQuery = invoiceQuery.Where(invoice =>
+                !_db.SubscriptionRenewals.Any(renewal => renewal.InvoiceId == invoice.Id) &&
+                !_db.CustomerModuleSubscriptions.Any(subscription => subscription.InvoiceId == invoice.Id) &&
+                !_db.SubscriptionPaymentHistory.Any(payment => payment.InvoiceId == invoice.Id));
+        }
+
+        var records = await invoiceQuery
             .Include(i => i.Items)
             .OrderByDescending(i => i.Id)
             .ToListAsync();

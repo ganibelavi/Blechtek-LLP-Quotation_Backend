@@ -31,6 +31,7 @@ builder.Services.AddScoped<ITemplateService, TemplateService>(); // Add Template
 builder.Services.AddScoped<IQuotationService, SqlQuotationService>(); // SQL-based
 // Add user service for authentication
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<ISalesOrderService, SalesOrderService>();
 builder.Services.AddSingleton<PasswordResetService>();
 
 // Configure SMTP email options and register email service

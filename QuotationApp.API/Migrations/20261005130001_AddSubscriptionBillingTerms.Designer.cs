@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using QuotationApp.API.Data;
 
@@ -11,9 +12,11 @@ using QuotationApp.API.Data;
 namespace QuotationApp.API.Migrations
 {
     [DbContext(typeof(QuotationDbContext))]
-    partial class QuotationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261005130001_AddSubscriptionBillingTerms")]
+    partial class AddSubscriptionBillingTerms
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1494,26 +1497,6 @@ namespace QuotationApp.API.Migrations
 
                     b.Property<int?>("BankAccountId")
                         .HasColumnType("int");
-
-                    b.Property<string>("BankAccountNoSnapshot")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("BankAccountTypeSnapshot")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("BankIfscSnapshot")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("BankMsmeNoSnapshot")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("BankNameSnapshot")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
 
                     b.Property<string>("BillingAddress")
                         .HasMaxLength(500)

@@ -22,6 +22,7 @@ public sealed class CustomerModuleSubscriptionEntity
     public int CustomerId { get; set; }
     public int ModuleId { get; set; }
     public string? QuotationId { get; set; }
+    public int? SalesOrderId { get; set; }
     public int? InvoiceId { get; set; }
     public DateTime PurchaseDate { get; set; }
     public DateTime SubscriptionStartDate { get; set; }
@@ -30,6 +31,10 @@ public sealed class CustomerModuleSubscriptionEntity
     public decimal InitialPurchasePrice { get; set; }
     public decimal RenewalPercentage { get; set; }
     public decimal AnnualEscalationPercentage { get; set; }
+    public string? BillingCycle { get; set; }
+    public int? RenewalTermMonths { get; set; }
+    public bool AutoRenew { get; set; }
+    public int? RenewalReminderDays { get; set; }
     public string Status { get; set; } = "active";
     public DateTime? NextRenewalDate { get; set; }
     public DateTime CreatedAt { get; set; }

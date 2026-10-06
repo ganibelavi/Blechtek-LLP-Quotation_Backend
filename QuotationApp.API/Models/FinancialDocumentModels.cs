@@ -15,6 +15,7 @@ public class CustomerEntity
 
     public ICollection<PurchaseOrderEntity> PurchaseOrders { get; set; } = new List<PurchaseOrderEntity>();
     public ICollection<InvoiceEntity> Invoices { get; set; } = new List<InvoiceEntity>();
+    public ICollection<SalesOrderEntity> SalesOrders { get; set; } = new List<SalesOrderEntity>();
 }
 
 public class SupplierEntity
@@ -127,6 +128,7 @@ public class PurchaseOrderEntity
     public DateTime? ReceivedAt { get; set; }
 
     public ICollection<PurchaseOrderItemEntity> Items { get; set; } = new List<PurchaseOrderItemEntity>();
+    public ICollection<SalesOrderEntity> SalesOrders { get; set; } = new List<SalesOrderEntity>();
 }
 
 public class PoAuditLogEntity
@@ -164,6 +166,7 @@ public class InvoiceEntity
     public int Id { get; set; }
     public int CustomerId { get; set; }
     public int? PoId { get; set; }
+    public int? SalesOrderId { get; set; }
     public string? QuotationId { get; set; }
     public string InvoiceNo { get; set; } = string.Empty;
     public DateTime InvoiceDate { get; set; } = DateTime.UtcNow;
