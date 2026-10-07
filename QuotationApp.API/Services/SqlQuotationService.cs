@@ -690,13 +690,7 @@ public class SqlQuotationService : IQuotationService
     {
         if (AllowedEffortUnits.Contains(effortUnit)) return true;
 
-        return effortUnit.EndsWith(" Days", StringComparison.OrdinalIgnoreCase) &&
-            decimal.TryParse(
-                effortUnit[..^5].Trim(),
-                NumberStyles.Number,
-                CultureInfo.InvariantCulture,
-                out var days) &&
-            days > 0;
+        return TryParseEffortDays(effortUnit, out var days) && days > 0;
     }
 
     private void AddHistorySnapshot(QuotationEntity quotation, string changeType)
@@ -1307,14 +1301,31 @@ public class SqlQuotationService : IQuotationService
             "1 Day" => 1m,
             "2 Days" => 2m,
             "1 Week" => 7m,
-            _ when effortUnit?.EndsWith(" Days", StringComparison.OrdinalIgnoreCase) == true &&
-                decimal.TryParse(
-                    effortUnit[..^5].Trim(),
-                    NumberStyles.Number,
-                    CultureInfo.InvariantCulture,
-                    out var days) => days,
+            _ when TryParseEffortDays(effortUnit, out var days) => days,
             _ => 0m
         };
+    }
+
+    private static bool TryParseEffortDays(string? effortUnit, out decimal days)
+    {
+        if (effortUnit is not null)
+        {
+            foreach (var suffix in new[] { " Man Days", " Man Day", " Days" })
+            {
+                if (effortUnit.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) &&
+                    decimal.TryParse(
+                        effortUnit[..^suffix.Length].Trim(),
+                        NumberStyles.Number,
+                        CultureInfo.InvariantCulture,
+                        out days))
+                {
+                    return true;
+                }
+            }
+        }
+
+        days = 0m;
+        return false;
     }
 
     private static string FormatModuleRequirements(
@@ -1688,11 +1699,16 @@ public class SqlQuotationService : IQuotationService
             pricingByModule.TryGetValue(moduleName.Trim(), out var modulePricing);
 
             var modulePrice = modulePricing?.ModulePrice ?? module?.Price ?? 0m;
-            var implementationEffort = GetEffortMultiplier(detail?.ImplementationEffortUnit);
-            var implementationRate = module?.ImplementationEffortCost ?? 0m;
+            var implementationEffort =
+                modulePricing?.ImplementationMultiplier ??
+                GetEffortMultiplier(detail?.ImplementationEffortUnit);
+            var implementationRate =
+                modulePricing?.ImplementationUnitPrice ??
+                module?.ImplementationEffortCost ??
+                0m;
             var noOfUsers = detail?.NoOfUsers ?? 0;
             var implementationTotal = modulePricing?.ImplementationPrice ??
-                noOfUsers * implementationRate;
+                implementationEffort * implementationRate;
             var moduleSubtotal = modulePricing?.ModuleSubtotal ??
                 modulePrice + implementationTotal;
             var moduleDiscountPct = modulePricing?.DiscountPercentage ?? 0m;
@@ -1707,7 +1723,7 @@ public class SqlQuotationService : IQuotationService
                 ["{{LICENSE_RENEWAL}}"] = licenseRenewalText,
                 ["{{NO_OF_USERS}}"] = noOfUsers.ToString(),
                 ["{{MODULE_PRICE}}"] = $"{modulePrice:N2}",
-                ["{{IMPL_EFFORT}}"] = $"{implementationEffort:N0}",
+                ["{{IMPL_EFFORT}}"] = implementationEffort.ToString("0.##", CultureInfo.InvariantCulture),
                 ["{{IMPL_RATE}}"] = $"{implementationRate:N2}",
                 ["{{IMPL_TOTAL}}"] = $"{implementationTotal:N2}",
                 ["{{MODULE_SUBTOTAL}}"] = $"{moduleSubtotal:N2}",
