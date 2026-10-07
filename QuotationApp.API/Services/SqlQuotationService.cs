@@ -1410,6 +1410,7 @@ public class SqlQuotationService : IQuotationService
                 PopulateScopeTable(body, modules, request.SelectedModules);
                 PopulatePricingTableFromTemplate(body, request, modulePrices, pricing, subtotal, implementationPriceTotal, modulePriceTotal, discountAmount, overallFinalPrice);
                 PopulateLicenseRenewalModuleRows(body, request.SelectedModules);
+                PopulatePricingTableSerialNumbers(body, request.SelectedModules.Count);
                 NormalizeStandardPricingRows(body);
 
                 PopulateAdditionalScopeTable(body, request.AdditionalScopes);
@@ -2038,20 +2039,16 @@ public class SqlQuotationService : IQuotationService
             foreach (var templateRow in templateRows)
             {
                 var clonedRow = (TableRow)templateRow.CloneNode(true);
-                if (rowNum > 1 || templateRow != templateRows[0])
+                var rowIndex = templateRows.IndexOf(templateRow);
+                var serialNumberCell = clonedRow.Elements<TableCell>().FirstOrDefault();
+                if (serialNumberCell is not null)
                 {
-                    var serialNumberCell = clonedRow.Elements<TableCell>().FirstOrDefault();
-                    var serialNumber = serialNumberCell is null
-                        ? string.Empty
-                        : string.Concat(serialNumberCell.Descendants<Text>().Select(t => t.Text)).Trim();
-
-                    if (serialNumberCell is not null && (serialNumber is "1" or "1.1"))
-                    {
-                        foreach (var text in serialNumberCell.Descendants<Text>())
-                        {
-                            text.Text = string.Empty;
-                        }
-                    }
+                    var serialNumber = rowIndex == 0
+                        ? rowNum.ToString(CultureInfo.InvariantCulture)
+                        : rowIndex == 2
+                            ? $"{rowNum}.1"
+                            : string.Empty;
+                    SetTableCellText(serialNumberCell, serialNumber);
                 }
 
                 ReplaceRowPlaceholders(clonedRow, moduleReplacements);
@@ -2159,6 +2156,123 @@ public class SqlQuotationService : IQuotationService
         if (overallTemplateRow != null)
         {
             overallTemplateRow.Remove();
+        }
+    }
+
+    private static void PopulatePricingTableSerialNumbers(Body body, int selectedModuleCount)
+    {
+        var pricingTable = body
+            .Descendants<Table>()
+            .FirstOrDefault(table =>
+            {
+                var tableText = string.Concat(table.Descendants<Text>().Select(text => text.Text));
+                return tableText.Contains("Sr. No.", StringComparison.OrdinalIgnoreCase) &&
+                       tableText.Contains("Price in INR", StringComparison.OrdinalIgnoreCase) &&
+                       tableText.Contains("Customization", StringComparison.OrdinalIgnoreCase);
+            });
+
+        if (pricingTable is null) return;
+
+        var sectionNumber = selectedModuleCount;
+        SetPricingRowNumber(
+            pricingTable,
+            rowText => rowText.Contains("Customization", StringComparison.OrdinalIgnoreCase) &&
+                       !rowText.Contains("In case of any additional development", StringComparison.OrdinalIgnoreCase),
+            (sectionNumber + 1).ToString(CultureInfo.InvariantCulture));
+        SetPricingRowNumber(
+            pricingTable,
+            rowText => rowText.Contains("In case of any additional development", StringComparison.OrdinalIgnoreCase),
+            $"{sectionNumber + 1}.1");
+
+        SetPricingRowNumber(
+            pricingTable,
+            rowText => rowText.Contains("Renewal and Support from next year onwards", StringComparison.OrdinalIgnoreCase),
+            (sectionNumber + 2).ToString(CultureInfo.InvariantCulture));
+        var renewalRows = pricingTable.Elements<TableRow>()
+            .Where(row => string.Concat(row.Descendants<Text>().Select(text => text.Text))
+                .Contains("The License renewal would be required", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        for (var index = 0; index < renewalRows.Count; index++)
+        {
+            SetPricingRowNumber(renewalRows[index], $"{sectionNumber + 2}.{index + 1}");
+        }
+
+        SetPricingRowNumber(
+            pricingTable,
+            rowText => rowText.Contains("Support Services", StringComparison.OrdinalIgnoreCase) &&
+                       !rowText.Contains("Support Level", StringComparison.OrdinalIgnoreCase),
+            (sectionNumber + 3).ToString(CultureInfo.InvariantCulture));
+        SetPricingRowNumber(
+            pricingTable,
+            rowText => rowText.Contains("First Year - These Services", StringComparison.OrdinalIgnoreCase),
+            $"{sectionNumber + 3}.1");
+
+        SetPricingRowNumber(
+            pricingTable,
+            rowText => rowText.Contains("Payment Terms", StringComparison.OrdinalIgnoreCase),
+            (sectionNumber + 4).ToString(CultureInfo.InvariantCulture));
+        SetPricingRowNumber(
+            pricingTable,
+            rowText => rowText.Contains("70% in Advance", StringComparison.OrdinalIgnoreCase),
+            $"{sectionNumber + 4}.1");
+        SetPricingRowNumber(
+            pricingTable,
+            rowText => rowText.Contains("20% on Implementation", StringComparison.OrdinalIgnoreCase),
+            $"{sectionNumber + 4}.2");
+        SetPricingRowNumber(
+            pricingTable,
+            rowText => rowText.Contains("10% against GO LIVE", StringComparison.OrdinalIgnoreCase),
+            $"{sectionNumber + 4}.3");
+
+        SetPricingRowNumber(
+            pricingTable,
+            rowText => rowText.Contains("Support Level", StringComparison.OrdinalIgnoreCase),
+            (sectionNumber + 5).ToString(CultureInfo.InvariantCulture));
+        var supportRows = new[]
+        {
+            "L1: Telephone Support",
+            "L2: Bugs",
+            "L3: Customer Specific Enhancements",
+            "L4: Product Upgrade",
+            "L5: Implementation"
+        };
+        for (var index = 0; index < supportRows.Length; index++)
+        {
+            var supportRow = pricingTable.Elements<TableRow>()
+                .FirstOrDefault(row => string.Concat(row.Descendants<Text>().Select(text => text.Text))
+                    .Contains(supportRows[index], StringComparison.OrdinalIgnoreCase));
+            if (supportRow is not null)
+            {
+                SetPricingRowNumber(supportRow, $"{sectionNumber + 5}.{index + 1}");
+            }
+        }
+
+        SetPricingRowNumber(
+            pricingTable,
+            rowText => rowText.Contains("Taxes", StringComparison.OrdinalIgnoreCase),
+            (sectionNumber + 6).ToString(CultureInfo.InvariantCulture));
+    }
+
+    private static void SetPricingRowNumber(
+        Table table,
+        Func<string, bool> rowMatches,
+        string number)
+    {
+        var row = table.Elements<TableRow>()
+            .FirstOrDefault(candidate => rowMatches(
+                string.Concat(candidate.Descendants<Text>().Select(text => text.Text))));
+        if (row is not null)
+        {
+            SetPricingRowNumber(row, number);
+        }
+    }
+
+    private static void SetPricingRowNumber(TableRow row, string number)
+    {
+        var serialNumberCell = row.Elements<TableCell>().FirstOrDefault();
+        if (serialNumberCell is not null)
+        {
+            SetTableCellText(serialNumberCell, number);
         }
     }
 
