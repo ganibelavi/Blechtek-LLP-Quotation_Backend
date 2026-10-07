@@ -422,18 +422,6 @@ public class SqlQuotationService : IQuotationService
             .Take(5)
             .ToList();
 
-        // Machine utilization fallback: derive from the most-used modules so the chart
-        // remains populated even when no dedicated machine dataset exists.
-        var maxModuleCount = moduleDistribution.Any() ? moduleDistribution.Max(m => m.Count) : 0;
-        var machineUtilization = moduleDistribution
-            .Select(m => new MachineUtilizationData
-            {
-                Machine = m.Module,
-                Utilization = maxModuleCount > 0 ? (int)Math.Round((m.Count * 100m) / maxModuleCount) : 0
-            })
-            .Take(5)
-            .ToList();
-
         // Calculate total quoted amount across all quotations
         var totalQuotedAmount = allQuotations.Sum(q =>
         {
@@ -482,8 +470,7 @@ public class SqlQuotationService : IQuotationService
             StatusBreakdown = statusBreakdown,
             ModuleDistribution = moduleDistribution,
             TopOrganizations = topOrganizations,
-            RecentQuotations = recentQuotations,
-            MachineUtilization = machineUtilization
+            RecentQuotations = recentQuotations
         };
     }
 
@@ -1097,7 +1084,7 @@ public class SqlQuotationService : IQuotationService
                     ["{{MODULE_DETAILS}}"] = string.Empty,
                     ["{{MODULE_PRICING}}"] = string.Empty,
                     ["{{OVERALL_PRICING}}"] = string.Empty,
-                    ["{{ADDITIONAL_SCOPE_SUBTOTAL}}"] = $"{additionalScopeSubtotal:N2}",
+                    ["{{ADD_SCOPE_SUBTOTAL}}"] = $"{additionalScopeSubtotal:N2}",
                     // Template placeholders (from temp_template)
                     ["{{CONTACT_NAME}}"] = request.QuotationTo?.Name ?? "",
                     ["{{CONTACT_ADDRESS}}"] = request.QuotationTo?.Address ?? "",

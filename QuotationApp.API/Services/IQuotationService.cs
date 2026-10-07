@@ -60,7 +60,6 @@ public class DashboardData
     public List<ModuleDistributionData> ModuleDistribution { get; set; } = new();
     public List<TopOrganizationData> TopOrganizations { get; set; } = new();
     public List<RecentQuotationData> RecentQuotations { get; set; } = new();
-    public List<MachineUtilizationData> MachineUtilization { get; set; } = new();
 }
 
 public class UserQuotationStatsData
@@ -104,10 +103,4 @@ public class RecentQuotationData
     public decimal Valuation { get; set; }
     public decimal TotalQuotedAmount { get; set; }
     public decimal DiscountPercentage { get; set; }
-}
-
-public class MachineUtilizationData
-{
-    public string Machine { get; set; } = string.Empty;
-    public int Utilization { get; set; }
 }
