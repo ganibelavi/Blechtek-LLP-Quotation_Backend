@@ -29,6 +29,10 @@ public class ModulesController : ControllerBase
             var module = await _moduleService.AddModuleAsync(request);
             return CreatedAtAction(nameof(GetAll), new { id = module.Id }, module);
         }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
+        }
         catch (InvalidOperationException exception)
         {
             return Conflict(new { error = exception.Message });
@@ -57,6 +61,10 @@ public class ModulesController : ControllerBase
         {
             var module = await _moduleService.UpdateModuleAsync(id, request);
             return module is null ? NotFound() : Ok(module);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { error = exception.Message });
         }
         catch (InvalidOperationException exception)
         {

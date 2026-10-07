@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace QuotationApp.API.Models;
 
 /// <summary>
@@ -17,6 +19,8 @@ public class ModuleItem
     public decimal? ImplementationEffortCost { get; set; }
     public int? ImplementationEffortManDays { get; set; }
     public int? NoOfUsersForSingleInstallation { get; set; }
+    public int? TimelineWeeks { get; set; }
+    public int? DeliveryDays { get; set; }
 }
 
 public class ModuleUpsertRequest
@@ -30,4 +34,10 @@ public class ModuleUpsertRequest
     public decimal? ImplementationEffortCost { get; set; }
     public int? ImplementationEffortManDays { get; set; }
     public int? NoOfUsersForSingleInstallation { get; set; }
+
+    [Range(1, 52, ErrorMessage = "TimelineWeeks must be between 1 and 52.")]
+    public int? TimelineWeeks { get; set; }
+
+    [Range(1, 365, ErrorMessage = "DeliveryDays must be between 1 and 365.")]
+    public int? DeliveryDays { get; set; }
 }

@@ -52,6 +52,8 @@ public class SqlModuleService : IModuleService
                     ImplementationEffortCost = m.ImplementationEffortCost,
                     ImplementationEffortManDays = m.ImplementationEffortManDays,
                     NoOfUsersForSingleInstallation = m.NoOfUsersForSingleInstallation,
+                    TimelineWeeks = m.TimelineWeeks,
+                    DeliveryDays = m.DeliveryDays,
                 })
                 .ToListAsync();
 
@@ -69,6 +71,7 @@ public class SqlModuleService : IModuleService
     /// </summary>
     public async Task<ModuleItem> AddModuleAsync(ModuleUpsertRequest request)
     {
+        ValidateTimelineDelivery(request);
         var pillar = request.Pillar.Trim();
         var moduleName = request.ModuleName.Trim();
         var duplicateNameExists = await _dbContext.Modules
@@ -91,6 +94,8 @@ public class SqlModuleService : IModuleService
             ImplementationEffortCost = request.ImplementationEffortCost,
             ImplementationEffortManDays = request.ImplementationEffortManDays,
             NoOfUsersForSingleInstallation = request.NoOfUsersForSingleInstallation,
+            TimelineWeeks = request.TimelineWeeks,
+            DeliveryDays = request.DeliveryDays,
         };
 
         _dbContext.Modules.Add(entity);
@@ -104,6 +109,7 @@ public class SqlModuleService : IModuleService
     /// </summary>
     public async Task<ModuleItem?> UpdateModuleAsync(int id, ModuleUpsertRequest request)
     {
+        ValidateTimelineDelivery(request);
         var entity = await _dbContext.Modules.FindAsync(id);
         if (entity == null) return null;
 
@@ -145,7 +151,9 @@ public class SqlModuleService : IModuleService
                     [ReverseChargeDefault] = {request.ReverseChargeDefault},
                     [ImplementationEffortCost] = {request.ImplementationEffortCost},
                     [ImplementationEffortManDays] = {request.ImplementationEffortManDays},
-                    [NoOfUsersForSingleInstallation] = {request.NoOfUsersForSingleInstallation}
+                    [NoOfUsersForSingleInstallation] = {request.NoOfUsersForSingleInstallation},
+                    [TimelineWeeks] = {request.TimelineWeeks},
+                    [DeliveryDays] = {request.DeliveryDays}
                 WHERE [Id] = {id}");
 
             _cache = null;
@@ -160,6 +168,10 @@ public class SqlModuleService : IModuleService
                 SacCode = request.SacCode,
                 ReverseChargeDefault = request.ReverseChargeDefault,
                 ImplementationEffortCost = request.ImplementationEffortCost,
+                ImplementationEffortManDays = request.ImplementationEffortManDays,
+                NoOfUsersForSingleInstallation = request.NoOfUsersForSingleInstallation,
+                TimelineWeeks = request.TimelineWeeks,
+                DeliveryDays = request.DeliveryDays,
             };
         }
 
@@ -171,6 +183,8 @@ public class SqlModuleService : IModuleService
         entity.ImplementationEffortCost = request.ImplementationEffortCost;
         entity.ImplementationEffortManDays = request.ImplementationEffortManDays;
         entity.NoOfUsersForSingleInstallation = request.NoOfUsersForSingleInstallation;
+        entity.TimelineWeeks = request.TimelineWeeks;
+        entity.DeliveryDays = request.DeliveryDays;
         await _dbContext.SaveChangesAsync();
         _cache = null;
         return ToModuleItem(entity);
@@ -234,5 +248,15 @@ public class SqlModuleService : IModuleService
         ImplementationEffortCost = entity.ImplementationEffortCost,
         ImplementationEffortManDays = entity.ImplementationEffortManDays,
         NoOfUsersForSingleInstallation = entity.NoOfUsersForSingleInstallation,
+        TimelineWeeks = entity.TimelineWeeks,
+        DeliveryDays = entity.DeliveryDays,
     };
+
+    private static void ValidateTimelineDelivery(ModuleUpsertRequest request)
+    {
+        if (request.TimelineWeeks is < 1 or > 52)
+            throw new ArgumentException("TimelineWeeks must be between 1 and 52.");
+        if (request.DeliveryDays is < 1 or > 365)
+            throw new ArgumentException("DeliveryDays must be between 1 and 365.");
+    }
 }

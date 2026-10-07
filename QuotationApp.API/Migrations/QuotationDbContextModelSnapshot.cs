@@ -74,6 +74,10 @@ namespace QuotationApp.API.Migrations
                     b.Property<int?>("NoOfUsersForSingleInstallation")
                         .HasColumnType("int");
 
+                    b.Property<int?>("DeliveryDays")
+                        .HasColumnType("int")
+                        .HasColumnName("DeliveryDays");
+
                     b.Property<string>("Pillar")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -81,6 +85,10 @@ namespace QuotationApp.API.Migrations
 
                     b.Property<decimal?>("Price")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("TimelineWeeks")
+                        .HasColumnType("int")
+                        .HasColumnName("TimelineWeeks");
 
                     b.Property<bool>("ReverseChargeDefault")
                         .HasColumnType("bit")
@@ -120,6 +128,10 @@ namespace QuotationApp.API.Migrations
 
                     b.Property<decimal?>("FinalPrice")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("ExpectedStartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("ExpectedStartDate");
 
                     b.Property<DateTime>("GeneratedAt")
                         .HasColumnType("datetime2");
@@ -256,6 +268,10 @@ namespace QuotationApp.API.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<int?>("DeliveryDays")
+                        .HasColumnType("int")
+                        .HasColumnName("DeliveryDays");
+
                     b.Property<string>("ModuleName")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
@@ -268,6 +284,10 @@ namespace QuotationApp.API.Migrations
 
                     b.Property<decimal?>("FinalPrice")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("TimelineWeeks")
+                        .HasColumnType("int")
+                        .HasColumnName("TimelineWeeks");
 
                     b.Property<string>("ImplementationEffortUnit")
                         .HasMaxLength(30)

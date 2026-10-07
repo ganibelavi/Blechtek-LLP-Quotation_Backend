@@ -62,6 +62,8 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.SacCode).HasMaxLength(20).HasColumnName("SacCode");
             entity.Property(e => e.ReverseChargeDefault).HasColumnName("ReverseChargeDefault");
             entity.Property(e => e.ImplementationEffortCost).HasColumnType("decimal(18,2)").HasColumnName("ImplementationEffortCost");
+            entity.Property(e => e.TimelineWeeks).HasColumnName("TimelineWeeks");
+            entity.Property(e => e.DeliveryDays).HasColumnName("DeliveryDays");
             entity.HasIndex(e => e.ModuleName).IsUnique();
             entity.ToTable("Modules");
         });
@@ -133,6 +135,7 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.Subtotal).HasColumnType("decimal(18,2)");
             entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18,2)");
             entity.Property(e => e.FinalPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ExpectedStartDate).HasColumnType("date").HasColumnName("ExpectedStartDate");
             entity.ToTable("Quotations");
         });
 
@@ -151,6 +154,8 @@ public class QuotationDbContext : DbContext
             entity.Property(e => e.DiscountPercentage).HasColumnType("decimal(5,2)");
             entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18,2)");
             entity.Property(e => e.FinalPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.TimelineWeeks).HasColumnName("TimelineWeeks");
+            entity.Property(e => e.DeliveryDays).HasColumnName("DeliveryDays");
             entity.ToTable("QuotationModules");
 
             entity.HasOne<QuotationEntity>()
@@ -744,6 +749,8 @@ public class ModuleEntity
     public decimal? ImplementationEffortCost { get; set; }
     public int? ImplementationEffortManDays { get; set; }
     public int? NoOfUsersForSingleInstallation { get; set; }
+    public int? TimelineWeeks { get; set; }
+    public int? DeliveryDays { get; set; }
 }
 
 /// <summary>
@@ -769,6 +776,7 @@ public class QuotationEntity
     public decimal? Subtotal { get; set; }
     public decimal? DiscountAmount { get; set; }
     public decimal? FinalPrice { get; set; }
+    public DateTime? ExpectedStartDate { get; set; }
 
     public List<QuotationModuleEntity> QuotationModules { get; set; } = new();
     public List<AdditionalScope> AdditionalScopes { get; set; } = new();
@@ -795,6 +803,8 @@ public class QuotationModuleEntity
     public decimal? DiscountPercentage { get; set; }
     public decimal? DiscountAmount { get; set; }
     public decimal? FinalPrice { get; set; }
+    public int? TimelineWeeks { get; set; }
+    public int? DeliveryDays { get; set; }
 }
 
 /// <summary>

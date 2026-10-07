@@ -50,6 +50,7 @@ public class SqlQuotationService : IQuotationService
     {
         await ValidateModulesAsync(request.SelectedModules);
         ValidateModuleDetails(request);
+        await PopulateModuleTimelineDeliverySnapshotsAsync(request);
         await ValidateAdditionalScopesAsync(request.AdditionalScopes);
 
         request.TimeEstimate = TimeEstimateHelper.PrepareForModules(
@@ -205,6 +206,7 @@ public class SqlQuotationService : IQuotationService
                 QuotationNo = q.QuotationNo ?? string.Empty,
                 Date = q.Date ?? DateTime.MinValue,
                 ValidationDate = q.ValidationDate,
+                ExpectedStartDate = q.ExpectedStartDate,
                 QuotationToName = q.QuotationToName,
                 QuotationToAddress = q.QuotationToAddress,
                 QuotationToContactNo = q.QuotationToContactNo,
@@ -232,7 +234,11 @@ public class SqlQuotationService : IQuotationService
                         NoOfSites = q.QuotationModules
                             .First(m => m.ModuleName == moduleName).NoOfSites,
                         ImplementationEffortUnit = q.QuotationModules
-                            .First(m => m.ModuleName == moduleName).ImplementationEffortUnit
+                            .First(m => m.ModuleName == moduleName).ImplementationEffortUnit,
+                        TimelineWeeks = q.QuotationModules
+                            .First(m => m.ModuleName == moduleName).TimelineWeeks,
+                        DeliveryDays = q.QuotationModules
+                            .First(m => m.ModuleName == moduleName).DeliveryDays
                     })
                     .ToList(),
                 AdditionalScopes = q.AdditionalScopes.ToList(),
@@ -278,6 +284,7 @@ public class SqlQuotationService : IQuotationService
             QuotationNo = quotation.QuotationNo ?? string.Empty,
             Date = quotation.Date ?? DateTime.MinValue,
             ValidationDate = quotation.ValidationDate,
+            ExpectedStartDate = quotation.ExpectedStartDate,
             QuotationToName = quotation.QuotationToName,
             QuotationToAddress = quotation.QuotationToAddress,
             QuotationToContactNo = quotation.QuotationToContactNo,
@@ -305,7 +312,11 @@ public class SqlQuotationService : IQuotationService
                     NoOfSites = quotation.QuotationModules
                         .First(m => m.ModuleName == moduleName).NoOfSites,
                     ImplementationEffortUnit = quotation.QuotationModules
-                        .First(m => m.ModuleName == moduleName).ImplementationEffortUnit
+                        .First(m => m.ModuleName == moduleName).ImplementationEffortUnit,
+                    TimelineWeeks = quotation.QuotationModules
+                        .First(m => m.ModuleName == moduleName).TimelineWeeks,
+                    DeliveryDays = quotation.QuotationModules
+                        .First(m => m.ModuleName == moduleName).DeliveryDays
                 })
                 .ToList(),
             AdditionalScopes = quotation.AdditionalScopes.ToList(),
@@ -484,6 +495,81 @@ public class SqlQuotationService : IQuotationService
             throw new ArgumentException($"Unknown module(s): {string.Join(", ", unknown)}");
     }
 
+    private async Task PopulateModuleTimelineDeliverySnapshotsAsync(QuotationRequest request)
+    {
+        var selectedNames = request.SelectedModules
+            .Select(name => name.Trim())
+            .ToList();
+        var modules = await _dbContext.Modules
+            .AsNoTracking()
+            .Where(module => selectedNames.Contains(module.ModuleName))
+            .ToDictionaryAsync(module => module.ModuleName, StringComparer.OrdinalIgnoreCase);
+        var detailsByModule = (request.ModuleDetails ?? new List<QuotationModuleRequest>())
+            .ToDictionary(detail => detail.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
+        request.ModuleDetails ??= new List<QuotationModuleRequest>();
+
+        foreach (var moduleName in selectedNames)
+        {
+            if (!modules.TryGetValue(moduleName, out var module))
+                throw new ArgumentException($"Unknown module '{moduleName}'.");
+
+            ValidateTimelineDeliveryConfiguration(moduleName, module);
+
+            if (!detailsByModule.TryGetValue(moduleName, out var detail))
+            {
+                detail = new QuotationModuleRequest { ModuleName = moduleName };
+                request.ModuleDetails.Add(detail);
+                detailsByModule.Add(moduleName, detail);
+            }
+
+            detail.TimelineWeeks = module.TimelineWeeks;
+            detail.DeliveryDays = module.DeliveryDays;
+        }
+    }
+
+    private async Task<Dictionary<string, (int? TimelineWeeks, int? DeliveryDays)>>
+        ResolveUpdateTimelineDeliverySnapshotsAsync(
+            IEnumerable<string> selectedModules,
+            IEnumerable<QuotationModuleEntity> existingQuotationModules)
+    {
+        var selectedNames = selectedModules.Select(name => name.Trim()).ToList();
+        var existingByModule = existingQuotationModules.ToDictionary(
+            module => module.ModuleName,
+            StringComparer.OrdinalIgnoreCase);
+        var masterModules = await _dbContext.Modules
+            .AsNoTracking()
+            .Where(module => selectedNames.Contains(module.ModuleName))
+            .ToDictionaryAsync(module => module.ModuleName, StringComparer.OrdinalIgnoreCase);
+        var snapshots = new Dictionary<string, (int? TimelineWeeks, int? DeliveryDays)>(
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var moduleName in selectedNames)
+        {
+            if (existingByModule.TryGetValue(moduleName, out var existing))
+            {
+                snapshots[moduleName] = (existing.TimelineWeeks, existing.DeliveryDays);
+                continue;
+            }
+
+            if (!masterModules.TryGetValue(moduleName, out var module))
+                throw new ArgumentException($"Unknown module '{moduleName}'.");
+
+            ValidateTimelineDeliveryConfiguration(moduleName, module);
+            snapshots[moduleName] = (module.TimelineWeeks, module.DeliveryDays);
+        }
+
+        return snapshots;
+    }
+
+    private static void ValidateTimelineDeliveryConfiguration(string moduleName, ModuleEntity module)
+    {
+        if (module.TimelineWeeks is null || module.DeliveryDays is null)
+        {
+            throw new ArgumentException(
+                $"Timeline and delivery are not set for module '{moduleName}'. Set them on the Modules page.");
+        }
+    }
+
     private async Task ValidateAdditionalScopesAsync(IEnumerable<AdditionalScopeRequest>? scopes)
     {
         var additionalScopes = scopes?.ToList() ?? new List<AdditionalScopeRequest>();
@@ -524,6 +610,7 @@ public class SqlQuotationService : IQuotationService
             Id = result.QuotationId,
             OrganizationName = request.OrganizationName,
             ValidationDate = request.ValidationDate,
+            ExpectedStartDate = request.ExpectedStartDate,
             QuotationNo = quotationNo,
             Date = request.Date,
             ReferenceBy = request.ReferenceBy,
@@ -556,7 +643,13 @@ public class SqlQuotationService : IQuotationService
                 ModuleSubtotal = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).ModuleSubtotal,
                 DiscountPercentage = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).DiscountPercentage,
                 DiscountAmount = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).DiscountAmount,
-                FinalPrice = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).FinalPrice
+                FinalPrice = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).FinalPrice,
+                TimelineWeeks = detailsByModule.TryGetValue(m, out var timelineDetail)
+                    ? timelineDetail.TimelineWeeks
+                    : null,
+                DeliveryDays = detailsByModule.TryGetValue(m, out timelineDetail)
+                    ? timelineDetail.DeliveryDays
+                    : null
             }).ToList(),
             AdditionalScopes = request.AdditionalScopes
                 .Where(scope => !string.IsNullOrWhiteSpace(scope.Modules))
@@ -648,6 +741,187 @@ public class SqlQuotationService : IQuotationService
         public decimal DiscountPercentage { get; init; }
         public decimal DiscountAmount { get; init; }
         public decimal FinalPrice { get; init; }
+    }
+
+    private sealed class DeliverySummaryRow
+    {
+        public string ModuleName { get; init; } = string.Empty;
+        public string PriceText { get; init; } = string.Empty;
+        public string TimelineText { get; init; } = string.Empty;
+        public string DeliveryText { get; init; } = string.Empty;
+    }
+
+    private static List<DeliverySummaryRow> BuildDeliverySummary(
+        QuotationRequest request,
+        IReadOnlyCollection<QuotationModulePricing> pricing,
+        IReadOnlyDictionary<string, decimal?>? finalPriceSnapshots = null)
+    {
+        var pricingByModule = pricing.ToDictionary(
+            item => item.ModuleName,
+            StringComparer.OrdinalIgnoreCase);
+        var detailsByModule = (request.ModuleDetails ?? new List<QuotationModuleRequest>())
+            .ToDictionary(
+                detail => detail.ModuleName.Trim(),
+                StringComparer.OrdinalIgnoreCase);
+        var rows = new List<DeliverySummaryRow>();
+        var moduleFinalPrices = new List<decimal>();
+        var moduleTimelines = new List<int?>();
+        var moduleDeliveries = new List<int?>();
+
+        foreach (var moduleName in request.SelectedModules)
+        {
+            detailsByModule.TryGetValue(moduleName, out var detail);
+            var price = finalPriceSnapshots is not null &&
+                        finalPriceSnapshots.TryGetValue(moduleName, out var savedPrice)
+                ? savedPrice ?? 0m
+                : pricingByModule.GetValueOrDefault(moduleName)?.FinalPrice ?? 0m;
+            moduleFinalPrices.Add(price);
+            moduleTimelines.Add(detail?.TimelineWeeks);
+            moduleDeliveries.Add(detail?.DeliveryDays);
+
+            rows.Add(new DeliverySummaryRow
+            {
+                ModuleName = moduleName,
+                PriceText = price.ToString("N2"),
+                TimelineText = detail?.TimelineWeeks is int weeks
+                    ? $"{weeks} weeks"
+                    : "To be confirmed",
+                DeliveryText = FormatPlannedDelivery(request.ExpectedStartDate, detail?.DeliveryDays)
+            });
+        }
+
+        var additionalScopes = request.AdditionalScopes?
+            .Where(scope => !string.IsNullOrWhiteSpace(scope.Modules))
+            .ToList() ?? new List<AdditionalScopeRequest>();
+        var additionalScopeTotal = 0m;
+        foreach (var scope in additionalScopes)
+        {
+            var amount = CalculateAdditionalScopeAmount(scope);
+            additionalScopeTotal += amount;
+            rows.Add(new DeliverySummaryRow
+            {
+                ModuleName = string.IsNullOrWhiteSpace(scope.Requirement)
+                    ? scope.Modules
+                    : scope.Requirement.Trim(),
+                PriceText = amount.ToString("N2"),
+                TimelineText = "With Go-Live",
+                DeliveryText = string.Empty
+            });
+        }
+
+        var missingTimelineOrDelivery =
+            moduleTimelines.Any(value => value is null) ||
+            moduleDeliveries.Any(value => value is null);
+        var overallTimeline = missingTimelineOrDelivery
+            ? "To be confirmed"
+            : $"{moduleTimelines.Max(value => value!.Value)} weeks overall";
+        var overallDelivery = missingTimelineOrDelivery
+            ? "To be confirmed"
+            : FormatPlannedDelivery(request.ExpectedStartDate, moduleDeliveries.Max(value => value!.Value));
+
+        for (var index = request.SelectedModules.Count; index < rows.Count; index++)
+        {
+            rows[index] = new DeliverySummaryRow
+            {
+                ModuleName = rows[index].ModuleName,
+                PriceText = rows[index].PriceText,
+                TimelineText = rows[index].TimelineText,
+                DeliveryText = overallDelivery
+            };
+        }
+
+        rows.Add(new DeliverySummaryRow
+        {
+            ModuleName = "Total",
+            PriceText = (moduleFinalPrices.Sum() + additionalScopeTotal).ToString("N2"),
+            TimelineText = overallTimeline,
+            DeliveryText = overallDelivery
+        });
+
+        return rows;
+    }
+
+    private static string FormatPlannedDelivery(DateTime? expectedStartDate, int? deliveryDays)
+    {
+        if (deliveryDays is null)
+            return "To be confirmed";
+
+        return expectedStartDate is DateTime startDate
+            ? startDate.AddDays(deliveryDays.Value).ToString("dd MMM yyyy", CultureInfo.InvariantCulture)
+            : $" {deliveryDays.Value} Days";
+    }
+
+    private static void PopulateDeliverySummaryTable(
+        Body body,
+        IReadOnlyList<DeliverySummaryRow> summaryRows)
+    {
+        var templateRow = body.Descendants<TableRow>().FirstOrDefault(row =>
+        {
+            var rowText = string.Concat(row.Descendants<Text>().Select(text => text.Text));
+            return rowText.Contains("{{S_MOD}}", StringComparison.Ordinal);
+        });
+        var totalRow = body.Descendants<TableRow>().FirstOrDefault(row =>
+        {
+            var rowText = string.Concat(row.Descendants<Text>().Select(text => text.Text));
+            return rowText.Contains("{{S_T_LABEL}}", StringComparison.Ordinal);
+        });
+
+        if (templateRow is null || totalRow is null)
+        {
+            throw new InvalidOperationException(
+                "Recommended quotation format table is missing its data or total placeholder row.");
+        }
+
+        var dataRows = summaryRows.Take(summaryRows.Count - 1);
+        foreach (var summaryRow in dataRows)
+        {
+            var row = (TableRow)templateRow.CloneNode(true);
+            ReplaceDeliverySummaryRow(row, summaryRow, false);
+            MarkRowCannotSplit(row);
+            templateRow.InsertBeforeSelf(row);
+        }
+
+        templateRow.Remove();
+        ReplaceDeliverySummaryRow(totalRow, summaryRows[^1], true);
+        MarkRowCannotSplit(totalRow);
+    }
+
+    private static void ReplaceDeliverySummaryRow(
+        TableRow row,
+        DeliverySummaryRow summary,
+        bool isTotal)
+    {
+        var replacements = isTotal
+            ? new Dictionary<string, string>
+            {
+                ["{{S_T_LABEL}}"] = summary.ModuleName,
+                ["{{S_T_PRICE}}"] = summary.PriceText,
+                ["{{S_T_TIMELINE}}"] = summary.TimelineText,
+                ["{{S_T_DELIVERY}}"] = summary.DeliveryText
+            }
+            : new Dictionary<string, string>
+            {
+                ["{{S_MOD}}"] = summary.ModuleName,
+                ["{{S_PRICE}}"] = summary.PriceText,
+                ["{{S_TIMELINE}}"] = summary.TimelineText,
+                ["{{S_DELIVERY}}"] = summary.DeliveryText
+            };
+
+        foreach (var paragraph in row.Descendants<Paragraph>())
+            ReplaceParagraphText(paragraph, replacements);
+    }
+
+    private static void MarkRowCannotSplit(TableRow row)
+    {
+        var properties = row.GetFirstChild<TableRowProperties>();
+        if (properties is null)
+        {
+            properties = new TableRowProperties();
+            row.PrependChild(properties);
+        }
+
+        if (properties.GetFirstChild<CantSplit>() is null)
+            properties.AppendChild(new CantSplit());
     }
 
     private static string SerializeModules(IEnumerable<string> modules) =>
@@ -743,6 +1017,7 @@ public class SqlQuotationService : IQuotationService
         var request = new QuotationRequest
         {
             ValidationDate = quotation.ValidationDate,
+            ExpectedStartDate = quotation.ExpectedStartDate,
             OrganizationName = quotation.OrganizationName,
             ReferenceBy = quotation.ReferenceBy ?? string.Empty,
             QuotationNo = quotation.QuotationNo ?? string.Empty,
@@ -755,7 +1030,9 @@ public class SqlQuotationService : IQuotationService
                 NoOfInstallations = m.NoOfInstallations,
                 NoOfSites = m.NoOfSites,
                 ImplementationEffortUnit = m.ImplementationEffortUnit,
-                DiscountPercentage = m.DiscountPercentage
+                DiscountPercentage = m.DiscountPercentage,
+                TimelineWeeks = m.TimelineWeeks,
+                DeliveryDays = m.DeliveryDays
             }).ToList(),
             AdditionalScopes = quotation.AdditionalScopes
                 .Select(s => new AdditionalScopeRequest
@@ -788,7 +1065,11 @@ public class SqlQuotationService : IQuotationService
         };
 
         // Regenerate documents with new discount
-        var docxPath = await GenerateWordDocumentAsync(request, quotationId);
+        var finalPriceSnapshots = quotation.QuotationModules.ToDictionary(
+            module => module.ModuleName,
+            module => module.FinalPrice,
+            StringComparer.OrdinalIgnoreCase);
+        var docxPath = await GenerateWordDocumentAsync(request, quotationId, finalPriceSnapshots);
         await _pdfConverter.ConvertToPdfAsync(docxPath);
 
         await _dbContext.SaveChangesAsync();
@@ -808,7 +1089,7 @@ public class SqlQuotationService : IQuotationService
     /// <summary>
     /// Updates quotation details (validation date, modules, additional scopes) and regenerates documents.
     /// </summary>
-    public async Task<QuotationResult?> UpdateQuotationAsync(string quotationId, DateTime validationDate, List<string> selectedModules, List<QuotationModuleRequest> moduleDetails, List<AdditionalScopeRequest> additionalScopes, List<TimeEstimateStageRequest> timeEstimate)
+    public async Task<QuotationResult?> UpdateQuotationAsync(string quotationId, DateTime validationDate, DateTime? expectedStartDate, List<string> selectedModules, List<QuotationModuleRequest> moduleDetails, List<AdditionalScopeRequest> additionalScopes, List<TimeEstimateStageRequest> timeEstimate)
     {
         var quotation = await _dbContext.Quotations
             .Include(q => q.QuotationModules)
@@ -824,10 +1105,14 @@ public class SqlQuotationService : IQuotationService
             .ToListAsync();
 
         await ValidateModulesAsync(selectedModules);
+        var timelineSnapshots = await ResolveUpdateTimelineDeliverySnapshotsAsync(
+            selectedModules,
+            quotation.QuotationModules);
 
         timeEstimate = TimeEstimateHelper.PrepareForModules(timeEstimate, selectedModules);
 
         quotation.ValidationDate = validationDate;
+        quotation.ExpectedStartDate = expectedStartDate;
 
         var detailsByModule = (moduleDetails ?? new List<QuotationModuleRequest>())
             .ToDictionary(d => d.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
@@ -845,7 +1130,9 @@ public class SqlQuotationService : IQuotationService
                 : null,
             DiscountPercentage = detailsByModule.TryGetValue(m, out detail)
                 ? detail.DiscountPercentage
-                : null
+                : null,
+            TimelineWeeks = timelineSnapshots[m].TimelineWeeks,
+            DeliveryDays = timelineSnapshots[m].DeliveryDays
         }).ToList();
 
         // Update Additional Scopes
@@ -902,6 +1189,7 @@ public class SqlQuotationService : IQuotationService
         var request = new QuotationRequest
         {
             ValidationDate = validationDate,
+            ExpectedStartDate = expectedStartDate,
             OrganizationName = quotation.OrganizationName,
             ReferenceBy = quotation.ReferenceBy ?? string.Empty,
             QuotationNo = quotation.QuotationNo ?? string.Empty,
@@ -916,7 +1204,9 @@ public class SqlQuotationService : IQuotationService
                     NoOfInstallations = m.NoOfInstallations,
                     NoOfSites = m.NoOfSites,
                     ImplementationEffortUnit = m.ImplementationEffortUnit,
-                    DiscountPercentage = m.DiscountPercentage
+                    DiscountPercentage = m.DiscountPercentage,
+                    TimelineWeeks = m.TimelineWeeks,
+                    DeliveryDays = m.DeliveryDays
                 }).ToList(),
             AdditionalScopes = quotation.AdditionalScopes
                 .Select(s => new AdditionalScopeRequest
@@ -939,7 +1229,11 @@ public class SqlQuotationService : IQuotationService
             TimeEstimate = timeEstimate
         };
 
-        var docxPath = await GenerateWordDocumentAsync(request, quotationId);
+        var finalPriceSnapshots = quotation.QuotationModules.ToDictionary(
+            module => module.ModuleName,
+            module => module.FinalPrice,
+            StringComparer.OrdinalIgnoreCase);
+        var docxPath = await GenerateWordDocumentAsync(request, quotationId, finalPriceSnapshots);
         await _pdfConverter.ConvertToPdfAsync(docxPath);
 
         await _dbContext.SaveChangesAsync();
@@ -995,7 +1289,10 @@ public class SqlQuotationService : IQuotationService
         quotation.FinalPrice = pricing.Sum(p => p.FinalPrice);
     }
 
-    private async Task<string> GenerateWordDocumentAsync(QuotationRequest request, string quotationId)
+    private async Task<string> GenerateWordDocumentAsync(
+        QuotationRequest request,
+        string quotationId,
+        IReadOnlyDictionary<string, decimal?>? finalPriceSnapshots = null)
     {
         var outputPath = Path.Combine(_outputFolder, $"{quotationId}.docx");
 
@@ -1018,6 +1315,10 @@ public class SqlQuotationService : IQuotationService
                 var modulePrices = modules.ToDictionary(m => m.Module, StringComparer.OrdinalIgnoreCase);
 
                 var pricing = await CalculatePricingAsync(request.SelectedModules, request.ModuleDetails, request.DiscountPercentage);
+                var deliverySummary = BuildDeliverySummary(
+                    request,
+                    pricing,
+                    finalPriceSnapshots);
                 var modulePriceTotal = pricing.Sum(p => p.ModulePrice);
                 var implementationPriceTotal = pricing.Sum(p => p.ImplementationPrice);
                 var subtotal = pricing.Sum(p => p.ModuleSubtotal);
@@ -1049,7 +1350,7 @@ public class SqlQuotationService : IQuotationService
                     anyModuleHasDiscount);
                 var pricingParticularsText = string.Join(
                     Environment.NewLine,
-                    "CQUAL {{MODULE_LIST}}",
+                    "CQUAL {{M_LIST}}",
                     moduleParticularsText,
                     string.Empty,
                     overallPricingParticularsText);
@@ -1071,14 +1372,14 @@ public class SqlQuotationService : IQuotationService
                     ["{{QuotationTo.ContactNo}}"] = request.QuotationTo?.ContactNo ?? "",
                     ["{{QuotationTo.Email}}"] = request.QuotationTo?.Email ?? "",
                     ["{{SelectedModules}}"] = string.Join(", ", request.SelectedModules),
-                    ["{{MODULE_LIST}}"] = string.Join(", ", request.SelectedModules),
-                    ["{{MODULE_REQUIREMENTS}}"] = FormatModuleRequirements(
+                    ["{{M_LIST}}"] = string.Join(", ", request.SelectedModules),
+                    ["{{M_REQUIREMENTS}}"] = FormatModuleRequirements(
                                         request.SelectedModules,
                                         request.ModuleDetails),
-                    ["{{MODULE_DETAILS}}"] = string.Empty,
-                    ["{{MODULE_PRICING}}"] = string.Empty,
+                    ["{{M_DETAILS}}"] = string.Empty,
+                    ["{{M_PRICING}}"] = string.Empty,
                     ["{{OVERALL_PRICING}}"] = string.Empty,
-                    ["{{ADD_SCOPE_SUBTOTAL}}"] = $"{additionalScopeSubtotal:N2}",
+                    ["{{A_S_SUBTOTAL}}"] = $"{additionalScopeSubtotal:N2}",
                     // Template placeholders (from temp_template)
                     ["{{CONTACT_NAME}}"] = request.QuotationTo?.Name ?? "",
                     ["{{CONTACT_ADDRESS}}"] = request.QuotationTo?.Address ?? "",
@@ -1088,7 +1389,7 @@ public class SqlQuotationService : IQuotationService
                     ["{{REQUIRED}}"] = string.Join(", ", request.SelectedModules),
                     ["{{VALIDATION_DATE}}"] = request.ValidationDate.ToString("dd/MM/yyyy"),
                     ["{{TotalPrice}}"] = $"Total Price: {subtotal:N2}",
-                    ["{{MODULE_PRICE}}"] = $"Module Price: {modulePriceTotal:N2}",
+                    ["{{M_PRICE}}"] = $"Module Price: {modulePriceTotal:N2}",
                     ["{{IMPLEMENTATION_TOTAL}}"] = $"Implementation Total: {implementationPriceTotal:N2}",
                     ["{{SUBTOTAL}}"] = $"Subtotal: {subtotal:N2}",
                     ["{{FinalPrice}}"] = $"Final Price: {overallFinalPrice:N2}",
@@ -1137,6 +1438,7 @@ public class SqlQuotationService : IQuotationService
 
                 }
 
+                PopulateDeliverySummaryTable(body, deliverySummary);
                 PopulateTimeEstimateTable(doc, request);
             }
         }
@@ -1172,7 +1474,7 @@ public class SqlQuotationService : IQuotationService
                         var previousRow = rows[rowIndex - 1];
                         var previousRowText = string.Concat(
                             previousRow.Descendants<Text>().Select(text => text.Text));
-                        if (previousRowText.Contains("{{MODULE_NAME}}", StringComparison.Ordinal))
+                        if (previousRowText.Contains("{{M_NAME}}", StringComparison.Ordinal))
                             moduleHeaderTemplate = previousRow;
                     }
                     break;
@@ -1565,7 +1867,7 @@ public class SqlQuotationService : IQuotationService
             .FirstOrDefault(row =>
             {
                 var rowText = string.Concat(row.Descendants<Text>().Select(text => text.Text));
-                return rowText.Contains("{{MODULE_PRICING}}", StringComparison.Ordinal) &&
+                return rowText.Contains("{{M_PRICING}}", StringComparison.Ordinal) &&
                        rowText.Contains("{{OVERALL_PRICING}}", StringComparison.Ordinal);
             });
 
@@ -1627,7 +1929,7 @@ public class SqlQuotationService : IQuotationService
         {
             var rowText = string.Concat(allRows[i].Descendants<Text>().Select(t => t.Text));
             if (rowText.Contains("{{NO_OF_USERS}}", StringComparison.Ordinal) &&
-                rowText.Contains("{{MODULE_PRICE}}", StringComparison.Ordinal))
+                rowText.Contains("{{M_PRICE}}", StringComparison.Ordinal))
             {
                 templateRowIndex = i;
                 break;
@@ -1661,21 +1963,21 @@ public class SqlQuotationService : IQuotationService
 
         if (templateRows.Count == 0) return;
 
-        // Inject {{MODULE_FINAL}} placeholder into the template row that contains {{MODULE_SUBTOTAL}}
-        // Replace {{MODULE_SUBTOTAL}} with {{MODULE_FINAL}} when there's a discount, otherwise keep subtotal
+        // Inject {{M_FINAL}} placeholder into the template row that contains {{M_SUBTOTAL}}
+        // Replace {{M_SUBTOTAL}} with {{M_FINAL}} when there's a discount, otherwise keep subtotal
         foreach (var templateRow in templateRows)
         {
             foreach (var cell in templateRow.Elements<TableCell>())
             {
                 var cellText = string.Concat(cell.Descendants<Text>().Select(t => t.Text));
-                if (cellText.Contains("{{MODULE_SUBTOTAL}}", StringComparison.Ordinal))
+                if (cellText.Contains("{{M_SUBTOTAL}}", StringComparison.Ordinal))
                 {
-                    // Replace {{MODULE_SUBTOTAL}} with {{MODULE_FINAL}} in the cell text
+                    // Replace {{M_SUBTOTAL}} with {{M_FINAL}} in the cell text
                     foreach (var text in cell.Descendants<Text>())
                     {
-                        if (text.Text.Contains("{{MODULE_SUBTOTAL}}", StringComparison.Ordinal))
+                        if (text.Text.Contains("{{M_SUBTOTAL}}", StringComparison.Ordinal))
                         {
-                            text.Text = text.Text.Replace("{{MODULE_SUBTOTAL}}", "{{MODULE_FINAL}}");
+                            text.Text = text.Text.Replace("{{M_SUBTOTAL}}", "{{M_FINAL}}");
                         }
                     }
                     break;
@@ -1719,17 +2021,17 @@ public class SqlQuotationService : IQuotationService
 
             var moduleReplacements = new Dictionary<string, string>
             {
-                ["{{MODULE_NAME}}"] = moduleName,
+                ["{{M_NAME}}"] = moduleName,
                 ["{{LICENSE_RENEWAL}}"] = licenseRenewalText,
                 ["{{NO_OF_USERS}}"] = noOfUsers.ToString(),
-                ["{{MODULE_PRICE}}"] = $"{modulePrice:N2}",
+                ["{{M_PRICE}}"] = $"{modulePrice:N2}",
                 ["{{IMPL_EFFORT}}"] = implementationEffort.ToString("0.##", CultureInfo.InvariantCulture),
                 ["{{IMPL_RATE}}"] = $"{implementationRate:N2}",
                 ["{{IMPL_TOTAL}}"] = $"{implementationTotal:N2}",
-                ["{{MODULE_SUBTOTAL}}"] = $"{moduleSubtotal:N2}",
-                ["{{MODULE_DISCOUNT_PCT}}"] = moduleDiscountPct > 0 ? $"{moduleDiscountPct:N2}" : string.Empty,
-                ["{{MODULE_DISCOUNT}}"] = moduleDiscountPct > 0 ? $"{moduleDiscount:N2}" : string.Empty,
-                ["{{MODULE_FINAL}}"] = $"{moduleFinalPrice:N2}"
+                ["{{M_SUBTOTAL}}"] = $"{moduleSubtotal:N2}",
+                ["{{M_DISCOUNT_PCT}}"] = moduleDiscountPct > 0 ? $"{moduleDiscountPct:N2}" : string.Empty,
+                ["{{M_DISCOUNT}}"] = moduleDiscountPct > 0 ? $"{moduleDiscount:N2}" : string.Empty,
+                ["{{M_FINAL}}"] = $"{moduleFinalPrice:N2}"
             };
 
             // Clone all 3 rows for this module
@@ -1775,10 +2077,10 @@ public class SqlQuotationService : IQuotationService
                     var rowText = string.Concat(row.Descendants<Text>().Select(t => t.Text));
                     // Only remove rows that are primarily discount rows (contain Discount but NOT module info)
                     var hasDiscount = rowText.Contains("Discount", StringComparison.OrdinalIgnoreCase);
-                    var hasModuleInfo = rowText.Contains("MODULE_NAME", StringComparison.OrdinalIgnoreCase) ||
+                    var hasModuleInfo = rowText.Contains("M_NAME", StringComparison.OrdinalIgnoreCase) ||
                                         rowText.Contains("NO_OF_USERS", StringComparison.OrdinalIgnoreCase) ||
-                                        rowText.Contains("MODULE_PRICE", StringComparison.OrdinalIgnoreCase) ||
-                                        rowText.Contains("MODULE_SUBTOTAL", StringComparison.OrdinalIgnoreCase) ||
+                                        rowText.Contains("M_PRICE", StringComparison.OrdinalIgnoreCase) ||
+                                        rowText.Contains("M_SUBTOTAL", StringComparison.OrdinalIgnoreCase) ||
                                         rowText.Contains("IMPL_TOTAL", StringComparison.OrdinalIgnoreCase) ||
                                         rowText.Contains("IMPL_RATE", StringComparison.OrdinalIgnoreCase) ||
                                         rowText.Contains("IMPL_EFFORT", StringComparison.OrdinalIgnoreCase) ||
@@ -1872,7 +2174,7 @@ public class SqlQuotationService : IQuotationService
             .FirstOrDefault(row =>
             {
                 var rowText = string.Concat(row.Descendants<Text>().Select(t => t.Text));
-                return rowText.Contains("{{MODULE_NAME}}", StringComparison.Ordinal);
+                return rowText.Contains("{{M_NAME}}", StringComparison.Ordinal);
             });
 
         if (templateRow is null) return;
@@ -1882,7 +2184,7 @@ public class SqlQuotationService : IQuotationService
             var clonedRow = (TableRow)templateRow.CloneNode(true);
             var rowReplacements = new Dictionary<string, string>
             {
-                ["{{MODULE_NAME}}"] = moduleName
+                ["{{M_NAME}}"] = moduleName
             };
             foreach (var paragraph in clonedRow.Descendants<Paragraph>())
             {
@@ -1994,12 +2296,12 @@ public class SqlQuotationService : IQuotationService
             .FirstOrDefault(row =>
             {
                 var rowText = string.Concat(row.Descendants<Text>().Select(text => text.Text));
-                return rowText.Contains("{{ADD_SCOPE_REQUIREMENT}}", StringComparison.Ordinal) &&
-                       rowText.Contains("{{ADD_SCOPE_MODULE}}", StringComparison.Ordinal) &&
-                       rowText.Contains("{{ADD_SCOPE_MANPOWER}}", StringComparison.Ordinal) &&
-                       rowText.Contains("{{ADD_SCOPE_DAYS}}", StringComparison.Ordinal) &&
-                       rowText.Contains("{{ADD_SCOPE_RATE}}", StringComparison.Ordinal) &&
-                       rowText.Contains("{{ADD_SCOPE_AMOUNT}}", StringComparison.Ordinal);
+                return rowText.Contains("{{A_S_REQ}}", StringComparison.Ordinal) &&
+                       rowText.Contains("{{A_S_MOD}}", StringComparison.Ordinal) &&
+                       rowText.Contains("{{A_S_MP}}", StringComparison.Ordinal) &&
+                       rowText.Contains("{{A_S_DAYS}}", StringComparison.Ordinal) &&
+                       rowText.Contains("{{A_S_RATE}}", StringComparison.Ordinal) &&
+                       rowText.Contains("{{A_S_AMT}}", StringComparison.Ordinal);
             });
 
         if (templateRow is null) return;
@@ -2026,12 +2328,12 @@ public class SqlQuotationService : IQuotationService
             var row = (TableRow)templateRow.CloneNode(true);
             var rowReplacements = new Dictionary<string, string>
             {
-                ["{{ADD_SCOPE_REQUIREMENT}}"] = scope.Requirement ?? string.Empty,
-                ["{{ADD_SCOPE_MODULE}}"] = scope.Modules ?? string.Empty,
-                ["{{ADD_SCOPE_MANPOWER}}"] = scope.NoOfManpower.ToString(),
-                ["{{ADD_SCOPE_DAYS}}"] = scope.NoOfDays.ToString(),
-                ["{{ADD_SCOPE_RATE}}"] = scope.Rate.ToString("N2"),
-                ["{{ADD_SCOPE_AMOUNT}}"] = CalculateAdditionalScopeAmount(scope).ToString("N2")
+                ["{{A_S_REQ}}"] = scope.Requirement ?? string.Empty,
+                ["{{A_S_MOD}}"] = scope.Modules ?? string.Empty,
+                ["{{A_S_MP}}"] = scope.NoOfManpower.ToString(),
+                ["{{A_S_DAYS}}"] = scope.NoOfDays.ToString(),
+                ["{{A_S_RATE}}"] = scope.Rate.ToString("N2"),
+                ["{{A_S_AMT}}"] = CalculateAdditionalScopeAmount(scope).ToString("N2")
             };
             foreach (var paragraph in row.Descendants<Paragraph>())
             {
@@ -2158,7 +2460,7 @@ public class SqlQuotationService : IQuotationService
                     .Descendants<RunProperties>()
                     .FirstOrDefault();
 
-                // Cell 0: Product Platform - Format as "CQUAL {{MODULE_NAME}}"
+                // Cell 0: Product Platform - Format as "CQUAL {{M_NAME}}"
                 var moduleDisplayName = $"CQUAL {moduleName}";
                 ReplaceCellTextPreservingFormat(cells[0], moduleDisplayName);
 

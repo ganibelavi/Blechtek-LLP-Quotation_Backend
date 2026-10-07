@@ -23,6 +23,8 @@ public class QuotationRequest
     [Required]
     public DateTime Date { get; set; }
 
+    public DateTime? ExpectedStartDate { get; set; }
+
     /// <summary>Exact module names as they appear in the master list (Data/modules.json).</summary>
     [Required, MinLength(1, ErrorMessage = "Select at least one module.")]
     public List<string> SelectedModules { get; set; } = new();
@@ -70,6 +72,10 @@ public class QuotationModuleRequest
     public decimal? DiscountPercentage { get; set; }
 
     public decimal? ModulePriceOverride { get; set; }
+
+    public int? TimelineWeeks { get; set; }
+
+    public int? DeliveryDays { get; set; }
 }
 
 public class AdditionalScopeRequest
@@ -142,6 +148,8 @@ public class QuotationModuleDetail
     public int? NoOfInstallations { get; set; }
     public int? NoOfSites { get; set; }
     public string? ImplementationEffortUnit { get; set; }
+    public int? TimelineWeeks { get; set; }
+    public int? DeliveryDays { get; set; }
 }
 
 public class QuotationHistoryEntry
@@ -151,6 +159,7 @@ public class QuotationHistoryEntry
     public string QuotationNo { get; set; } = string.Empty;
     public DateTime Date { get; set; }
     public DateTime ValidationDate { get; set; }
+    public DateTime? ExpectedStartDate { get; set; }
     public string QuotationToName { get; set; } = string.Empty;
     public string QuotationToAddress { get; set; } = string.Empty;
     public string QuotationToContactNo { get; set; } = string.Empty;
@@ -177,6 +186,8 @@ public class UpdateQuotationRequest
 {
     [Required]
     public DateTime ValidationDate { get; set; }
+
+    public DateTime? ExpectedStartDate { get; set; }
 
     /// <summary>Exact module names as they appear in the master list.</summary>
     [Required, MinLength(1, ErrorMessage = "Select at least one module.")]
