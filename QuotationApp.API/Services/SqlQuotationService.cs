@@ -2576,7 +2576,7 @@ public class SqlQuotationService : IQuotationService
 
                 // Cell 0: Product Platform - Format as "CQUAL {{M_NAME}}"
                 var moduleDisplayName = $"CQUAL {moduleName}";
-                ReplaceCellTextPreservingFormat(cells[0], moduleDisplayName);
+                ReplaceCellTextPreservingFormat(cells[0], moduleDisplayName, numericFontProperties);
 
                 // Cell 1: No of Users
                 ReplaceCellTextPreservingFormat(cells[1], noOfUsers.ToString());
