@@ -2029,7 +2029,7 @@ public class SqlQuotationService : IQuotationService
                 ["{{IMPL_EFFORT}}"] = implementationEffort.ToString("0.##", CultureInfo.InvariantCulture),
                 ["{{IMPL_RATE}}"] = $"{implementationRate:N2}",
                 ["{{IMPL_TOTAL}}"] = $"{implementationTotal:N2}",
-                ["{{M_SUBTOTAL}}"] = $"{moduleSubtotal:N2}",
+                ["{{M_SUBTOTAL}}"] = $"{moduleFinalPrice:N2}",
                 ["{{M_DISCOUNT_PCT}}"] = moduleDiscountPct > 0 ? $"{moduleDiscountPct:N2}" : string.Empty,
                 ["{{M_DISCOUNT}}"] = moduleDiscountPct > 0 ? $"{moduleDiscount:N2}" : string.Empty,
                 ["{{M_FINAL}}"] = $"{moduleFinalPrice:N2}"
