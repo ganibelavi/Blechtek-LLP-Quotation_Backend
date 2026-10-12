@@ -50,12 +50,7 @@ public class SqlQuotationService : IQuotationService
     {
         await ValidateModulesAsync(request.SelectedModules);
         ValidateModuleDetails(request);
-        await PopulateModuleTimelineDeliverySnapshotsAsync(request);
         await ValidateAdditionalScopesAsync(request.AdditionalScopes);
-
-        request.TimeEstimate = TimeEstimateHelper.PrepareForModules(
-            request.TimeEstimate,
-            request.SelectedModules);
 
         var quotationId = $"Q-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8]}";
 
@@ -234,11 +229,7 @@ public class SqlQuotationService : IQuotationService
                         NoOfSites = q.QuotationModules
                             .First(m => m.ModuleName == moduleName).NoOfSites,
                         ImplementationEffortUnit = q.QuotationModules
-                            .First(m => m.ModuleName == moduleName).ImplementationEffortUnit,
-                        TimelineWeeks = q.QuotationModules
-                            .First(m => m.ModuleName == moduleName).TimelineWeeks,
-                        DeliveryDays = q.QuotationModules
-                            .First(m => m.ModuleName == moduleName).DeliveryDays
+                            .First(m => m.ModuleName == moduleName).ImplementationEffortUnit
                     })
                     .ToList(),
                 AdditionalScopes = q.AdditionalScopes.ToList(),
@@ -258,12 +249,6 @@ public class SqlQuotationService : IQuotationService
 
         if (quotation is null)
             return null;
-
-        // Load time estimates separately to avoid FK dependency issues
-        var timeEstimates = await _dbContext.QuotationTimeEstimates
-            .AsNoTracking()
-            .Where(t => t.QuotationId == quotationId)
-            .ToListAsync();
 
         var modulePrices = await _dbContext.Modules
             .AsNoTracking()
@@ -312,25 +297,12 @@ public class SqlQuotationService : IQuotationService
                     NoOfSites = quotation.QuotationModules
                         .First(m => m.ModuleName == moduleName).NoOfSites,
                     ImplementationEffortUnit = quotation.QuotationModules
-                        .First(m => m.ModuleName == moduleName).ImplementationEffortUnit,
-                    TimelineWeeks = quotation.QuotationModules
-                        .First(m => m.ModuleName == moduleName).TimelineWeeks,
-                    DeliveryDays = quotation.QuotationModules
-                        .First(m => m.ModuleName == moduleName).DeliveryDays
+                        .First(m => m.ModuleName == moduleName).ImplementationEffortUnit
                 })
                 .ToList(),
             AdditionalScopes = quotation.AdditionalScopes.ToList(),
             GeneratedAt = quotation.GeneratedAt,
-            DiscountPercentage = totalSubtotal > 0 ? (totalDiscountAmount / totalSubtotal) * 100m : 0m,
-            TimeEstimate = timeEstimates
-                .Select(t => new TimeEstimateStageResponse
-                {
-                    ModuleName = t.ModuleName,
-                    StageKey = t.StageKey,
-                    StartWeek = t.StartWeek,
-                    EndWeek = t.EndWeek
-                })
-                .ToList()
+            DiscountPercentage = totalSubtotal > 0 ? (totalDiscountAmount / totalSubtotal) * 100m : 0m
         };
     }
 
@@ -495,81 +467,6 @@ public class SqlQuotationService : IQuotationService
             throw new ArgumentException($"Unknown module(s): {string.Join(", ", unknown)}");
     }
 
-    private async Task PopulateModuleTimelineDeliverySnapshotsAsync(QuotationRequest request)
-    {
-        var selectedNames = request.SelectedModules
-            .Select(name => name.Trim())
-            .ToList();
-        var modules = await _dbContext.Modules
-            .AsNoTracking()
-            .Where(module => selectedNames.Contains(module.ModuleName))
-            .ToDictionaryAsync(module => module.ModuleName, StringComparer.OrdinalIgnoreCase);
-        var detailsByModule = (request.ModuleDetails ?? new List<QuotationModuleRequest>())
-            .ToDictionary(detail => detail.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
-        request.ModuleDetails ??= new List<QuotationModuleRequest>();
-
-        foreach (var moduleName in selectedNames)
-        {
-            if (!modules.TryGetValue(moduleName, out var module))
-                throw new ArgumentException($"Unknown module '{moduleName}'.");
-
-            ValidateTimelineDeliveryConfiguration(moduleName, module);
-
-            if (!detailsByModule.TryGetValue(moduleName, out var detail))
-            {
-                detail = new QuotationModuleRequest { ModuleName = moduleName };
-                request.ModuleDetails.Add(detail);
-                detailsByModule.Add(moduleName, detail);
-            }
-
-            detail.TimelineWeeks = module.TimelineWeeks;
-            detail.DeliveryDays = module.DeliveryDays;
-        }
-    }
-
-    private async Task<Dictionary<string, (int? TimelineWeeks, int? DeliveryDays)>>
-        ResolveUpdateTimelineDeliverySnapshotsAsync(
-            IEnumerable<string> selectedModules,
-            IEnumerable<QuotationModuleEntity> existingQuotationModules)
-    {
-        var selectedNames = selectedModules.Select(name => name.Trim()).ToList();
-        var existingByModule = existingQuotationModules.ToDictionary(
-            module => module.ModuleName,
-            StringComparer.OrdinalIgnoreCase);
-        var masterModules = await _dbContext.Modules
-            .AsNoTracking()
-            .Where(module => selectedNames.Contains(module.ModuleName))
-            .ToDictionaryAsync(module => module.ModuleName, StringComparer.OrdinalIgnoreCase);
-        var snapshots = new Dictionary<string, (int? TimelineWeeks, int? DeliveryDays)>(
-            StringComparer.OrdinalIgnoreCase);
-
-        foreach (var moduleName in selectedNames)
-        {
-            if (existingByModule.TryGetValue(moduleName, out var existing))
-            {
-                snapshots[moduleName] = (existing.TimelineWeeks, existing.DeliveryDays);
-                continue;
-            }
-
-            if (!masterModules.TryGetValue(moduleName, out var module))
-                throw new ArgumentException($"Unknown module '{moduleName}'.");
-
-            ValidateTimelineDeliveryConfiguration(moduleName, module);
-            snapshots[moduleName] = (module.TimelineWeeks, module.DeliveryDays);
-        }
-
-        return snapshots;
-    }
-
-    private static void ValidateTimelineDeliveryConfiguration(string moduleName, ModuleEntity module)
-    {
-        if (module.TimelineWeeks is null || module.DeliveryDays is null)
-        {
-            throw new ArgumentException(
-                $"Timeline and delivery are not set for module '{moduleName}'. Set them on the Modules page.");
-        }
-    }
-
     private async Task ValidateAdditionalScopesAsync(IEnumerable<AdditionalScopeRequest>? scopes)
     {
         var additionalScopes = scopes?.ToList() ?? new List<AdditionalScopeRequest>();
@@ -643,13 +540,7 @@ public class SqlQuotationService : IQuotationService
                 ModuleSubtotal = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).ModuleSubtotal,
                 DiscountPercentage = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).DiscountPercentage,
                 DiscountAmount = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).DiscountAmount,
-                FinalPrice = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).FinalPrice,
-                TimelineWeeks = detailsByModule.TryGetValue(m, out var timelineDetail)
-                    ? timelineDetail.TimelineWeeks
-                    : null,
-                DeliveryDays = detailsByModule.TryGetValue(m, out timelineDetail)
-                    ? timelineDetail.DeliveryDays
-                    : null
+                FinalPrice = pricing.First(p => string.Equals(p.ModuleName, m, StringComparison.OrdinalIgnoreCase)).FinalPrice
             }).ToList(),
             AdditionalScopes = request.AdditionalScopes
                 .Where(scope => !string.IsNullOrWhiteSpace(scope.Modules))
@@ -675,15 +566,7 @@ public class SqlQuotationService : IQuotationService
                         Price = scope.NoOfManpower * scope.NoOfDays * scope.Rate
                     };
                 })
-                .ToList(),
-            QuotationTimeEstimates = request.TimeEstimate.Select(t => new QuotationTimeEstimateEntity
-            {
-                QuotationId = result.QuotationId,
-                ModuleName = t.ModuleName,
-                StageKey = t.StageKey,
-                StartWeek = (byte)t.StartWeek,
-                EndWeek = (byte)t.EndWeek
-            }).ToList()
+                .ToList()
         };
 
         _dbContext.Quotations.Add(quotation);
@@ -754,39 +637,29 @@ public class SqlQuotationService : IQuotationService
     private static List<DeliverySummaryRow> BuildDeliverySummary(
         QuotationRequest request,
         IReadOnlyCollection<QuotationModulePricing> pricing,
+        IReadOnlyDictionary<string, ModuleItem> modulesByName,
         IReadOnlyDictionary<string, decimal?>? finalPriceSnapshots = null)
     {
         var pricingByModule = pricing.ToDictionary(
             item => item.ModuleName,
             StringComparer.OrdinalIgnoreCase);
-        var detailsByModule = (request.ModuleDetails ?? new List<QuotationModuleRequest>())
-            .ToDictionary(
-                detail => detail.ModuleName.Trim(),
-                StringComparer.OrdinalIgnoreCase);
         var rows = new List<DeliverySummaryRow>();
         var moduleFinalPrices = new List<decimal>();
-        var moduleTimelines = new List<int?>();
-        var moduleDeliveries = new List<int?>();
 
         foreach (var moduleName in request.SelectedModules)
         {
-            detailsByModule.TryGetValue(moduleName, out var detail);
             var price = finalPriceSnapshots is not null &&
                         finalPriceSnapshots.TryGetValue(moduleName, out var savedPrice)
                 ? savedPrice ?? 0m
                 : pricingByModule.GetValueOrDefault(moduleName)?.FinalPrice ?? 0m;
+            modulesByName.TryGetValue(moduleName, out var module);
             moduleFinalPrices.Add(price);
-            moduleTimelines.Add(detail?.TimelineWeeks);
-            moduleDeliveries.Add(detail?.DeliveryDays);
-
             rows.Add(new DeliverySummaryRow
             {
                 ModuleName = moduleName,
                 PriceText = price.ToString("N2"),
-                TimelineText = detail?.TimelineWeeks is int weeks
-                    ? $"{weeks} weeks"
-                    : "To be confirmed",
-                DeliveryText = FormatPlannedDelivery(request.ExpectedStartDate, detail?.DeliveryDays)
+                TimelineText = module?.TimelineWeeks?.ToString() ?? string.Empty,
+                DeliveryText = module?.DeliveryDays?.ToString() ?? string.Empty
             });
         }
 
@@ -804,51 +677,28 @@ public class SqlQuotationService : IQuotationService
                     ? scope.Modules
                     : scope.Requirement.Trim(),
                 PriceText = amount.ToString("N2"),
-                TimelineText = "With Go-Live",
+                TimelineText = string.Empty,
                 DeliveryText = string.Empty
             });
         }
 
-        var missingTimelineOrDelivery =
-            moduleTimelines.Any(value => value is null) ||
-            moduleDeliveries.Any(value => value is null);
-        var overallTimeline = missingTimelineOrDelivery
-            ? "To be confirmed"
-            : $"{moduleTimelines.Max(value => value!.Value)} weeks overall";
-        var overallDelivery = missingTimelineOrDelivery
-            ? "To be confirmed"
-            : FormatPlannedDelivery(request.ExpectedStartDate, moduleDeliveries.Max(value => value!.Value));
-
-        for (var index = request.SelectedModules.Count; index < rows.Count; index++)
-        {
-            rows[index] = new DeliverySummaryRow
-            {
-                ModuleName = rows[index].ModuleName,
-                PriceText = rows[index].PriceText,
-                TimelineText = rows[index].TimelineText,
-                DeliveryText = overallDelivery
-            };
-        }
-
+        var selectedModules = request.SelectedModules
+            .Select(name => modulesByName.GetValueOrDefault(name))
+            .Where(module => module is not null)
+            .ToList();
         rows.Add(new DeliverySummaryRow
         {
             ModuleName = "Total",
             PriceText = (moduleFinalPrices.Sum() + additionalScopeTotal).ToString("N2"),
-            TimelineText = overallTimeline,
-            DeliveryText = overallDelivery
+            TimelineText = selectedModules.Any(module => module!.TimelineWeeks.HasValue)
+                ? selectedModules.Sum(module => module!.TimelineWeeks ?? 0).ToString()
+                : string.Empty,
+            DeliveryText = selectedModules.Any(module => module!.DeliveryDays.HasValue)
+                ? selectedModules.Sum(module => module!.DeliveryDays ?? 0).ToString()
+                : string.Empty
         });
 
         return rows;
-    }
-
-    private static string FormatPlannedDelivery(DateTime? expectedStartDate, int? deliveryDays)
-    {
-        if (deliveryDays is null)
-            return "To be confirmed";
-
-        return expectedStartDate is DateTime startDate
-            ? startDate.AddDays(deliveryDays.Value).ToString("dd MMM yyyy", CultureInfo.InvariantCulture)
-            : $" {deliveryDays.Value} Days";
     }
 
     private static void PopulateDeliverySummaryTable(
@@ -870,6 +720,17 @@ public class SqlQuotationService : IQuotationService
         {
             throw new InvalidOperationException(
                 "Recommended quotation format table is missing its data or total placeholder row.");
+        }
+
+        var templateText = string.Concat(templateRow.Descendants<Text>().Select(text => text.Text));
+        var totalText = string.Concat(totalRow.Descendants<Text>().Select(text => text.Text));
+        if (!templateText.Contains("{{S_TIMELINE}}", StringComparison.Ordinal) ||
+            !templateText.Contains("{{S_DELIVERY}}", StringComparison.Ordinal) ||
+            !totalText.Contains("{{S_T_TIMELINE}}", StringComparison.Ordinal) ||
+            !totalText.Contains("{{S_T_DELIVERY}}", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Recommended quotation format table is missing its timeline or planned delivery placeholders.");
         }
 
         var dataRows = summaryRows.Take(summaryRows.Count - 1);
@@ -1005,10 +866,6 @@ public class SqlQuotationService : IQuotationService
         if (quotation == null)
             return null;
 
-        var timeEstimates = await _dbContext.QuotationTimeEstimates
-            .Where(t => t.QuotationId == quotationId)
-            .ToListAsync();
-
         // Update discount percentage on module level
         await ApplyPricingSnapshotAsync(quotation, quotation.QuotationModules, discountPercentage);
         AddHistorySnapshot(quotation, "DiscountUpdated");
@@ -1030,9 +887,7 @@ public class SqlQuotationService : IQuotationService
                 NoOfInstallations = m.NoOfInstallations,
                 NoOfSites = m.NoOfSites,
                 ImplementationEffortUnit = m.ImplementationEffortUnit,
-                DiscountPercentage = m.DiscountPercentage,
-                TimelineWeeks = m.TimelineWeeks,
-                DeliveryDays = m.DeliveryDays
+                DiscountPercentage = m.DiscountPercentage
             }).ToList(),
             AdditionalScopes = quotation.AdditionalScopes
                 .Select(s => new AdditionalScopeRequest
@@ -1051,17 +906,7 @@ public class SqlQuotationService : IQuotationService
                 ContactNo = quotation.QuotationToContactNo,
                 Email = quotation.QuotationToEmail
             },
-            DiscountPercentage = discountPercentage,
-            TimeEstimate = timeEstimates.Any()
-                ? timeEstimates.Select(t => new TimeEstimateStageRequest
-                {
-                    ModuleName = t.ModuleName,
-                    StageKey = t.StageKey,
-                    StartWeek = t.StartWeek,
-                    EndWeek = t.EndWeek
-                }).ToList()
-                : TimeEstimateHelper.Defaults(
-                    quotation.QuotationModules.Select(m => m.ModuleName).ToList())
+            DiscountPercentage = discountPercentage
         };
 
         // Regenerate documents with new discount
@@ -1089,7 +934,7 @@ public class SqlQuotationService : IQuotationService
     /// <summary>
     /// Updates quotation details (validation date, modules, additional scopes) and regenerates documents.
     /// </summary>
-    public async Task<QuotationResult?> UpdateQuotationAsync(string quotationId, DateTime validationDate, DateTime? expectedStartDate, List<string> selectedModules, List<QuotationModuleRequest> moduleDetails, List<AdditionalScopeRequest> additionalScopes, List<TimeEstimateStageRequest> timeEstimate)
+    public async Task<QuotationResult?> UpdateQuotationAsync(string quotationId, DateTime validationDate, DateTime? expectedStartDate, List<string> selectedModules, List<QuotationModuleRequest> moduleDetails, List<AdditionalScopeRequest> additionalScopes)
     {
         var quotation = await _dbContext.Quotations
             .Include(q => q.QuotationModules)
@@ -1099,18 +944,7 @@ public class SqlQuotationService : IQuotationService
         if (quotation == null)
             return null;
 
-        // Load existing time estimates for deletion
-        var existingTimeEstimates = await _dbContext.QuotationTimeEstimates
-            .Where(t => t.QuotationId == quotationId)
-            .ToListAsync();
-
         await ValidateModulesAsync(selectedModules);
-        var timelineSnapshots = await ResolveUpdateTimelineDeliverySnapshotsAsync(
-            selectedModules,
-            quotation.QuotationModules);
-
-        timeEstimate = TimeEstimateHelper.PrepareForModules(timeEstimate, selectedModules);
-
         quotation.ValidationDate = validationDate;
         quotation.ExpectedStartDate = expectedStartDate;
 
@@ -1130,9 +964,7 @@ public class SqlQuotationService : IQuotationService
                 : null,
             DiscountPercentage = detailsByModule.TryGetValue(m, out detail)
                 ? detail.DiscountPercentage
-                : null,
-            TimelineWeeks = timelineSnapshots[m].TimelineWeeks,
-            DeliveryDays = timelineSnapshots[m].DeliveryDays
+                : null
         }).ToList();
 
         // Update Additional Scopes
@@ -1167,17 +999,6 @@ public class SqlQuotationService : IQuotationService
             })
             .ToList();
 
-        // Update Time Estimates - delete existing, insert new
-        _dbContext.QuotationTimeEstimates.RemoveRange(existingTimeEstimates);
-        quotation.QuotationTimeEstimates = timeEstimate.Select(t => new QuotationTimeEstimateEntity
-        {
-            QuotationId = quotationId,
-            ModuleName = t.ModuleName,
-            StageKey = t.StageKey,
-            StartWeek = (byte)t.StartWeek,
-            EndWeek = (byte)t.EndWeek
-        }).ToList();
-
         // Calculate discount percentage from module-level discounts
         var totalSubtotal = quotation.QuotationModules.Sum(m => m.ModuleSubtotal ?? 0m);
         var totalDiscountAmount = quotation.QuotationModules.Sum(m => m.DiscountAmount ?? 0m);
@@ -1204,9 +1025,7 @@ public class SqlQuotationService : IQuotationService
                     NoOfInstallations = m.NoOfInstallations,
                     NoOfSites = m.NoOfSites,
                     ImplementationEffortUnit = m.ImplementationEffortUnit,
-                    DiscountPercentage = m.DiscountPercentage,
-                    TimelineWeeks = m.TimelineWeeks,
-                    DeliveryDays = m.DeliveryDays
+                    DiscountPercentage = m.DiscountPercentage
                 }).ToList(),
             AdditionalScopes = quotation.AdditionalScopes
                 .Select(s => new AdditionalScopeRequest
@@ -1225,8 +1044,7 @@ public class SqlQuotationService : IQuotationService
                 ContactNo = quotation.QuotationToContactNo,
                 Email = quotation.QuotationToEmail
             },
-            DiscountPercentage = discountPercentage,
-            TimeEstimate = timeEstimate
+            DiscountPercentage = discountPercentage
         };
 
         var finalPriceSnapshots = quotation.QuotationModules.ToDictionary(
@@ -1318,6 +1136,7 @@ public class SqlQuotationService : IQuotationService
                 var deliverySummary = BuildDeliverySummary(
                     request,
                     pricing,
+                    modulePrices,
                     finalPriceSnapshots);
                 var modulePriceTotal = pricing.Sum(p => p.ModulePrice);
                 var implementationPriceTotal = pricing.Sum(p => p.ImplementationPrice);
@@ -1440,157 +1259,10 @@ public class SqlQuotationService : IQuotationService
                 }
 
                 PopulateDeliverySummaryTable(body, deliverySummary);
-                PopulateTimeEstimateTable(doc, request);
             }
         }
 
         return outputPath;
-    }
-
-    private static void PopulateTimeEstimateTable(
-        WordprocessingDocument doc,
-        QuotationRequest request)
-    {
-        var body = doc.MainDocumentPart?.Document.Body;
-        if (body == null) return;
-
-        Table? timeEstimateTable = null;
-        TableRow? moduleHeaderTemplate = null;
-        List<TableRow>? templateRows = null;
-        foreach (var table in body.Descendants<Table>())
-        {
-            var rows = table.Elements<TableRow>().ToList();
-            for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
-            {
-                var firstCell = rows[rowIndex].Elements<TableCell>().FirstOrDefault();
-                var cellText = firstCell == null
-                    ? string.Empty
-                    : string.Concat(firstCell.Descendants<Text>().Select(text => text.Text));
-                if (cellText.Trim().StartsWith("Pre-Implementation Visits", StringComparison.OrdinalIgnoreCase))
-                {
-                    timeEstimateTable = table;
-                    templateRows = rows.Skip(rowIndex).Take(TimeEstimateHelper.Stages.Length).ToList();
-                    if (rowIndex > 0)
-                    {
-                        var previousRow = rows[rowIndex - 1];
-                        var previousRowText = string.Concat(
-                            previousRow.Descendants<Text>().Select(text => text.Text));
-                        if (previousRowText.Contains("{{M_NAME}}", StringComparison.Ordinal))
-                            moduleHeaderTemplate = previousRow;
-                    }
-                    break;
-                }
-            }
-
-            if (timeEstimateTable != null)
-                break;
-        }
-
-        if (timeEstimateTable == null || templateRows == null)
-        {
-            throw new InvalidOperationException("Time Estimate table not found in template. Expected a row starting with 'Pre-Implementation Visits'.");
-        }
-
-        var stageKeys = TimeEstimateHelper.Stages;
-        if (templateRows.Count != stageKeys.Length)
-            throw new InvalidOperationException($"Time Estimate table has {templateRows.Count} stage rows, expected {stageKeys.Length}.");
-
-        var estimatesByModule = request.TimeEstimate
-            .GroupBy(estimate => estimate.ModuleName, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                group => group.Key,
-                group => group.ToDictionary(
-                    estimate => estimate.StageKey,
-                    StringComparer.OrdinalIgnoreCase),
-                StringComparer.OrdinalIgnoreCase);
-
-        var insertionPoint = templateRows[^1];
-        for (var moduleIndex = 0; moduleIndex < request.SelectedModules.Count; moduleIndex++)
-        {
-            var moduleName = request.SelectedModules[moduleIndex];
-            if (!estimatesByModule.TryGetValue(moduleName, out var moduleEstimates))
-                throw new InvalidOperationException($"Missing time estimate for module '{moduleName}'.");
-
-            if (moduleHeaderTemplate != null)
-            {
-                var moduleHeader = moduleIndex == 0
-                    ? moduleHeaderTemplate
-                    : (TableRow)moduleHeaderTemplate.CloneNode(true);
-                if (moduleIndex > 0)
-                {
-                    timeEstimateTable.InsertAfter(moduleHeader, insertionPoint);
-                    insertionPoint = moduleHeader;
-                }
-
-                var moduleHeaderCell = moduleHeader.Elements<TableCell>().FirstOrDefault()
-                    ?? throw new InvalidOperationException("Module heading row in the Time Estimate table has no cells.");
-                SetTableCellText(moduleHeaderCell, moduleName);
-            }
-
-            for (var stageIndex = 0; stageIndex < stageKeys.Length; stageIndex++)
-            {
-                var stageKey = stageKeys[stageIndex];
-                if (!moduleEstimates.TryGetValue(stageKey, out var stage))
-                    throw new InvalidOperationException($"Missing time estimate for module '{moduleName}', stage '{stageKey}'.");
-
-                var row = moduleIndex == 0
-                    ? templateRows[stageIndex]
-                    : (TableRow)templateRows[stageIndex].CloneNode(true);
-                if (moduleIndex > 0)
-                {
-                    timeEstimateTable.InsertAfter(row, insertionPoint);
-                    insertionPoint = row;
-                }
-
-                var cells = row.Elements<TableCell>().ToList();
-                if (cells.Count < TimeEstimateHelper.TotalWeeks + 1)
-                    throw new InvalidOperationException($"Time Estimate table row for stage '{stageKey}' has only {cells.Count} cells, expected at least {TimeEstimateHelper.TotalWeeks + 1} (template problem).");
-
-                var stageLabel = TimeEstimateHelper.GetStageLabel(stageKey);
-                SetTableCellText(
-                    cells[0],
-                    moduleHeaderTemplate == null ? $"{moduleName} - {stageLabel}" : stageLabel);
-
-                for (var week = 1; week <= TimeEstimateHelper.TotalWeeks; week++)
-                {
-                    var cell = cells[week];
-                    var tcPr = cell.TableCellProperties;
-                    if (tcPr == null)
-                    {
-                        tcPr = new TableCellProperties();
-                        cell.PrependChild(tcPr);
-                    }
-
-                    var existingShading = tcPr.GetFirstChild<Shading>();
-                    existingShading?.Remove();
-
-                    if (stage.StartWeek <= week && week <= stage.EndWeek)
-                    {
-                        var shading = new Shading
-                        {
-                            Val = ShadingPatternValues.Clear,
-                            Color = "auto",
-                            Fill = "4A90D9"
-                        };
-                        tcPr.PrependChild(shading);
-                    }
-                }
-            }
-        }
-    }
-
-    private static void SetTableCellText(TableCell cell, string value)
-    {
-        var textNodes = cell.Descendants<Text>().ToList();
-        if (textNodes.Count == 0)
-        {
-            cell.AppendChild(new Paragraph(new Run(new Text(value))));
-            return;
-        }
-
-        textNodes[0].Text = value;
-        foreach (var textNode in textNodes.Skip(1))
-            textNode.Text = string.Empty;
     }
 
     private static decimal GetEffortMultiplier(string? effortUnit)

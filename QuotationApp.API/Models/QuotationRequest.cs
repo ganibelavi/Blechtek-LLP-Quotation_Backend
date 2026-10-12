@@ -33,8 +33,6 @@ public class QuotationRequest
 
     public List<AdditionalScopeRequest> AdditionalScopes { get; set; } = new();
 
-    public List<TimeEstimateStageRequest> TimeEstimate { get; set; } = new();
-
     [Required]
     public QuotationToInfo QuotationTo { get; set; } = new();
 
@@ -73,9 +71,6 @@ public class QuotationModuleRequest
 
     public decimal? ModulePriceOverride { get; set; }
 
-    public int? TimelineWeeks { get; set; }
-
-    public int? DeliveryDays { get; set; }
 }
 
 public class AdditionalScopeRequest
@@ -148,8 +143,6 @@ public class QuotationModuleDetail
     public int? NoOfInstallations { get; set; }
     public int? NoOfSites { get; set; }
     public string? ImplementationEffortUnit { get; set; }
-    public int? TimelineWeeks { get; set; }
-    public int? DeliveryDays { get; set; }
 }
 
 public class QuotationHistoryEntry
@@ -168,7 +161,6 @@ public class QuotationHistoryEntry
     public List<string> Modules { get; set; } = new();
     public List<QuotationModuleDetail> ModuleDetails { get; set; } = new();
     public List<AdditionalScope> AdditionalScopes { get; set; } = new();
-    public List<TimeEstimateStageResponse> TimeEstimate { get; set; } = new();
     public DateTime GeneratedAt { get; set; }
     public decimal? DiscountPercentage { get; set; }
 }
@@ -197,30 +189,4 @@ public class UpdateQuotationRequest
 
     public List<AdditionalScopeRequest> AdditionalScopes { get; set; } = new();
 
-    public List<TimeEstimateStageRequest> TimeEstimate { get; set; } = new();
-}
-
-/// <summary>One module's stage schedule (From week / To week).</summary>
-public class TimeEstimateStageRequest
-{
-    [StringLength(200)]
-    public string ModuleName { get; set; } = string.Empty;
-
-    [Required]
-    public string StageKey { get; set; } = string.Empty;
-
-    [Range(1, 8, ErrorMessage = "StartWeek must be between 1 and 8.")]
-    public int StartWeek { get; set; }
-
-    [Range(1, 8, ErrorMessage = "EndWeek must be between 1 and 8.")]
-    public int EndWeek { get; set; }
-}
-
-/// <summary>One module's stage schedule in the response model.</summary>
-public class TimeEstimateStageResponse
-{
-    public string ModuleName { get; set; } = string.Empty;
-    public string StageKey { get; set; } = string.Empty;
-    public int StartWeek { get; set; }
-    public int EndWeek { get; set; }
 }

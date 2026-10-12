@@ -71,7 +71,6 @@ public class SqlModuleService : IModuleService
     /// </summary>
     public async Task<ModuleItem> AddModuleAsync(ModuleUpsertRequest request)
     {
-        ValidateTimelineDelivery(request);
         var pillar = request.Pillar.Trim();
         var moduleName = request.ModuleName.Trim();
         var duplicateNameExists = await _dbContext.Modules
@@ -109,7 +108,6 @@ public class SqlModuleService : IModuleService
     /// </summary>
     public async Task<ModuleItem?> UpdateModuleAsync(int id, ModuleUpsertRequest request)
     {
-        ValidateTimelineDelivery(request);
         var entity = await _dbContext.Modules.FindAsync(id);
         if (entity == null) return null;
 
@@ -252,11 +250,4 @@ public class SqlModuleService : IModuleService
         DeliveryDays = entity.DeliveryDays,
     };
 
-    private static void ValidateTimelineDelivery(ModuleUpsertRequest request)
-    {
-        if (request.TimelineWeeks is < 1 or > 52)
-            throw new ArgumentException("TimelineWeeks must be between 1 and 52.");
-        if (request.DeliveryDays is < 1 or > 365)
-            throw new ArgumentException("DeliveryDays must be between 1 and 365.");
-    }
 }

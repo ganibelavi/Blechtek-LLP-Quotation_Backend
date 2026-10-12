@@ -74,10 +74,6 @@ namespace QuotationApp.API.Migrations
                     b.Property<int?>("NoOfUsersForSingleInstallation")
                         .HasColumnType("int");
 
-                    b.Property<int?>("DeliveryDays")
-                        .HasColumnType("int")
-                        .HasColumnName("DeliveryDays");
-
                     b.Property<string>("Pillar")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -85,10 +81,6 @@ namespace QuotationApp.API.Migrations
 
                     b.Property<decimal?>("Price")
                         .HasColumnType("decimal(18,2)");
-
-                    b.Property<int?>("TimelineWeeks")
-                        .HasColumnType("int")
-                        .HasColumnName("TimelineWeeks");
 
                     b.Property<bool>("ReverseChargeDefault")
                         .HasColumnType("bit")
@@ -98,6 +90,14 @@ namespace QuotationApp.API.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("SacCode");
+
+                    b.Property<int?>("TimelineWeeks")
+                        .HasColumnType("int")
+                        .HasColumnName("TimelineWeeks");
+
+                    b.Property<int?>("DeliveryDays")
+                        .HasColumnType("int")
+                        .HasColumnName("DeliveryDays");
 
                     b.HasKey("Id");
 
@@ -268,10 +268,6 @@ namespace QuotationApp.API.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<int?>("DeliveryDays")
-                        .HasColumnType("int")
-                        .HasColumnName("DeliveryDays");
-
                     b.Property<string>("ModuleName")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
@@ -284,10 +280,6 @@ namespace QuotationApp.API.Migrations
 
                     b.Property<decimal?>("FinalPrice")
                         .HasColumnType("decimal(18,2)");
-
-                    b.Property<int?>("TimelineWeeks")
-                        .HasColumnType("int")
-                        .HasColumnName("TimelineWeeks");
 
                     b.Property<string>("ImplementationEffortUnit")
                         .HasMaxLength(30)
@@ -322,43 +314,6 @@ namespace QuotationApp.API.Migrations
                     b.HasIndex("ModuleName");
 
                     b.ToTable("QuotationModules", (string)null);
-                });
-
-            modelBuilder.Entity("QuotationApp.API.Data.QuotationTimeEstimateEntity", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<byte>("EndWeek")
-                        .HasColumnType("tinyint");
-
-                    b.Property<string>("ModuleName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("QuotationId")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("StageKey")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<byte>("StartWeek")
-                        .HasColumnType("tinyint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("QuotationId", "ModuleName", "StageKey")
-                        .IsUnique();
-
-                    b.ToTable("QuotationTimeEstimates", (string)null);
                 });
 
             modelBuilder.Entity("QuotationApp.API.Data.UserEntity", b =>
@@ -2091,15 +2046,6 @@ namespace QuotationApp.API.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("QuotationApp.API.Data.QuotationTimeEstimateEntity", b =>
-                {
-                    b.HasOne("QuotationApp.API.Data.QuotationEntity", null)
-                        .WithMany("QuotationTimeEstimates")
-                        .HasForeignKey("QuotationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("QuotationApp.API.Models.AdditionalScope", b =>
                 {
                     b.HasOne("QuotationApp.API.Data.ModuleEntity", null)
@@ -2406,8 +2352,6 @@ namespace QuotationApp.API.Migrations
                     b.Navigation("AdditionalScopes");
 
                     b.Navigation("QuotationModules");
-
-                    b.Navigation("QuotationTimeEstimates");
 
                     b.Navigation("SalesOrders");
                 });

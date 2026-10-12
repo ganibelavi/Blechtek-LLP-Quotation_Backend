@@ -34,10 +34,6 @@ public class ModuleUpsertRequest
     public decimal? ImplementationEffortCost { get; set; }
     public int? ImplementationEffortManDays { get; set; }
     public int? NoOfUsersForSingleInstallation { get; set; }
-
-    [Range(1, 52, ErrorMessage = "TimelineWeeks must be between 1 and 52.")]
     public int? TimelineWeeks { get; set; }
-
-    [Range(1, 365, ErrorMessage = "DeliveryDays must be between 1 and 365.")]
     public int? DeliveryDays { get; set; }
 }
