@@ -1237,7 +1237,15 @@ public class SqlQuotationService : IQuotationService
                     body,
                     request.AdditionalScopes);
 
-                PopulatePriceSummaryTable(body, request.SelectedModules, request.ModuleDetails, modulePrices, request.RenewalPercentage, request.AnnualEscalationPercentage);
+                PopulatePriceSummaryTable(
+                    body,
+                    request.SelectedModules,
+                    request.ModuleDetails,
+                    modulePrices,
+                    pricing,
+                    request.DiscountPercentage,
+                    request.RenewalPercentage,
+                    request.AnnualEscalationPercentage);
 
                 foreach (var paragraph in body.Descendants<Paragraph>())
                 {
@@ -2222,6 +2230,8 @@ public class SqlQuotationService : IQuotationService
         IEnumerable<string> selectedModules,
         IEnumerable<QuotationModuleRequest>? moduleDetails,
         IReadOnlyDictionary<string, ModuleItem> modulePrices,
+        IReadOnlyCollection<QuotationModulePricing> pricing,
+        decimal discountPercentage = 0m,
         decimal renewalPercentage = 20m,
         decimal annualEscalationPercentage = 7m)
     {
@@ -2230,6 +2240,9 @@ public class SqlQuotationService : IQuotationService
 
         var detailsByModule = (moduleDetails ?? Enumerable.Empty<QuotationModuleRequest>())
             .ToDictionary(d => d.ModuleName.Trim(), StringComparer.OrdinalIgnoreCase);
+        var pricingByModule = pricing.ToDictionary(
+            item => item.ModuleName.Trim(),
+            StringComparer.OrdinalIgnoreCase);
 
         // Find the price summary table by looking for the header row
         var priceSummaryTable = body
@@ -2279,13 +2292,21 @@ public class SqlQuotationService : IQuotationService
             modulePrices.TryGetValue(moduleName, out var module);
             detailsByModule.TryGetValue(moduleName.Trim(), out var detail);
 
-            var modulePrice = module?.Price ?? 0m;
+            pricingByModule.TryGetValue(moduleName.Trim(), out var modulePricing);
+            var modulePrice = modulePricing?.ModulePrice ??
+                              detail?.ModulePriceOverride ??
+                              module?.Price ??
+                              0m;
+            var moduleDiscount = modulePricing?.DiscountAmount ??
+                                 modulePrice * Math.Clamp(
+                                     detail?.DiscountPercentage ?? discountPercentage,
+                                     0m,
+                                     100m) / 100m;
             var noOfUsers = detail?.NoOfUsers ?? 1;
 
-            // Y1 shows the full module price. Y2 starts with the renewal percentage,
-            // without adding the Y1 module price; later years escalate the renewal.
-            var y1 = modulePrice;
-            var y2 = modulePrice * renewalRate;
+            // Renewal pricing starts from the discounted module price shown in Y1.
+            var y1 = modulePrice - moduleDiscount;
+            var y2 = y1 * renewalRate;
             // Y3 = Y2 + AnnualEscalationPercentage% increment (3rd year).
             var y3 = y2 * (1 + escalationRate);
             // Y4 = Y3 + AnnualEscalationPercentage% increment (4th year).
