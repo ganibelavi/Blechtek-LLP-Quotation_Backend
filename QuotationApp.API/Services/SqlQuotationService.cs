@@ -2039,16 +2039,49 @@ public class SqlQuotationService : IQuotationService
             foreach (var templateRow in templateRows)
             {
                 var clonedRow = (TableRow)templateRow.CloneNode(true);
-                var rowIndex = templateRows.IndexOf(templateRow);
+                foreach (var cell in clonedRow.Elements<TableCell>())
+                {
+                    var paragraphs = cell.Elements<Paragraph>().ToList();
+                    foreach (var emptyParagraph in paragraphs
+                                 .Where(paragraph => string.IsNullOrWhiteSpace(paragraph.InnerText))
+                                 .Take(Math.Max(0, paragraphs.Count - 1))
+                                 .ToList())
+                    {
+                        emptyParagraph.Remove();
+                    }
+
+                    foreach (var paragraph in cell.Elements<Paragraph>())
+                    {
+                        var paragraphProperties = paragraph.GetFirstChild<ParagraphProperties>();
+                        if (paragraphProperties is null)
+                        {
+                            paragraphProperties = new ParagraphProperties();
+                            paragraph.PrependChild(paragraphProperties);
+                        }
+
+                        paragraphProperties.SpacingBetweenLines = new SpacingBetweenLines
+                        {
+                            Before = "0",
+                            After = "0"
+                        };
+                    }
+                }
+
+                var templateRowText = string.Concat(
+                    templateRow.Descendants<Text>().Select(text => text.Text));
                 var serialNumberCell = clonedRow.Elements<TableCell>().FirstOrDefault();
                 if (serialNumberCell is not null)
                 {
-                    var serialNumber = rowIndex == 0
+                    var serialNumber = templateRowText.Contains(
+                            "{{M_PRICE}}",
+                            StringComparison.Ordinal)
                         ? rowNum.ToString(CultureInfo.InvariantCulture)
-                        : rowIndex == 2
+                        : templateRowText.Contains(
+                            "{{IMPL_TOTAL}}",
+                            StringComparison.Ordinal)
                             ? $"{rowNum}.1"
                             : string.Empty;
-                    SetTableCellText(serialNumberCell, serialNumber);
+                    SetPricingSerialNumberCellText(serialNumberCell, serialNumber);
                 }
 
                 ReplaceRowPlaceholders(clonedRow, moduleReplacements);
@@ -2272,8 +2305,38 @@ public class SqlQuotationService : IQuotationService
         var serialNumberCell = row.Elements<TableCell>().FirstOrDefault();
         if (serialNumberCell is not null)
         {
-            SetTableCellText(serialNumberCell, number);
+            SetPricingSerialNumberCellText(serialNumberCell, number);
         }
+    }
+
+    private static void SetPricingSerialNumberCellText(TableCell cell, string value)
+    {
+        var sourceParagraph = cell.Elements<Paragraph>().FirstOrDefault();
+        var paragraphProperties = sourceParagraph?
+            .ParagraphProperties?
+            .CloneNode(true) as ParagraphProperties;
+        var runProperties = sourceParagraph?
+            .Elements<Run>()
+            .Select(run => run.RunProperties)
+            .FirstOrDefault(properties => properties is not null)?
+            .CloneNode(true) as RunProperties;
+
+        cell.RemoveAllChildren<Paragraph>();
+
+        var paragraph = new Paragraph();
+        if (paragraphProperties is not null)
+        {
+            paragraph.AppendChild(paragraphProperties);
+        }
+
+        var run = new Run();
+        if (runProperties is not null)
+        {
+            run.AppendChild(runProperties);
+        }
+        run.AppendChild(new Text(value ?? string.Empty));
+        paragraph.AppendChild(run);
+        cell.AppendChild(paragraph);
     }
 
     private static void PopulateLicenseRenewalModuleRows(
